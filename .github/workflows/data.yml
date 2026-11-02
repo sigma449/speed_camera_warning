@@ -1,0 +1,36 @@
+name: Refresh camera data
+
+# 每週一凌晨（台灣時間 02:17）下載政府開放資料，有變動就開 PR。
+# 需要在 repo 設定開啟：Settings → Actions → General →
+# 「Allow GitHub Actions to create and approve pull requests」。
+on:
+  schedule:
+    - cron: "17 18 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 下載並整理測速資料
+        run: python3 data-pipeline/build_cameras.py --min-count 500
+      - name: 開 PR
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: 更新測速照相資料
+          branch: data/refresh
+          delete-branch: true
+          title: 更新測速照相資料
+          body: |
+            由「Refresh camera data」流程自動產生。
+            資料來源：內政部警政署「測速執法設置點」（政府資料開放授權條款－第1版）。
+            合併後重新執行「Build IPA」即可把新資料打包進 App。
+          add-paths: SpeedCam/Resources/cameras.json

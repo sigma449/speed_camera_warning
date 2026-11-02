@@ -1,0 +1,9 @@
+{
+ "version": "未下載",
+ "generatedAt": "",
+ "sources": [
+  "尚未下載測速資料：請執行 data-pipeline/build_cameras.py，或使用 GitHub Actions 的 build-ipa 流程（會自動下載）。"
+ ],
+ "cameras": [],
+ "sections": []
+}

@@ -1,0 +1,55 @@
+{
+  "version": "test",
+  "generatedAt": "2026-11-02T00:00:00Z",
+  "sources": [
+    "測試資料"
+  ],
+  "cameras": [
+    {
+      "id": "a1",
+      "type": "fixed",
+      "lat": 25.04,
+      "lon": 121.56,
+      "heading": 0,
+      "speedLimit": 50,
+      "address": "測試路一段",
+      "city": "臺北市",
+      "district": "大安區"
+    },
+    {
+      "id": "a2",
+      "type": "redLightSpeed",
+      "lat": 25.05,
+      "lon": 121.57,
+      "heading": 90,
+      "speedLimit": 60,
+      "address": "測試路二段",
+      "city": "臺北市",
+      "district": "信義區"
+    },
+    {
+      "id": "a3",
+      "type": "tech",
+      "lat": 25.06,
+      "lon": 121.58,
+      "address": "測試路三段"
+    }
+  ],
+  "sections": [
+    {
+      "id": "s1",
+      "name": "測試隧道",
+      "start": {
+        "lat": 24.9,
+        "lon": 121.7
+      },
+      "end": {
+        "lat": 24.85,
+        "lon": 121.75
+      },
+      "lengthMeters": 12900,
+      "speedLimit": 90,
+      "lengthEstimated": false
+    }
+  ]
+}

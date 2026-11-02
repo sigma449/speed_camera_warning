@@ -1,0 +1,7 @@
+# 區間測速資料（人工維護）。
+# 請只填入你確認過的區間：起點、終點座標可在 Google 地圖或 Apple 地圖長按取得。
+# length_m 是官方公告的區間長度（公尺），不知道可以留空，程式會先估算並在 App 中標示「長度為估算」。
+# speed_limit 是區間速限（km/h）。
+# 範例（請勿直接使用，座標為示意）：
+# demo-1,示範區間,25.0000,121.5000,25.0300,121.5000,3300,60,示意資料
+id,name,start_lat,start_lon,end_lat,end_lon,length_m,speed_limit,note

@@ -1,0 +1,72 @@
+name: Build IPA（未簽署，給 AltStore 側載用）
+
+# 手動執行：GitHub 網頁 → Actions → 「Build IPA」→ Run workflow
+# 完成後在該次執行頁面下方的 Artifacts 下載 SpeedCam-ipa（zip 裡就是 SpeedCam.ipa）。
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  ipa:
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 下載最新測速資料
+        run: |
+          if python3 data-pipeline/build_cameras.py --min-count 500; then
+            echo "已更新測速資料"
+          else
+            echo "::warning::下載測速資料失敗，改用 repo 內的 SpeedCam/Resources/cameras.json"
+          fi
+          COUNT=$(python3 -c "import json;print(len(json.load(open('SpeedCam/Resources/cameras.json'))['cameras']))")
+          echo "App 內建照相點：${COUNT} 處"
+          if [ "${COUNT}" -lt 1 ]; then
+            echo "::error::App 內沒有任何測速資料，停止建置。請先執行「Refresh camera data」流程或手動放入 cameras.json。"
+            exit 1
+          fi
+
+      - name: 選擇 Xcode
+        run: bash scripts/ci/select-xcode.sh
+
+      - name: 安裝 XcodeGen 並產生專案
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: 建置（實機、未簽署）
+        run: |
+          set -o pipefail
+          xcodebuild -project SpeedCam.xcodeproj -scheme SpeedCam -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build 2>&1 | tee build.log | grep -E "error:|BUILD (SUCCEEDED|FAILED)" || true
+          grep -q "BUILD SUCCEEDED" build.log
+
+      - name: 打包 IPA
+        run: |
+          rm -rf Payload SpeedCam.ipa
+          mkdir Payload
+          cp -R build/Build/Products/Release-iphoneos/SpeedCam.app Payload/
+          ls Payload/SpeedCam.app/PlugIns || echo "::warning::找不到 Widget Extension（PlugIns）"
+          zip -qry SpeedCam.ipa Payload
+          ls -lh SpeedCam.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SpeedCam-ipa
+          path: SpeedCam.ipa
+          retention-days: 30
+
+      - name: 上傳建置紀錄
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log

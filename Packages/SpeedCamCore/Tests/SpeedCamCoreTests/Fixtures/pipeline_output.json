@@ -1,0 +1,133 @@
+{
+ "version": "2026-11-02",
+ "generatedAt": "2026-11-02T00:00:00Z",
+ "sources": [
+  "內政部警政署「測速執法設置點」，政府資料開放授權條款－第1版（https://data.gov.tw/license）"
+ ],
+ "cameras": [
+  {
+   "id": "3630280d6600",
+   "type": "fixed",
+   "lat": 24.178,
+   "lon": 120.645,
+   "address": "台74線快速道路",
+   "heading": 180.0,
+   "speedLimit": 80,
+   "city": "臺中市",
+   "district": "西屯區"
+  },
+  {
+   "id": "4f2d85dfd6e8",
+   "type": "fixed",
+   "lat": 25.0333,
+   "lon": 121.5372,
+   "address": "信義路三段與建國南路口(重複)",
+   "heading": 90.0,
+   "speedLimit": 40,
+   "city": "臺北市",
+   "district": "大安區"
+  },
+  {
+   "id": "5e4412181eb0",
+   "type": "tech",
+   "lat": 22.982,
+   "lon": 120.228,
+   "address": "中華東路",
+   "heading": 90.0,
+   "speedLimit": 50,
+   "city": "臺南市",
+   "district": "東區"
+  },
+  {
+   "id": "81fd23e3c01c",
+   "type": "redLight",
+   "lat": 22.99,
+   "lon": 120.221,
+   "address": "林森路二段",
+   "heading": 180.0,
+   "city": "臺南市",
+   "district": "東區"
+  },
+  {
+   "id": "95eb1e112187",
+   "type": "fixed",
+   "lat": 25.0123,
+   "lon": 121.4635,
+   "address": "縣民大道二段",
+   "speedLimit": 60,
+   "city": "新北市",
+   "district": "板橋區"
+  },
+  {
+   "id": "a6d941b457ed",
+   "type": "redLightSpeed",
+   "lat": 22.987,
+   "lon": 120.216,
+   "address": "東門路一段",
+   "heading": 0.0,
+   "speedLimit": 50,
+   "city": "臺南市",
+   "district": "東區"
+  },
+  {
+   "id": "a81c9f2d612d",
+   "type": "fixed",
+   "lat": 24.9521,
+   "lon": 121.2345,
+   "address": "中山東路四段",
+   "heading": 0.0,
+   "speedLimit": 60,
+   "city": "桃園市",
+   "district": "中壢區"
+  },
+  {
+   "id": "ada09004b9ce",
+   "type": "fixed",
+   "lat": 25.0333,
+   "lon": 121.5372,
+   "address": "信義路三段與建國南路口",
+   "heading": 270.0,
+   "speedLimit": 50,
+   "city": "臺北市",
+   "district": "大安區"
+  },
+  {
+   "id": "c58a710ae2f8",
+   "type": "fixed",
+   "lat": 24.432,
+   "lon": 118.317,
+   "address": "環島西路",
+   "heading": 270.0,
+   "speedLimit": 50,
+   "city": "金門縣",
+   "district": "金城鎮"
+  },
+  {
+   "id": "f09d29194411",
+   "type": "fixed",
+   "lat": 26.151,
+   "lon": 119.944,
+   "address": "復興村",
+   "speedLimit": 40,
+   "city": "連江縣",
+   "district": "南竿鄉"
+  }
+ ],
+ "sections": [
+  {
+   "id": "s1",
+   "name": "測試",
+   "start": {
+    "lat": 25.0,
+    "lon": 121.5
+   },
+   "end": {
+    "lat": 25.03,
+    "lon": 121.5
+   },
+   "lengthMeters": 3836.2,
+   "speedLimit": 60,
+   "lengthEstimated": true
+  }
+ ]
+}

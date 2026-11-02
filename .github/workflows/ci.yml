@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core-tests:
+    name: 核心邏輯測試（Swift，Linux）
+    runs-on: ubuntu-latest
+    container: swift:6.2-noble
+    steps:
+      - uses: actions/checkout@v4
+      - name: swift test
+        run: swift test --package-path Packages/SpeedCamCore
+
+  pipeline-tests:
+    name: 資料處理測試（Python）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r data-pipeline/requirements-dev.txt
+      - run: python -m pytest -q data-pipeline
+
+  ios-build:
+    name: iOS 建置與模擬器截圖
+    runs-on: macos-26
+    needs: [core-tests]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: 選擇 Xcode
+        run: bash scripts/ci/select-xcode.sh
+      - name: 安裝 XcodeGen
+        run: brew install xcodegen
+      - name: 產生 Xcode 專案
+        run: xcodegen generate
+      - name: 建置（模擬器）
+        run: |
+          set -o pipefail
+          xcodebuild -project SpeedCam.xcodeproj -scheme SpeedCam -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO build 2>&1 | tee build.log | grep -E "error:|warning:|BUILD (SUCCEEDED|FAILED)" || true
+          grep -q "BUILD SUCCEEDED" build.log
+      - name: 上傳建置紀錄
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+      - name: 模擬器截圖
+        run: bash scripts/ci/screenshots.sh build/Build/Products/Debug-iphonesimulator/SpeedCam.app
+      - name: 上傳截圖
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots
+          path: screenshots/
+          if-no-files-found: ignore

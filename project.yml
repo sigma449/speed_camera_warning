@@ -1,0 +1,96 @@
+# XcodeGen 專案設定。在 macOS 上執行 `xcodegen generate` 會產生 SpeedCam.xcodeproj。
+# GitHub Actions 會自動做這件事，所以 repo 裡不放 .xcodeproj。
+name: SpeedCam
+options:
+  bundleIdPrefix: tw.speedcammap
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+  developmentLanguage: zh-Hant
+  groupSortPosition: top
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: ""
+    TARGETED_DEVICE_FAMILY: "1"
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+    SWIFT_STRICT_CONCURRENCY: minimal
+
+packages:
+  SpeedCamCore:
+    path: Packages/SpeedCamCore
+
+targets:
+  SpeedCam:
+    type: application
+    platform: iOS
+    sources:
+      - path: SpeedCam
+      - path: Shared
+    dependencies:
+      - package: SpeedCamCore
+      - target: SpeedCamWidgets
+        embed: true
+    info:
+      path: Config/SpeedCam-Info.plist
+      properties:
+        CFBundleDisplayName: 測速地圖
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        LSRequiresIPhoneOS: true
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        UIBackgroundModes:
+          - location
+          - audio
+        NSLocationWhenInUseUsageDescription: 需要你的位置，才能在接近測速照相時提醒你，並提供導航。
+        NSLocationAlwaysAndWhenInUseUsageDescription: 需要你的位置，才能在螢幕關閉或使用其他 App 時持續提醒測速照相。
+        NSSupportsLiveActivities: true
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: tw.speedcammap.app
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+
+  SpeedCamWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: SpeedCamWidgets
+      - path: Shared
+    dependencies:
+      - package: SpeedCamCore
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+      - sdk: ActivityKit.framework
+    info:
+      path: Config/SpeedCamWidgets-Info.plist
+      properties:
+        CFBundleDisplayName: 測速地圖
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: tw.speedcammap.app.widgets
+        SKIP_INSTALL: YES
+
+schemes:
+  SpeedCam:
+    build:
+      targets:
+        SpeedCam: all
+        SpeedCamWidgets: all
+    run:
+      config: Debug
+    archive:
+      config: Release
