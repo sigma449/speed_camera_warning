@@ -102,10 +102,16 @@ def build_index(rows: list[dict], log=print) -> MilepostIndex:
     headers = [h.replace("﻿", "").strip() for h in rows[0].keys() if h is not None]
     road_col = _find_column(headers, ("公路編號",), ("路線編號",), ("公路",), ("路線",), ("road",))
     km_col = _find_column(headers, ("起點樁號",), ("樁號",), ("里程",), ("牌面",), ("km",), ("mile",))
-    lon_col = _find_column(headers, ("wgs84", "x"), ("wgs84", "經度"), ("wgs84", "lon"), ("經度",), ("lon",))
-    lat_col = _find_column(headers, ("wgs84", "y"), ("wgs84", "緯度"), ("wgs84", "lat"), ("緯度",), ("lat",))
+    # 實際欄位（2026-11）：坐標-E-WGS84（經度）、坐標-N-WGS84（緯度）
+    lon_col = _find_column(headers, ("wgs84", "-e"), ("wgs84", "x"), ("wgs84", "經度"), ("wgs84", "lon"),
+                           ("經度",), ("lon",))
+    lat_col = _find_column(headers, ("wgs84", "-n"), ("wgs84", "y"), ("wgs84", "緯度"), ("wgs84", "lat"),
+                           ("緯度",), ("lat",))
     log(f"里程牌欄位：{headers}")
     log(f"  採用：道路={road_col}、里程={km_col}、經度={lon_col}、緯度={lat_col}")
+    for sample in rows[:3]:
+        clean = {(k or "").replace("\ufeff", "").strip(): v for k, v in sample.items()}
+        log(f"  範例：{ {c: clean.get(c) for c in (road_col, km_col, lon_col, lat_col) if c} }")
     if not all([road_col, km_col, lon_col, lat_col]):
         raise ValueError("里程牌資料找不到必要欄位")
     skipped = 0

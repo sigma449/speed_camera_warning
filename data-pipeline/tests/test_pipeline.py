@@ -313,6 +313,17 @@ def test_milepost_index_rejects_large_gaps_and_averages_duplicates():
     assert index.resolve("台9", 10)[0] == pytest.approx(24.9501)
 
 
+def test_milepost_real_headers_2026():
+    # 公路局資料集 7040 實際的欄位名稱（2026-11 下載）
+    row = {"公路編號": "台9", "公路編碼": "0090", "隸屬縣市": "新北市", "坐標-X-TWD97": "312345.6",
+           "坐標-Y-TWD97": "2761234.5", "坐標-E-WGS84": "121.623456", "坐標-N-WGS84": "24.956789",
+           "起點樁號": "019K+000", "牌面內容": "19", "種類": "整公里", "牌面方向": "順向"}
+    logs = []
+    index = mileposts.build_index([row], log=logs.append)
+    assert index.resolve("台9", 19) == (24.956789, 121.623456)
+    assert any("經度=坐標-E-WGS84" in m and "緯度=坐標-N-WGS84" in m for m in logs)
+
+
 def test_milepost_columns_missing_raises():
     with pytest.raises(ValueError, match="必要欄位"):
         mileposts.build_index([{"foo": "1", "bar": "2"}], log=lambda *_: None)
