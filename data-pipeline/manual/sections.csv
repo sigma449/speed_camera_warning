@@ -3,8 +3,10 @@
 # length_m 留空且有填里程時，以里程差計算長度。bidirectional=yes 表示雙向取締，會產生兩個方向的區間。
 # 北宜公路（台9線）：表定速限 40。里程由使用者提供（2026-11）。
 # 第 4 段警政署資料寫「68k+600m至56k+600m」，使用者提供 56.3K；採用較長的 56.3K（倒數較保守）。
-id,name,start_lat,start_lon,end_lat,end_lon,length_m,speed_limit,note,road,start_km,end_km,bidirectional,forward_label,reverse_label
-beiyi-1,北宜 19K–23.1K,,,,,,40,石碇,台9,19,23.1,yes,往宜蘭,往台北
-beiyi-2,北宜 26.2K–32.2K,,,,,,40,坪林,台9,26.2,32.2,yes,往宜蘭,往台北
-beiyi-3,北宜 33.3K–37.2K（坪林段）,,,,,,40,坪林,台9,33.3,37.2,yes,往宜蘭,往台北
-beiyi-4,北宜 56.3K–68.6K（宜蘭端）,,,,,,40,頭城,台9,56.3,68.6,yes,往宜蘭,往台北
+# 座標與進入方向已由公路局「省道里程坐標」（資料集 7040）換算後填入（2026-11-03，Build IPA run 41594730991）。
+# 要重新換算時，清空 start_lat…end_lon 與 forward_heading／reverse_heading 即可。
+id,name,start_lat,start_lon,end_lat,end_lon,length_m,speed_limit,note,road,start_km,end_km,bidirectional,forward_label,reverse_label,forward_heading,reverse_heading
+beiyi-1,北宜 19K–23.1K,24.952811,121.597684,24.956605,121.623704,,40,石碇,台9,19,23.1,yes,往宜蘭,往台北,60.0,342.0
+beiyi-2,北宜 26.2K–32.2K,24.950865,121.647163,24.943742,121.670798,,40,坪林,台9,26.2,32.2,yes,往宜蘭,往台北,131.9,15.4
+beiyi-3,北宜 33.3K–37.2K（坪林段）,24.938750,121.676757,24.936342,121.702737,,40,坪林,台9,33.3,37.2,yes,往宜蘭,往台北,138.9,284.8
+beiyi-4,北宜 56.3K–68.6K（宜蘭端）,24.868342,121.772314,24.850314,121.795001,,40,頭城,台9,56.3,68.6,yes,往宜蘭,往台北,141.0,23.9
