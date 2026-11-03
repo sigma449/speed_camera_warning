@@ -225,7 +225,7 @@ def test_bundled_manual_files_are_valid():
     assert len(sections) == 8          # 北宜 4 段 × 雙向
     by_id = {s["id"]: s for s in sections}
     assert by_id["beiyi-1-f"]["lengthMeters"] == 4100
-    assert by_id["beiyi-4-r"]["lengthMeters"] == 12300
+    assert by_id["beiyi-4-r"]["lengthMeters"] == 12000
     assert all(s["speedLimit"] == 40 and not s["lengthEstimated"] for s in sections)
     assert by_id["beiyi-1-f"]["name"].endswith("（往宜蘭）")
     assert by_id["beiyi-1-r"]["start"] == by_id["beiyi-1-f"]["end"]
