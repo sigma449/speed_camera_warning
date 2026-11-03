@@ -38,6 +38,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
+      - name: 下載測速資料（讓截圖顯示真實照相點；失敗不影響建置）
+        run: python3 data-pipeline/build_cameras.py --min-count 500 || echo "::warning::測速資料下載失敗，截圖會沒有照相點"
       - name: 選擇 Xcode
         run: bash scripts/ci/select-xcode.sh
       - name: 安裝 XcodeGen

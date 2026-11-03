@@ -168,8 +168,9 @@ struct BottomBar: View {
     @Binding var showSettings: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             speedChip
+                .layoutPriority(1)
             Spacer(minLength: 0)
             if model.route != nil {
                 circleButton("xmark", tint: .red) { model.endNavigation() }
@@ -196,7 +197,11 @@ struct BottomBar: View {
                 Text("\(model.currentSpeedKmh)")
                     .font(.system(size: 34, weight: .heavy, design: .rounded))
                     .monospacedDigit()
+                    .lineLimit(1)
+                    .fixedSize()
                 Text("km/h").font(.caption2.weight(.semibold))
+                    .lineLimit(1)
+                    .fixedSize()
             }
             if let limit = model.displayedSpeedLimit {
                 SpeedLimitSign(limit: limit, size: 40)
@@ -212,7 +217,7 @@ struct BottomBar: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 20, weight: .bold))
-                .frame(width: 52, height: 52)
+                .frame(width: 48, height: 48)
                 .background(tint.opacity(0.9), in: Circle())
                 .foregroundStyle(.white)
         }
