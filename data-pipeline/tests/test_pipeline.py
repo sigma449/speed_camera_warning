@@ -170,7 +170,7 @@ def test_output_schema_matches_swift_model(tmp_path):
 def test_cli_with_local_input_and_min_count(tmp_path):
     out = tmp_path / "cameras.json"
     code = build_cameras.main(["--input", fixture("national_sample.csv"), "--output", str(out),
-                               "--sections", str(tmp_path / "none.csv"), "--extra", str(tmp_path / "none.csv")])
+                               "--sections", str(tmp_path / "none.csv"), "--extra", str(tmp_path / "none.csv"), "--no-auto-sections"])
     assert code == 0
     data = json.loads(out.read_text(encoding="utf-8"))
     assert len(data["cameras"]) == 6
@@ -180,12 +180,12 @@ def test_cli_with_local_input_and_min_count(tmp_path):
     data["version"] = "2000-01-01"
     out.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
     code = build_cameras.main(["--input", fixture("national_sample.csv"), "--output", str(out),
-                               "--sections", str(tmp_path / "none.csv"), "--extra", str(tmp_path / "none.csv")])
+                               "--sections", str(tmp_path / "none.csv"), "--extra", str(tmp_path / "none.csv"), "--no-auto-sections"])
     assert code == 0
     assert json.loads(out.read_text(encoding="utf-8"))["version"] == "2000-01-01"
 
     code = build_cameras.main(["--input", fixture("national_sample.csv"), "--output", str(tmp_path / "x.json"),
-                               "--sections", str(tmp_path / "none.csv"), "--extra", str(tmp_path / "none.csv"),
+                               "--sections", str(tmp_path / "none.csv"), "--extra", str(tmp_path / "none.csv"), "--no-auto-sections",
                                "--min-count", "100"])
     assert code == 1
     assert not (tmp_path / "x.json").exists()
@@ -379,3 +379,178 @@ def test_load_sections_detects_duplicate_ids(tmp_path):
                  "a,y,25.0,121.5,25.03,121.5,3300,60\n", encoding="utf-8")
     with pytest.raises(SectionError, match="重複"):
         load_sections(str(p), log=lambda *_: None)
+
+
+# ---------------------------------------------------------------- 區間文字解析
+from speedcam_data import section_text  # noqa: E402
+from speedcam_data.section_text import cn_number, parse_section_text  # noqa: E402
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("三", 3), ("七", 7), ("十", 10), ("十一", 11), ("二十", 20), ("六十一", 61), ("9", 9), ("十二三", None), ("", None),
+])
+def test_cn_number(text, expected):
+    assert cn_number(text) == expected
+
+
+def _seg(address, direction="南北雙向(區間測速)", limit=60):
+    segs, problems = parse_section_text(address, direction, limit)
+    return [(s.road, s.start_km, s.end_km, s.bidirectional) for s in segs], problems
+
+
+@pytest.mark.parametrize("address,direction,expected", [
+    ("台9線68k+600m至56k+600m", "南北雙向(區間測速)", [("台9", 68.6, 56.6, True)]),
+    ("台9線129k+404m至136k+883m(觀音隧道)", "南北雙向(區間測速)", [("台9", 129.404, 136.883, True)]),
+    ("南澳鄉台9線110k+960m至蘇澳鎮台9線108k+224m(東澳隧道)", "南北雙向(區間測速)", [("台9", 110.96, 108.224, True)]),
+    ("台3線82.2公里至84.3公里", "南北雙向(區間測速)", [("台3", 82.2, 84.3, True)]),
+    ("台3線103.2公里至108公里及台3線114.3公里至123.6公里", "南北雙向(區間測速)",
+     [("台3", 103.2, 108.0, True), ("台3", 114.3, 123.6, True)]),
+    ("台13甲線8.3公里至9.5公里及9.8公里至11公里", "南北雙向(區間測速)",
+     [("台13甲", 8.3, 9.5, True), ("台13甲", 9.8, 11.0, True)]),
+    ("台61線北向122.6公里至115.6公里及台61線122.2公里至130.2公里", "南向北(區間測速) 北向南(區間測速)",
+     [("台61", 122.6, 115.6, False), ("台61", 122.2, 130.2, False)]),
+    ("臺21線53.8K至51.1K(北向)/臺21線51.1K至53.9K(南向)", "南北雙向(區間測速)",
+     [("台21", 53.8, 51.1, False), ("台21", 51.1, 53.9, False)]),
+    ("台61線快速道路157.8K至151.6K(南向北)/148.1K至156.4K(北向南)", "南北雙向(區間測速)",
+     [("台61", 157.8, 151.6, False), ("台61", 148.1, 156.4, False)]),
+    ("鹿港鎮台61線177至168.1公里(快速道路)(20公噸以上大貨車速限80公里/小時)", "北向(區間測速)",
+     [("台61", 177.0, 168.1, False)]),
+    ("台1線戰備道429.5-433K", "南北雙向（區間測速）", [("台1", 429.5, 433.0, True)]),
+    ("台9線草埔隧道434.4-437.2K", "東西雙向（區間測速）", [("台9", 434.4, 437.2, True)]),
+    ("臺11線129.61至126.13K(小馬)", "雙向區間測速", [("台11", 129.61, 126.13, True)]),
+    ("臺9丁線59.5K-64K", "雙向區間測速", [("台9丁", 59.5, 64.0, True)]),
+    ("台62線快速道路1.7K至0.7K(瑪陵隧道東往西)區間測速", "東往西", [("台62", 1.7, 0.7, False)]),
+    ("台64線快速公路東向21.4K主線至23.2K", "東向(區間測速)", [("台64", 21.4, 23.2, False)]),
+    ("台65線快速公路北向7.9K主線至4.5K", "北向(區間測速)", [("台65", 7.9, 4.5, False)]),
+    ("省道台2線73.7K至79.6K（雙向）", "東西雙向(區間測速)", [("台2", 73.7, 79.6, True)]),
+    ("台7乙線5.3K至8.1K（雙向）", "南北雙向(區間測速)", [("台7乙", 5.3, 8.1, True)]),
+    ("台三線31.8k至30.5k", "雙向(區間測速)", [("台3", 31.8, 30.5, True)]),
+    ("台七乙線12.1k至8.2k", "雙向(區間測速)", [("台7乙", 12.1, 8.2, True)]),
+    ("臺9戊線9.92K(壽卡休憩亭)至3.94K森永區間測速", "雙向測速科技執法", [("台9戊", 9.92, 3.94, True)]),
+    ("台9線19K至23.1K（雙向）", "東西雙向(區間測速)", [("台9", 19.0, 23.1, True)]),
+])
+def test_parse_section_text(address, direction, expected):
+    segs, problems = _seg(address, direction)
+    assert segs == expected, problems
+
+
+@pytest.mark.parametrize("address,reason", [
+    ("縣道140線16.2公里至16.9公里及23.1公里至25.1公里", "不是省道"),
+    ("內門區市道182號28.9K至31.8K", "不是省道"),
+    ("新莊區壽山路（北118線0K至1.2K）（往新莊方向）", "不是省道"),
+    ("金門大橋5K至0.5K(西向)", "不是省道"),
+    ("台15線鳳鼻隧道", "沒有里程範圍"),
+    ("台62甲線3號隧道出口處至東海街出口(南往北)區間測速", "沒有里程範圍"),
+    ("環河路（中央路至白馬寺，雙向）", "沒有里程範圍"),
+    ("自強隧道區間測速", "沒有里程範圍"),
+])
+def test_parse_section_text_skips_unusable(address, reason):
+    segs, problems = _seg(address)
+    assert segs == []
+    assert any(reason in p for p in problems), problems
+
+
+def test_extract_from_rows_dedupes_and_ignores_non_sections():
+    rows = [
+        {"CityName": "臺東縣", "Address": "臺11線129.61至126.13K(小馬)", "direct": "雙向區間測速", "limit": "60",
+         "Latitude": "22.98017", "Longitude": "121.30966"},
+        {"CityName": "臺東縣", "Address": "臺11線126.13K至129.61(小馬)", "direct": "雙向區間測速", "limit": "60",
+         "Latitude": "23.00777", "Longitude": "121.32352"},
+        {"CityName": "臺北市", "Address": "信義路三段", "direct": "西向東", "limit": "50",
+         "Latitude": "25.03", "Longitude": "121.53"},
+    ]
+    report = section_text.TextParseReport()
+    segs = section_text.extract_from_rows(rows, report)
+    assert len(segs) == 1                    # 同一段雙向寫成兩筆 → 合併
+    assert segs[0].point == (22.98017, 121.30966)
+    assert segs[0].speed_limit == 60
+
+
+def _line_index(road="台9", lat=24.0, lon0=121.2, per_km=0.004, km_from=0, km_to=150):
+    rows = []
+    k = km_from
+    while k <= km_to + 1e-9:
+        rows.append({"公路編號": road, "起點樁號": f"{int(k)}K+{round((k - int(k)) * 1000):03d}",
+                     "坐標-E-WGS84": f"{lon0 + k * per_km:.6f}", "坐標-N-WGS84": f"{lat:.6f}"})
+        k = round(k + 0.1, 4)
+    return mileposts.build_index(rows, log=lambda *_: None)
+
+
+def test_to_sections_builds_both_directions_and_validates_against_point():
+    index = _line_index()
+    seg = section_text.TextSegment(road="台9", start_km=19, end_km=23.1, bidirectional=True, speed_limit=40,
+                                   source_text="台9線19K至23.1K", city="新北市",
+                                   point=(24.0, 121.2 + 23.1 * 0.004))
+    secs = section_text.to_sections([seg], index.resolve, log=lambda *_: None)
+    assert [s["id"] for s in secs] == ["auto-台9-19-23.1-f", "auto-台9-19-23.1-r"]
+    assert secs[0]["name"] == "新北市 台9線 19K–23.1K（往東）"
+    assert secs[1]["name"].endswith("（往西）")
+    assert secs[0]["lengthMeters"] == 4100 and secs[0]["speedLimit"] == 40
+    assert secs[0]["startHeading"] == pytest.approx(90, abs=0.5)
+
+    # 照相點離換算出的區間太遠 → 判定為解析錯誤，略過
+    far = section_text.TextSegment(road="台9", start_km=19, end_km=23.1, bidirectional=False, speed_limit=40,
+                                   source_text="x", point=(24.5, 121.2))
+    logs = []
+    assert section_text.to_sections([far], index.resolve, log=logs.append) == []
+    assert any("可能解析錯誤" in m for m in logs)
+
+
+def test_to_sections_skips_manual_ranges_and_unresolvable():
+    index = _line_index(km_to=30)
+    segs = [
+        section_text.TextSegment("台9", 19, 23.1, True, 40, "北宜"),
+        section_text.TextSegment("台9", 120, 125, True, 60, "超出里程牌範圍"),
+        section_text.TextSegment("台9", 1, 3, False, None, "沒有速限"),
+    ]
+    logs = []
+    secs = section_text.to_sections(segs, index.resolve, exclude={("台9", 19.0, 23.1)}, log=logs.append)
+    assert secs == []
+    assert any("人工資料已有" in m for m in logs)
+    assert any("里程牌資料找不到" in m for m in logs)
+    assert any("沒有速限" in m for m in logs)
+
+
+def test_manual_range_keys_and_supplement_csv():
+    from speedcam_data.sections import manual_range_keys
+    keys = manual_range_keys(os.path.join(HERE, "..", "manual", "sections.csv"))
+    assert ("台9", 56.6, 68.6) in keys and ("台9", 19.0, 23.1) in keys
+    rows = sources.read_local_rows([os.path.join(HERE, "..", "manual", "sections_text.csv")])
+    segs = section_text.extract_from_rows(rows)
+    roads = sorted({(s.road, min(s.start_km, s.end_km), max(s.start_km, s.end_km)) for s in segs})
+    assert roads == [("台61", 41.5, 46.9), ("台7乙", 8.2, 12.1), ("台9戊", 3.94, 9.92)]
+    assert all(s.point is None for s in segs)     # 補充清單沒有座標
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("西向", 270), ("北向(區間測速)", 0), ("南向北(區間測速)", 0), ("東往西", 270), ("北上", 0), ("南下", 180),
+    ("往新莊方向", None), ("", None),
+])
+def test_travel_bearing_of(text, expected):
+    assert section_text.travel_bearing_of(text) == expected
+
+
+def test_speed_unit_slash_is_not_a_segment_separator():
+    segs, problems = parse_section_text("鹿港鎮台61線177至168.1公里(快速道路)(20公噸以上大貨車速限80公里/小時)",
+                                        "北向(區間測速)", 90)
+    assert len(segs) == 1 and problems == []
+    assert segs[0].travel_bearing == 0
+
+
+def test_one_way_order_is_corrected_by_stated_direction():
+    # 「西向1.6K至5.4K」：測試資料的里程往東增加，所以往西行駛應該是 5.4K → 1.6K
+    index = _line_index(road="台64", km_to=10)
+    segs, _ = parse_section_text("省道台64線西向1.6K至5.4K", "西向(區間測速)", 80)
+    logs = []
+    secs = section_text.to_sections(segs, index.resolve, log=logs.append)
+    assert len(secs) == 1
+    assert secs[0]["start"]["lon"] > secs[0]["end"]["lon"]        # 由東往西
+    assert secs[0]["name"].endswith("（往西）")
+    assert secs[0]["startHeading"] == pytest.approx(270, abs=0.5)
+    assert any("校正方向" in m for m in logs)
+
+    # 方向與里程一致時不對調
+    segs, _ = parse_section_text("台64線快速公路東向21.4K主線至23.2K", "東向(區間測速)", 70)
+    index = _line_index(road="台64", km_to=30)
+    secs = section_text.to_sections(segs, index.resolve, log=lambda *_: None)
+    assert secs[0]["start"]["lon"] < secs[0]["end"]["lon"]

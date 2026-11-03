@@ -191,6 +191,23 @@ def load_sections(path: str, log=print, fetch_index=None) -> list[dict]:
     return sections
 
 
+def manual_range_keys(path: str) -> set:
+    """人工資料中以省道里程定義的範圍（道路, 小里程, 大里程），用來避免自動區間重複產生。"""
+    from .mileposts import normalize_road
+    keys = set()
+    try:
+        with open(path, encoding="utf-8-sig") as f:
+            rows = _rows(f.read())
+    except FileNotFoundError:
+        return keys
+    for row in rows:
+        road = normalize_road(row.get("road"))
+        a, b = parse_float(row.get("start_km")), parse_float(row.get("end_km"))
+        if road and a is not None and b is not None:
+            keys.add((road, round(min(a, b), 1), round(max(a, b), 1)))
+    return keys
+
+
 def uses_mileposts(path: str) -> bool:
     """CSV 裡是否有以省道里程定義的區間（用來決定要不要標示里程牌資料的出處）。"""
     try:

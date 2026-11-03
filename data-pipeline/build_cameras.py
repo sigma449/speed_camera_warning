@@ -22,11 +22,49 @@ sys.path.insert(0, HERE)
 from speedcam_data import sources  # noqa: E402
 from speedcam_data.normalize import NormalizeReport, normalize_rows  # noqa: E402
 from speedcam_data import mileposts  # noqa: E402
-from speedcam_data.sections import load_sections, uses_mileposts  # noqa: E402
+from speedcam_data.sections import load_sections, manual_range_keys, uses_mileposts  # noqa: E402
+from speedcam_data import section_text  # noqa: E402
 
 DEFAULT_OUTPUT = os.path.join(HERE, "..", "SpeedCam", "Resources", "cameras.json")
 DEFAULT_SECTIONS = os.path.join(HERE, "manual", "sections.csv")
 DEFAULT_EXTRA = os.path.join(HERE, "manual", "cameras_extra.csv")
+DEFAULT_SECTIONS_TEXT = os.path.join(HERE, "manual", "sections_text.csv")
+TEXT_SOURCE_ATTRIBUTION = "立法院議事附件：全國測速取締設置點清單（2026-05），補充開放資料未收錄的區間測速"
+
+
+class CachedMilepostIndex:
+    """里程牌資料只下載一次，人工區間與自動區間共用。"""
+
+    def __init__(self) -> None:
+        self._index = None
+        self._error: Exception | None = None
+
+    def __call__(self, log=print):
+        if self._index is None and self._error is None:
+            try:
+                self._index = mileposts.fetch_index(log=log)
+            except Exception as exc:  # noqa: BLE001
+                self._error = exc
+        if self._error is not None:
+            raise self._error
+        return self._index
+
+
+def auto_sections(rows: list[dict], text_rows: list[dict], manual_path: str, fetch_index, log=print) -> list[dict]:
+    """從區間測速的文字描述自動產生區間（開放資料＋補充清單）。"""
+    report = section_text.TextParseReport()
+    segments = section_text.extract_from_rows(rows + text_rows, report)
+    log(f"自動區間：從文字解析出 {len(segments)} 段；無法使用 {len(report.skipped)} 筆")
+    for text, why in report.skipped:
+        log(f"  略過：{why}")
+    if not segments:
+        return []
+    try:
+        index = fetch_index(log=log)
+    except Exception as exc:  # noqa: BLE001
+        log(f"[警告] 里程牌資料無法取得，自動區間全部略過：{exc}")
+        return []
+    return section_text.to_sections(segments, index.resolve, exclude=manual_range_keys(manual_path), log=log)
 
 
 def build(rows: list[dict], sections: list[dict], now: dt.datetime | None = None,
@@ -61,6 +99,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--output", default=DEFAULT_OUTPUT)
     ap.add_argument("--sections", default=DEFAULT_SECTIONS)
     ap.add_argument("--extra", default=DEFAULT_EXTRA, help="人工補充的照相點 CSV（欄位同原始資料）")
+    ap.add_argument("--sections-text", default=DEFAULT_SECTIONS_TEXT,
+                    help="補充的區間測速文字清單（只用來產生區間，不當作照相點）")
+    ap.add_argument("--no-auto-sections", action="store_true", help="不從文字自動產生區間")
     ap.add_argument("--min-count", type=int, default=0,
                     help="照相點少於這個數量就視為失敗（避免把空資料打包進 App）")
     args = ap.parse_args(argv)
@@ -74,14 +115,27 @@ def main(argv: list[str] | None = None) -> int:
         print(f"人工補充照相點 {len(extra)} 筆")
         rows += extra
 
-    sections = load_sections(args.sections)
-    extra = (mileposts.ATTRIBUTION,) if sections and uses_mileposts(args.sections) else ()
+    fetch_index = CachedMilepostIndex()
+    sections = load_sections(args.sections, fetch_index=fetch_index)
+    manual_count = len(sections)
+    auto: list[dict] = []
+    text_rows: list[dict] = []
+    if not args.no_auto_sections:
+        if os.path.exists(args.sections_text):
+            text_rows = sources.read_local_rows([args.sections_text])
+        auto = auto_sections(rows, text_rows, args.sections, fetch_index)
+        sections = sections + auto
+    extra: tuple = ()
+    if sections and (auto or uses_mileposts(args.sections)):
+        extra += (mileposts.ATTRIBUTION,)
+    if any(s["id"].startswith("auto-") for s in auto) and text_rows:
+        extra += (TEXT_SOURCE_ATTRIBUTION,)
     db, report = build(rows, sections, extra_sources=extra)
     print(report.summary())
     diag = report.diagnostics()
     if diag:
         print(diag)
-    print(f"區間測速 {len(sections)} 段")
+    print(f"區間測速 {len(sections)} 段（人工 {manual_count}、自動 {len(sections) - manual_count}）")
 
     if len(db["cameras"]) < args.min_count:
         print(f"[錯誤] 照相點只有 {len(db['cameras'])} 筆，少於 --min-count={args.min_count}", file=sys.stderr)
