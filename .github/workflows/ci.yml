@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     container: swift:6.2-noble
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: swift test
         run: swift test --package-path Packages/SpeedCamCore
 
@@ -24,8 +24,8 @@ jobs:
     name: 資料處理測試（Python）
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
       - run: pip install -r data-pipeline/requirements-dev.txt
@@ -37,7 +37,7 @@ jobs:
     needs: [core-tests]
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: 選擇 Xcode
         run: bash scripts/ci/select-xcode.sh
       - name: 安裝 XcodeGen
@@ -59,6 +59,9 @@ jobs:
           path: build.log
       - name: 模擬器截圖
         run: bash scripts/ci/screenshots.sh build/Build/Products/Debug-iphonesimulator/SpeedCam.app
+      - name: 截圖縮圖輸出到 log
+        if: always()
+        run: bash scripts/ci/print-screenshots.sh screenshots
       - name: 上傳截圖
         if: always()
         uses: actions/upload-artifact@v4

@@ -5,11 +5,7 @@ import SpeedCamCore
 /// MapKit 相關的小工具。把可能被標為「已棄用」的 API 集中在這裡，之後要換新 API 只改一處。
 enum MapItems {
     static func item(at p: GeoPoint) -> MKMapItem {
-        MKMapItem(placemark: MKPlacemark(coordinate: CLLocationCoordinate2D(latitude: p.lat, longitude: p.lon)))
-    }
-
-    static func coordinate(of item: MKMapItem) -> CLLocationCoordinate2D {
-        item.placemark.coordinate
+        MKMapItem(location: CLLocation(latitude: p.lat, longitude: p.lon), address: nil)
     }
 
     static func subtitle(of item: MKMapItem) -> String {
