@@ -56,8 +56,8 @@ final class AppModel {
 
     var isOverspeed: Bool {
         if cameraTarget?.isOverspeed == true { return true }
-        if let limit = displayedSpeedLimit, sectionStatus != nil {
-            return Double(currentSpeedKmh) > settings.sectionEffectiveLimit(limit)
+        if let status = sectionStatus {
+            return Double(currentSpeedKmh) > status.effectiveLimitKmh
         }
         return false
     }
@@ -73,7 +73,8 @@ final class AppModel {
     @ObservationIgnored private var demoTask: Task<Void, Never>?
     @ObservationIgnored private var didAppear = false
 
-    private static let settingsKey = "alertSettings.v1"
+    private static let settingsKey = "alertSettings.v2"
+    private static let legacySettingsKey = "alertSettings.v1"
 
     init(arguments: [String] = ProcessInfo.processInfo.arguments) {
         demoMode = arguments.contains("-demo")
@@ -265,7 +266,7 @@ final class AppModel {
         case let .entered(section, minimumSeconds):
             announcer.speak(AnnouncementFormatter.sectionEntered(
                 section: section, minimumSeconds: minimumSeconds,
-                effectiveLimitKmh: settings.sectionEffectiveLimit(section.speedLimit)), urgent: true)
+                effectiveLimitKmh: settings.sectionEffectiveLimit(section.speedLimit, sectionID: section.groupID)), urgent: true)
         case let .remaining(seconds):
             announcer.speak(AnnouncementFormatter.sectionRemaining(seconds: seconds))
         case .zeroReached:
@@ -351,6 +352,7 @@ final class AppModel {
         database = db
         index = SpatialIndex(cameras: db.cameras)
         alertEngine.replaceIndex(index)
+        alertEngine.sections = db.sections
         sectionTracker.replaceSections(db.sections)
     }
 
@@ -360,6 +362,7 @@ final class AppModel {
             let refined = await SectionLengthRefiner.refine(database.sections)
             database.sections = refined
             sectionTracker.replaceSections(refined)
+            alertEngine.sections = refined
         }
     }
 
@@ -383,11 +386,69 @@ final class AppModel {
     }
 
     private static func loadSettings() -> AlertSettings {
-        guard let data = UserDefaults.standard.data(forKey: settingsKey),
-              let s = try? JSONDecoder().decode(AlertSettings.self, from: data) else {
-            return AlertSettings()
+        let defaults = UserDefaults.standard
+        if let data = defaults.data(forKey: settingsKey),
+           let s = try? JSONDecoder().decode(AlertSettings.self, from: data) {
+            return s
         }
-        return s
+        // 從 v1 遷移：v1 的區間容許值預設是 0，改成新的預設 +10（使用者若自己調過其他值則保留）。
+        if let data = defaults.data(forKey: legacySettingsKey),
+           var s = try? JSONDecoder().decode(AlertSettings.self, from: data) {
+            if s.sectionToleranceKmh == 0 {
+                s.sectionToleranceKmh = AlertSettings().sectionToleranceKmh
+            }
+            if let migrated = try? JSONEncoder().encode(s) {
+                defaults.set(migrated, forKey: settingsKey)
+            }
+            return s
+        }
+        return AlertSettings()
+    }
+
+    // MARK: 個別區間容許值
+
+    /// 區間群組（同一段的兩個方向合併），設定頁用。
+    struct SectionGroup: Identifiable, Hashable {
+        let id: String
+        let name: String
+        let speedLimit: Int
+        let lengthMeters: Double
+        let bidirectional: Bool
+    }
+
+    var sectionGroups: [SectionGroup] {
+        var seen: [String: SectionGroup] = [:]
+        var order: [String] = []
+        for s in database.sections {
+            if let existing = seen[s.groupID] {
+                seen[s.groupID] = SectionGroup(id: existing.id, name: existing.name, speedLimit: existing.speedLimit,
+                                               lengthMeters: existing.lengthMeters, bidirectional: true)
+            } else {
+                seen[s.groupID] = SectionGroup(id: s.groupID, name: s.displayGroupName, speedLimit: s.speedLimit,
+                                               lengthMeters: s.lengthMeters, bidirectional: false)
+                order.append(s.groupID)
+            }
+        }
+        return order.compactMap { seen[$0] }
+    }
+
+    /// 設定（或清除，value = nil）多個區間的個別容許值。
+    func setSectionTolerance(_ value: Double?, for groupIDs: Set<String>) {
+        var s = settings
+        for id in groupIDs {
+            if let value {
+                s.sectionToleranceOverrides[id] = value
+            } else {
+                s.sectionToleranceOverrides.removeValue(forKey: id)
+            }
+        }
+        settings = s
+    }
+
+    func clearAllSectionOverrides() {
+        var s = settings
+        s.sectionToleranceOverrides.removeAll()
+        settings = s
     }
 
     func resetSettings() {

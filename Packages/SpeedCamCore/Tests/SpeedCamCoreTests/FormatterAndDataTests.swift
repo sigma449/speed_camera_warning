@@ -94,11 +94,21 @@ final class DatabaseTests: XCTestCase {
         XCTAssertEqual(s.vehicleMode, .motorcycle)
         XCTAssertEqual(s.fastPreDistance, 600)
         XCTAssertEqual(s.overspeedBeepInterval, 3)
-        XCTAssertEqual(s.sectionToleranceKmh, 0)
-        XCTAssertEqual(s.sectionEffectiveLimit(40), 40)
+        XCTAssertEqual(s.sectionToleranceKmh, 10)
+        XCTAssertEqual(s.sectionEffectiveLimit(40), 50)
+        XCTAssertEqual(s.sectionToleranceOverrides, [:])
         // 往返編碼
         let again = try JSONDecoder().decode(AlertSettings.self, from: JSONEncoder().encode(s))
         XCTAssertEqual(again, s)
+    }
+
+    func testToleranceOverridesDecodeAndClamp() throws {
+        let json = #"{"sectionToleranceKmh": 10, "sectionToleranceOverrides": {"beiyi-1": 20, "bad": 99}}"#
+        let s = try JSONDecoder().decode(AlertSettings.self, from: Data(json.utf8))
+        XCTAssertEqual(s.sectionTolerance(forGroup: "beiyi-1"), 20)
+        XCTAssertEqual(s.sectionTolerance(forGroup: "bad"), 20, "超過上限 20 會被夾住")
+        XCTAssertEqual(s.sectionTolerance(forGroup: "none"), 10)
+        XCTAssertEqual(s.sectionTolerance(forGroup: nil), 10)
     }
 
     func testThresholdSelection() {

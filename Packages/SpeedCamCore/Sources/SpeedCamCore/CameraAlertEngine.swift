@@ -49,6 +49,8 @@ public struct CameraAlertResult: Equatable, Sendable {
 public final class CameraAlertEngine {
     public var settings: AlertSettings
     public private(set) var index: SpatialIndex
+    /// 區間清單：區間測速的照相機會套用附近區間（起點或終點 500 m 內）的個別容許值。
+    public var sections: [SpeedSection] = []
 
     private struct Tracked {
         var camera: Camera
@@ -196,6 +198,18 @@ public final class CameraAlertEngine {
         return aheadDiff <= settings.aheadToleranceWithoutHeading
     }
 
+    /// 找出起點或終點離照相機 500 m 內、最近的區間群組。
+    func nearbySectionGroup(for camera: Camera) -> String? {
+        var best: (String, Double)?
+        for s in sections {
+            let d = min(GeoMath.distance(camera.point, s.start), GeoMath.distance(camera.point, s.end))
+            if d <= 500 && (best == nil || d < best!.1) {
+                best = (s.groupID, d)
+            }
+        }
+        return best?.0
+    }
+
     private func updateOverspeed(target t: Tracked, fix: VehicleFix, events: inout [CameraAlertEvent]) {
         guard t.phase >= .pre, t.camera.type.enforcesSpeed, let limit = t.camera.speedLimit else {
             if isOverspeed {
@@ -206,7 +220,7 @@ public final class CameraAlertEngine {
         }
         // 區間測速的照相機用「區間容許值」，其他照相用一般的超速容許值。
         let threshold = t.camera.type == .section
-            ? settings.sectionEffectiveLimit(limit)
+            ? settings.sectionEffectiveLimit(limit, sectionID: nearbySectionGroup(for: t.camera))
             : Double(limit) + settings.overspeedToleranceKmh
         let over = fix.speedKmh > threshold
         if over && !isOverspeed {

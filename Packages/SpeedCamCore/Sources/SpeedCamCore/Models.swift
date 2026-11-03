@@ -106,6 +106,20 @@ public struct SpeedSection: Codable, Hashable, Identifiable, Sendable {
     /// 判斷是否同方向進入區間時使用的方向：有起點道路方向就用它，否則用起終點直線方向。
     public var entryHeading: Double { startHeading ?? heading }
 
+    /// 同一段區間的兩個方向（id 結尾 -f／-r）共用的群組 ID，用於個別容許值設定。
+    public var groupID: String {
+        if id.hasSuffix("-f") || id.hasSuffix("-r") {
+            return String(id.dropLast(2))
+        }
+        return id
+    }
+
+    /// 群組顯示名稱：去掉結尾的方向說明（例如「（往宜蘭）」）。
+    public var displayGroupName: String {
+        guard name.hasSuffix("）"), let open = name.range(of: "（往", options: .backwards) else { return name }
+        return String(name[..<open.lowerBound])
+    }
+
     /// 以速限行駛完整區間所需的最短秒數（不含安全餘裕）。
     public var minimumSeconds: Double {
         minimumSeconds(atKmh: Double(speedLimit))

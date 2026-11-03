@@ -74,6 +74,7 @@ class TextSegment:
     city: str = ""
     point: Optional[tuple] = None     # 開放資料提供的照相點座標（用來檢查換算結果）
     travel_bearing: Optional[float] = None   # 單向區間文字寫的行駛方向（北 0、東 90…），用來校正起訖順序
+    group: int = -1                          # 同一筆原始資料的段落共用同一個編號（一筆只有一個照相點座標）
 
     @property
     def key(self) -> tuple:
@@ -198,7 +199,7 @@ def extract_from_rows(rows: list[dict], report: Optional[TextParseReport] = None
 
     report = report or TextParseReport()
     out: list[TextSegment] = []
-    for row in rows:
+    for row_index, row in enumerate(rows):
         address = pick(row, "address") or ""
         direction = pick(row, "direction")
         if not is_section_row(address, direction, pick(row, "kind")):
@@ -207,6 +208,8 @@ def extract_from_rows(rows: list[dict], report: Optional[TextParseReport] = None
         segs, problems = parse_section_text(address, direction, parse_limit(pick(row, "limit")),
                                             city=(pick(row, "city") or "") + (pick(row, "district") or ""),
                                             point=coords)
+        for seg in segs:
+            seg.group = row_index
         for p in problems:
             report.skipped.append((address, p))
         out += segs
@@ -250,12 +253,33 @@ def range_key(road: str, a: float, b: float) -> tuple:
 
 
 def to_sections(segments: list[TextSegment], resolver, exclude: set = frozenset(),
-                log=print, max_point_m: float = 3_000) -> list[dict]:
-    """換算座標並產生區間。exclude：已由人工資料定義的里程範圍（range_key），不重複產生。"""
+                log=print, max_point_m: float = 3_000, sibling_max_m: float = 15_000) -> list[dict]:
+    """換算座標並產生區間。exclude：已由人工資料定義的里程範圍（range_key），不重複產生。
+
+    照相點距離檢查：一筆資料只有一個照相點座標，通常落在其中一段上。所以同一筆裡只要有一段
+    離照相點 3 km 內，其他段放寬到 15 km（仍可擋下路名解析錯、跑到別的縣市的情況）。
+    """
     from .sections import _local_heading, bearing, haversine
 
+    def point_distance(s: TextSegment) -> Optional[float]:
+        if s.point is None:
+            return None
+        a, b = resolver(s.road, s.start_km), resolver(s.road, s.end_km)
+        if a is None or b is None:
+            return None
+        return min(haversine(s.point[0], s.point[1], a[0], a[1]),
+                   haversine(s.point[0], s.point[1], b[0], b[1]),
+                   _point_to_chord_m(s.point, a, b))
+
+    distances = {i: point_distance(s) for i, s in enumerate(segments)}
+    group_ok = {}
+    for i, s in enumerate(segments):
+        d = distances[i]
+        if d is not None and d <= max_point_m:
+            group_ok[s.group] = True
+
     out: list[dict] = []
-    for s in segments:
+    for i, s in enumerate(segments):
         rk = range_key(s.road, s.start_km, s.end_km)
         label = f"{s.road}線 {_fmt_km(s.start_km)}K–{_fmt_km(s.end_km)}K"
         if rk in exclude:
@@ -268,11 +292,11 @@ def to_sections(segments: list[TextSegment], resolver, exclude: set = frozenset(
         if a is None or b is None:
             log(f"  自動區間略過（里程牌資料找不到）：{label}｜{s.source_text}")
             continue
-        if s.point is not None:
-            d = min(haversine(s.point[0], s.point[1], a[0], a[1]),
-                    haversine(s.point[0], s.point[1], b[0], b[1]),
-                    _point_to_chord_m(s.point, a, b))
-            if d > max_point_m:
+        d = distances[i]
+        if d is not None and d > max_point_m:
+            if group_ok.get(s.group) and d <= sibling_max_m:
+                log(f"  自動區間：{label} 離照相點 {d / 1000:.1f} km，但同一筆的另一段已通過檢查，接受")
+            else:
                 log(f"  自動區間略過（離照相點 {d / 1000:.1f} km，可能解析錯誤）：{label}｜{s.source_text}")
                 continue
         start_km, end_km = s.start_km, s.end_km

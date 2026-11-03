@@ -45,8 +45,15 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Stepper(value: $model.settings.sectionToleranceKmh, in: 0...20, step: 5) {
-                        LabeledContent("區間容許值", value: "+\(Int(model.settings.sectionToleranceKmh)) km/h")
+                    Stepper(value: $model.settings.sectionToleranceKmh, in: AlertSettings.sectionToleranceRange, step: 5) {
+                        LabeledContent("區間容許值（預設）", value: "+\(Int(model.settings.sectionToleranceKmh)) km/h")
+                    }
+                    NavigationLink {
+                        SectionToleranceView()
+                    } label: {
+                        LabeledContent("個別區間設定",
+                                       value: model.settings.sectionToleranceOverrides.isEmpty
+                                           ? "未設定" : "\(model.settings.sectionToleranceOverrides.count) 段")
                     }
                     Stepper(value: $model.settings.sectionSafetyMargin, in: 0...0.10, step: 0.01) {
                         LabeledContent("安全餘裕", value: "\(Int((model.settings.sectionSafetyMargin * 100).rounded()))%")
@@ -55,7 +62,7 @@ struct SettingsView: View {
                 } header: {
                     Text("區間測速")
                 } footer: {
-                    Text("倒數 = 區間長度 ÷（速限＋容許值）×（1＋安全餘裕）− 已經過秒數。容許值也套用在區間內與區間照相機前的超速嗶聲。例如北宜公路表定 40、寬限 50，可設成 +10。每分鐘語音提醒一次剩幾秒，歸零時提醒「可依速限行駛」。")
+                    Text("倒數 = 區間長度 ÷（速限＋容許值）×（1＋安全餘裕）− 已經過秒數。容許值也套用在區間內與區間照相機前的超速嗶聲。預設 +10（例如北宜公路表定 40 → 以 50 計算），最多 +20；可在「個別區間設定」挑選特定區間另外設定。每分鐘語音提醒一次剩幾秒，歸零時提醒「可依速限行駛」。")
                 }
 
                 Section("聲音") {

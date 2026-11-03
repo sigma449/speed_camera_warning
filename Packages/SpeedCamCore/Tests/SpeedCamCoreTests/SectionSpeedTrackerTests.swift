@@ -3,6 +3,13 @@ import XCTest
 
 final class SectionSpeedTrackerTests: XCTestCase {
 
+    /// 區間容許值 0（照表定速限計算），讓既有測試的數字維持不變。
+    private func strictSettings() -> AlertSettings {
+        var s = AlertSettings()
+        s.sectionToleranceKmh = 0
+        return s
+    }
+
     /// 從 origin 北方 200 m 開始、往北 3 公里、速限 60 的區間。
     private func section(length: Double = 3_000, limit: Int = 60) -> SpeedSection {
         let start = GeoMath.destination(from: origin, bearing: 0, distance: 200)
@@ -22,7 +29,7 @@ final class SectionSpeedTrackerTests: XCTestCase {
 
     func testCountdownAnnouncementsAndCompletionWithinLimit() {
         let s = section()
-        let tracker = SectionSpeedTracker(sections: [s])
+        let tracker = SectionSpeedTracker(sections: [s], settings: strictSettings())
         // 50 km/h：3,000 m 約需 216 秒，比最短 185.4 秒（180 × 1.03）久，倒數會先歸零
         let events = runSections(tracker, straightTrack(from: origin, bearing: 0, speedKmh: 50, seconds: 260))
 
@@ -54,7 +61,7 @@ final class SectionSpeedTrackerTests: XCTestCase {
     }
 
     func testTooFastNeverReachesZeroAndReportsOverLimit() {
-        let tracker = SectionSpeedTracker(sections: [section()])
+        let tracker = SectionSpeedTracker(sections: [section()], settings: strictSettings())
         let events = runSections(tracker, straightTrack(from: origin, bearing: 0, speedKmh: 80, seconds: 160))
         XCTAssertFalse(events.contains { if case .zeroReached = $0.event { return true }; return false })
         guard let last = events.last, case let .completed(_, avg, within) = last.event else {
@@ -66,7 +73,7 @@ final class SectionSpeedTrackerTests: XCTestCase {
 
     func testStatusShowsCountdownAndSuggestedSpeed() {
         let s = section()
-        let tracker = SectionSpeedTracker(sections: [s])
+        let tracker = SectionSpeedTracker(sections: [s], settings: strictSettings())
         var statuses: [SectionStatus] = []
         for f in straightTrack(from: origin, bearing: 0, speedKmh: 70, seconds: 100) {
             if let st = tracker.process(f).status { statuses.append(st) }
@@ -86,9 +93,49 @@ final class SectionSpeedTrackerTests: XCTestCase {
         let s = section()
         // 從終點北方往南開，經過起點時方向相反
         let startPoint = GeoMath.destination(from: s.start, bearing: 0, distance: 300)
-        let events = runSections(SectionSpeedTracker(sections: [s]),
+        let events = runSections(SectionSpeedTracker(sections: [s], settings: strictSettings()),
                                  straightTrack(from: startPoint, bearing: 180, speedKmh: 50, seconds: 60))
         XCTAssertFalse(events.contains { if case .entered = $0.event { return true }; return false })
+    }
+
+    func testDefaultToleranceIsTen() {
+        // 不指定設定時，預設以「速限＋10」計算：3,000 m ÷ 70 km/h = 154.3 秒 × 1.03 = 158.9 → 159
+        let events = runSections(SectionSpeedTracker(sections: [section()]),
+                                 straightTrack(from: origin, bearing: 0, speedKmh: 50, seconds: 30))
+        guard case let .entered(_, sec)? = events.first?.event else { return XCTFail() }
+        XCTAssertEqual(sec, 159)
+    }
+
+    func testPerSectionOverrideAppliesToBothDirections() {
+        let start = GeoMath.destination(from: origin, bearing: 0, distance: 200)
+        let end = GeoMath.destination(from: start, bearing: 0, distance: 4_100)
+        let fwd = SpeedSection(id: "beiyi-1-f", name: "北宜 19K–23.1K（往宜蘭）", start: start, end: end,
+                               lengthMeters: 4_100, speedLimit: 40)
+        let rev = SpeedSection(id: "beiyi-1-r", name: "北宜 19K–23.1K（往台北）", start: end, end: start,
+                               lengthMeters: 4_100, speedLimit: 40)
+        XCTAssertEqual(fwd.groupID, "beiyi-1")
+        XCTAssertEqual(rev.groupID, "beiyi-1")
+        XCTAssertEqual(fwd.displayGroupName, "北宜 19K–23.1K")
+
+        var settings = AlertSettings()          // 預設 +10
+        settings.sectionToleranceOverrides = ["beiyi-1": 20]
+        XCTAssertEqual(settings.sectionEffectiveLimit(40, sectionID: "beiyi-1"), 60)
+        XCTAssertEqual(settings.sectionEffectiveLimit(40, sectionID: "other"), 50)
+
+        // 往宜蘭：4,100 m ÷ 60 km/h = 246 秒 × 1.03 = 253.38 → 254
+        let up = runSections(SectionSpeedTracker(sections: [fwd, rev], settings: settings),
+                             straightTrack(from: origin, bearing: 0, speedKmh: 50, seconds: 30))
+        guard case let .entered(s1, sec1)? = up.first?.event else { return XCTFail() }
+        XCTAssertEqual(s1.id, "beiyi-1-f")
+        XCTAssertEqual(sec1, 254)
+
+        // 往台北：同一個群組，同樣以 60 計算
+        let beyond = GeoMath.destination(from: end, bearing: 0, distance: 200)
+        let down = runSections(SectionSpeedTracker(sections: [fwd, rev], settings: settings),
+                               straightTrack(from: beyond, bearing: 180, speedKmh: 50, seconds: 30))
+        guard case let .entered(s2, sec2)? = down.first?.event else { return XCTFail() }
+        XCTAssertEqual(s2.id, "beiyi-1-r")
+        XCTAssertEqual(sec2, 254)
     }
 
     func testWindingRoadUsesStartHeading() {
@@ -99,17 +146,17 @@ final class SectionSpeedTrackerTests: XCTestCase {
         let track = straightTrack(from: origin, bearing: 90, speedKmh: 40, seconds: 40)
 
         let straightOnly = SpeedSection(id: "w1", name: "山路", start: start, end: end, lengthMeters: 4_000, speedLimit: 40)
-        let e1 = runSections(SectionSpeedTracker(sections: [straightOnly]), track)
+        let e1 = runSections(SectionSpeedTracker(sections: [straightOnly], settings: strictSettings()), track)
         XCTAssertFalse(e1.contains { if case .entered = $0.event { return true }; return false })
 
         let withHeading = SpeedSection(id: "w2", name: "山路", start: start, end: end, lengthMeters: 4_000,
                                        speedLimit: 40, startHeading: 90)
-        let e2 = runSections(SectionSpeedTracker(sections: [withHeading]), track)
+        let e2 = runSections(SectionSpeedTracker(sections: [withHeading], settings: strictSettings()), track)
         XCTAssertTrue(e2.contains { if case .entered = $0.event { return true }; return false })
     }
 
     func testLeavingSectionAborts() {
-        let tracker = SectionSpeedTracker(sections: [section()])
+        let tracker = SectionSpeedTracker(sections: [section()], settings: strictSettings())
         // 通過起點後 30 秒轉向東邊離開
         let fixes = segmentedTrack(from: origin, segments: [(0, 50, 45), (90, 50, 400)])
         let events = runSections(tracker, fixes)
@@ -137,7 +184,7 @@ final class SectionSpeedTrackerTests: XCTestCase {
         XCTAssertLessThanOrEqual(status!.suggestedMaxKmh, 50)
 
         // 容許值 0：以 40 計算 → 4,100 ÷ 40 km/h = 369 秒 × 1.03 = 380.07 → 381
-        let strict = SectionSpeedTracker(sections: [s])
+        let strict = SectionSpeedTracker(sections: [s], settings: strictSettings())
         let events = runSections(strict, straightTrack(from: origin, bearing: 0, speedKmh: 40, seconds: 40))
         guard case let .entered(_, sec)? = events.first?.event else { return XCTFail() }
         XCTAssertEqual(sec, 381)
@@ -168,7 +215,7 @@ final class SectionSpeedTrackerTests: XCTestCase {
     }
 
     func testSafetyMarginIsConfigurable() {
-        var settings = AlertSettings()
+        var settings = strictSettings()
         settings.sectionSafetyMargin = 0
         let tracker = SectionSpeedTracker(sections: [section()], settings: settings)
         let events = runSections(tracker, straightTrack(from: origin, bearing: 0, speedKmh: 50, seconds: 30))

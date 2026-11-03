@@ -155,6 +155,25 @@ final class CameraAlertEngineTests: XCTestCase {
         XCTAssertEqual(fixed.filter { $0.event.isOverspeedStarted }.count, 1)
     }
 
+    func testSectionCameraUsesNearbySectionOverride() {
+        let cam = camera(north: 1_000, limit: 40, type: .section)
+        let end = GeoMath.destination(from: cam.point, bearing: 0, distance: 4_000)
+        let sec = SpeedSection(id: "s9-f", name: "測試（往北）", start: cam.point, end: end,
+                               lengthMeters: 4_000, speedLimit: 40)
+        var settings = AlertSettings()      // 預設 +10 → 門檻 50
+        let e1 = engine([cam], settings: settings)
+        e1.sections = [sec]
+        let beepDefault = runAlerts(e1, straightTrack(from: origin, bearing: 0, speedKmh: 55, seconds: 90))
+        XCTAssertEqual(beepDefault.filter { $0.event.isOverspeedStarted }.count, 1)
+
+        settings.sectionToleranceOverrides = ["s9": 20]   // 這段 +20 → 門檻 60
+        let e2 = engine([cam], settings: settings)
+        e2.sections = [sec]
+        let quiet = runAlerts(e2, straightTrack(from: origin, bearing: 0, speedKmh: 55, seconds: 90))
+        XCTAssertFalse(quiet.contains { $0.event.isOverspeedStarted })
+        XCTAssertEqual(e2.nearbySectionGroup(for: cam), "s9")
+    }
+
     func testRedLightCameraHasNoOverspeedWarning() {
         let cam = camera(north: 1_000, limit: 50, type: .redLight)
         let events = runAlerts(engine([cam]), straightTrack(from: origin, bearing: 0, speedKmh: 80, seconds: 60))

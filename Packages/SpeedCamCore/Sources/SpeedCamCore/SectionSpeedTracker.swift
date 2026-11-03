@@ -163,7 +163,7 @@ public final class SectionSpeedTracker {
                 let s = arm.section
                 let startTime = d <= 5 ? fix.timestamp : arm.minTime
                 let startPoint = d <= 5 ? fix.point : arm.minPoint
-                let minSec = s.minimumSeconds(atKmh: settings.sectionEffectiveLimit(s.speedLimit))
+                let minSec = s.minimumSeconds(atKmh: settings.sectionEffectiveLimit(s.speedLimit, sectionID: s.groupID))
                     * (1 + settings.sectionSafetyMargin)
                 return Active(section: s, startTime: startTime, minimumSeconds: minSec,
                               traveled: 0, lastPoint: startPoint, lastTime: startTime,
@@ -220,7 +220,7 @@ public final class SectionSpeedTracker {
         }
 
         // 區間內超速警示（以瞬間車速判斷）
-        let threshold = settings.sectionEffectiveLimit(a.section.speedLimit)
+        let threshold = settings.sectionEffectiveLimit(a.section.speedLimit, sectionID: a.section.groupID)
         let over = fix.speedKmh > threshold
         if over && !a.isOverspeed {
             a.isOverspeed = true
@@ -252,7 +252,7 @@ public final class SectionSpeedTracker {
             let avgKmh = total > 0 ? SpeedUnit.kmh(fromMps: a.section.lengthMeters / total) : 0
             if a.isOverspeed { events.append(.overspeedEnded) }
             events.append(.completed(section: a.section, averageKmh: avgKmh,
-                                     withinLimit: avgKmh <= settings.sectionEffectiveLimit(a.section.speedLimit)))
+                                     withinLimit: avgKmh <= settings.sectionEffectiveLimit(a.section.speedLimit, sectionID: a.section.groupID)))
             recentlyFinished[a.section.id] = fix.timestamp
             active = nil
             return
@@ -278,7 +278,7 @@ public final class SectionSpeedTracker {
         let remaining = max(0, a.minimumSeconds - elapsed)
         let remainingMeters = max(0, a.section.lengthMeters - a.traveled)
         let avg = elapsed > 1 ? SpeedUnit.kmh(fromMps: a.traveled / elapsed) : 0
-        let limit = settings.sectionEffectiveLimit(a.section.speedLimit)
+        let limit = settings.sectionEffectiveLimit(a.section.speedLimit, sectionID: a.section.groupID)
         var suggested = limit
         if remaining > 0.5 {
             suggested = min(limit, SpeedUnit.kmh(fromMps: remainingMeters / remaining))

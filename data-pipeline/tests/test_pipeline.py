@@ -554,3 +554,35 @@ def test_one_way_order_is_corrected_by_stated_direction():
     index = _line_index(road="台64", km_to=30)
     secs = section_text.to_sections(segs, index.resolve, log=lambda *_: None)
     assert secs[0]["start"]["lon"] < secs[0]["end"]["lon"]
+
+
+def test_sibling_segments_of_one_entry_use_relaxed_distance():
+    # 一筆兩段，照相點在第一段上：第二段離照相點約 8 km → 同一筆有一段通過檢查，所以接受
+    index = _line_index(km_to=60)
+    point = (24.0, 121.2 + 10 * 0.004)          # 10K 處
+    near = section_text.TextSegment("台9", 8, 12, True, 60, "x", point=point, group=1)
+    sibling = section_text.TextSegment("台9", 30, 35, True, 60, "x", point=point, group=1)   # 約 8 km
+    secs = section_text.to_sections([near, sibling], index.resolve, log=lambda *_: None)
+    assert {s["id"] for s in secs} == {"auto-台9-8-12-f", "auto-台9-8-12-r", "auto-台9-30-35-f", "auto-台9-30-35-r"}
+
+    # 太遠（> 15 km）仍然略過
+    far = section_text.TextSegment("台9", 50, 55, True, 60, "x", point=point, group=1)          # 約 16 km
+    logs = []
+    secs = section_text.to_sections([near, far], index.resolve, log=logs.append)
+    assert {s["id"] for s in secs} == {"auto-台9-8-12-f", "auto-台9-8-12-r"}
+    assert any("可能解析錯誤" in m for m in logs)
+
+    # 不同筆的資料不互相放寬
+    other = section_text.TextSegment("台9", 30, 35, True, 60, "y", point=point, group=2)
+    secs = section_text.to_sections([near, other], index.resolve, log=lambda *_: None)
+    assert {s["id"] for s in secs} == {"auto-台9-8-12-f", "auto-台9-8-12-r"}
+
+
+def test_extract_assigns_same_group_to_segments_of_one_row():
+    rows = [{"CityName": "苗栗縣", "Address": "台3線103.2公里至108公里及台3線114.3公里至123.6公里",
+             "direct": "南北雙向(區間測速)", "limit": "60", "Latitude": "24.61412", "Longitude": "120.95242"},
+            {"CityName": "新竹縣", "Address": "台3線82.2公里至84.3公里", "direct": "南北雙向(區間測速)", "limit": "60",
+             "Latitude": "24.70351", "Longitude": "121.04712"}]
+    segs = section_text.extract_from_rows(rows)
+    groups = [s.group for s in segs]
+    assert groups[0] == groups[1] != groups[2]
