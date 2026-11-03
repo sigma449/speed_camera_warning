@@ -49,6 +49,17 @@
    "district": "東區"
   },
   {
+   "id": "8b33abde399f",
+   "type": "section",
+   "lat": 25.0115,
+   "lon": 121.5559,
+   "address": "辛亥隧道區間測速",
+   "axis": 0.0,
+   "speedLimit": 50,
+   "city": "臺北市",
+   "district": "文山區"
+  },
+  {
    "id": "95eb1e112187",
    "type": "fixed",
    "lat": 25.0123,

@@ -187,6 +187,12 @@ public final class CameraAlertEngine {
             return GeoMath.angleDifference(heading, camHeading) <= settings.directionTolerance
                 && aheadDiff <= settings.aheadToleranceWithHeading
         }
+        if let axis = camera.axis {
+            // 雙向照相但已知道路軸向（南北或東西）：兩個方向都算，橫向道路的車不算。
+            let d = GeoMath.angleDifference(heading, axis)
+            return min(d, 180 - d) <= settings.directionTolerance
+                && aheadDiff <= settings.aheadToleranceWithHeading
+        }
         return aheadDiff <= settings.aheadToleranceWithoutHeading
     }
 

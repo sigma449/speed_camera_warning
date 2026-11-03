@@ -68,6 +68,31 @@ final class CameraAlertEngineTests: XCTestCase {
         XCTAssertEqual(events.filter { $0.event.isNear }.count, 1)
     }
 
+    func testAxisCameraAlertsBothDirectionsOnItsRoad() {
+        // 南北雙向的照相：往北、往南經過都要提醒
+        let north = GeoMath.destination(from: origin, bearing: 0, distance: 800)
+        let cam = Camera(id: "axis", type: .fixed, lat: north.lat, lon: north.lon, speedLimit: 50, axis: 0)
+        let up = runAlerts(engine([cam]), straightTrack(from: origin, bearing: 0, speedKmh: 50, seconds: 80))
+        XCTAssertEqual(up.filter { $0.event.isPre }.count, 1)
+
+        let farNorth = GeoMath.destination(from: origin, bearing: 0, distance: 1_600)
+        let down = runAlerts(engine([cam]), straightTrack(from: farNorth, bearing: 180, speedKmh: 50, seconds: 80))
+        XCTAssertEqual(down.filter { $0.event.isPre }.count, 1)
+    }
+
+    func testAxisCameraIgnoresCrossRoadTraffic() {
+        // 南北雙向的照相位於東邊路口；車輛沿東西向道路往東開，照相在正前方但不該提醒
+        let east = GeoMath.destination(from: origin, bearing: 90, distance: 800)
+        let cam = Camera(id: "cross", type: .fixed, lat: east.lat, lon: east.lon, speedLimit: 50, axis: 0)
+        let events = runAlerts(engine([cam]), straightTrack(from: origin, bearing: 90, speedKmh: 50, seconds: 80))
+        XCTAssertTrue(events.isEmpty, "橫向道路不應提醒：\(events.map { $0.event })")
+
+        // 同樣位置但沒有軸向資料：沿用「在前方就提醒」
+        let unknown = Camera(id: "unknown", type: .fixed, lat: east.lat, lon: east.lon, speedLimit: 50)
+        let events2 = runAlerts(engine([unknown]), straightTrack(from: origin, bearing: 90, speedKmh: 50, seconds: 80))
+        XCTAssertEqual(events2.filter { $0.event.isPre }.count, 1)
+    }
+
     func testSlightlyCurvedRoadStillMatchesDirection() {
         // 照相取締方向 30°，車輛以 10° 前進（夾角 20°，在容許的 45° 內）
         let p = GeoMath.destination(from: origin, bearing: 10, distance: 900)

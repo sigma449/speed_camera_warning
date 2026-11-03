@@ -12,6 +12,7 @@ import build_cameras  # noqa: E402
 from speedcam_data import sources  # noqa: E402
 from speedcam_data.normalize import (  # noqa: E402
     detect_type,
+    parse_axis,
     in_taiwan,
     normalize_rows,
     parse_coordinates,
@@ -40,6 +41,15 @@ def fixture(name):
 ])
 def test_parse_direction(text, expected):
     assert parse_direction(text) == expected
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("南北雙向", 0), ("南北雙向(區間測速)", 0), ("南北", 0), ("北南雙向", 0),
+    ("東西雙向", 90), ("東西雙向（區間測速）", 90),
+    ("雙向", None), ("往大溪方向", None), ("", None), (None, None),
+])
+def test_parse_axis(text, expected):
+    assert parse_axis(text) == expected
 
 
 # ---------------------------------------------------------------- 速限
@@ -71,6 +81,7 @@ def test_coordinates_swap_and_reject():
 
 # ---------------------------------------------------------------- 類型
 @pytest.mark.parametrize("kind,address,expected", [
+    (None, "中山路 南北雙向(超速闖紅燈)", "redLightSpeed"),
     ("闖紅燈及測速", "", "redLightSpeed"),
     ("闖紅燈", "", "redLight"),
     ("科技執法(不停讓行人)", "", "tech"),
@@ -88,9 +99,12 @@ def test_national_csv_normalization():
     by_addr = {}
     for c in cams:
         by_addr.setdefault(c.city, []).append(c)
-    # 8 列：2 列座標無效、1 列重複合併 → 5 筆
-    assert len(cams) == 5
-    taipei = sorted(by_addr["臺北市"], key=lambda c: c.heading)
+    # 9 列：2 列座標無效、1 列重複合併 → 6 筆
+    assert len(cams) == 6
+    tunnel = [c for c in by_addr["臺北市"] if c.heading is None][0]
+    assert tunnel.type == "section" and tunnel.axis == 0   # 方向欄的「(區間測速)」也會判斷類型
+    assert tunnel.to_json()["axis"] == 0 and "heading" not in tunnel.to_json()
+    taipei = sorted((c for c in by_addr["臺北市"] if c.heading is not None), key=lambda c: c.heading)
     assert [c.heading for c in taipei] == [90, 270]
     merged = taipei[0]
     assert merged.speedLimit == 40          # 重複資料取較小速限
@@ -98,8 +112,9 @@ def test_national_csv_normalization():
     taoyuan = by_addr["桃園市"][0]
     assert (taoyuan.lat, taoyuan.lon) == (24.9521, 121.2345)  # 經緯度對調修正
     assert by_addr["新北市"][0].heading is None                # 雙向
+    assert by_addr["新北市"][0].axis is None                   # 沒寫南北或東西就不知道軸向
     assert by_addr["臺中市"][0].speedLimit == 80
-    assert all(c.type == "fixed" for c in cams)
+    assert all(c.type == "fixed" for c in cams if c is not tunnel)
 
 
 def test_moi_json_with_header_row():
@@ -138,7 +153,7 @@ def test_output_schema_matches_swift_model(tmp_path):
     assert db["version"] == "2026-11-02"
     assert db["generatedAt"] == "2026-11-02T00:00:00Z"
     assert db["sources"]
-    allowed = {"id", "type", "lat", "lon", "heading", "speedLimit", "address", "city", "district"}
+    allowed = {"id", "type", "lat", "lon", "heading", "axis", "speedLimit", "address", "city", "district"}
     swift_types = {"fixed", "redLight", "redLightSpeed", "section", "tech", "mobile"}
     for cam in db["cameras"]:
         assert set(cam) <= allowed
@@ -158,7 +173,7 @@ def test_cli_with_local_input_and_min_count(tmp_path):
                                "--sections", str(tmp_path / "none.csv"), "--extra", str(tmp_path / "none.csv")])
     assert code == 0
     data = json.loads(out.read_text(encoding="utf-8"))
-    assert len(data["cameras"]) == 5
+    assert len(data["cameras"]) == 6
     assert data["sections"] == []
 
     # 資料沒變時不重寫檔案（版本日期維持不變）

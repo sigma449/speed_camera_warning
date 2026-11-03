@@ -118,6 +118,21 @@ def parse_direction(text: Optional[str]) -> Optional[float]:
     return None
 
 
+def parse_axis(text: Optional[str]) -> Optional[float]:
+    """雙向照相若註明「南北雙向」「東西雙向」，回傳取締的道路軸向（0 = 南北、90 = 東西）。
+
+    App 會用它排除橫向道路的車（例如開在東西向道路時，不提醒南北向道路上的照相）。
+    """
+    if not text:
+        return None
+    s = re.sub(r"\s+", "", str(text))
+    if "南北" in s or "北南" in s:
+        return 0.0
+    if "東西" in s or "西東" in s:
+        return 90.0
+    return None
+
+
 # ---------------------------------------------------------------------------
 # 速限與類型
 # ---------------------------------------------------------------------------
@@ -130,8 +145,9 @@ def parse_limit(text: Optional[str]) -> Optional[int]:
     return min(nums) if nums else None
 
 
-def detect_type(kind: Optional[str], address: Optional[str]) -> str:
-    text = f"{kind or ''} {address or ''}"
+def detect_type(kind: Optional[str], address: Optional[str], direction: Optional[str] = None) -> str:
+    # 方向欄位有時也會註明「(區間測速)」「(超速闖紅燈)」，一併納入判斷。
+    text = f"{kind or ''} {address or ''} {direction or ''}"
     if "區間" in text:
         return "section"
     if "闖紅燈" in text and ("測速" in text or "超速" in text):
@@ -159,6 +175,8 @@ class Camera:
     address: str
     city: Optional[str] = None
     district: Optional[str] = None
+    # 雙向照相的道路軸向（0 = 南北、90 = 東西），有 heading 時不使用
+    axis: Optional[float] = None
 
     def to_json(self) -> dict:
         d = {
@@ -170,6 +188,8 @@ class Camera:
         }
         if self.heading is not None:
             d["heading"] = self.heading
+        elif self.axis is not None:
+            d["axis"] = self.axis
         if self.speedLimit is not None:
             d["speedLimit"] = self.speedLimit
         if self.city:
@@ -186,6 +206,7 @@ class NormalizeReport:
     skipped_no_coords: int = 0
     duplicates_merged: int = 0
     unknown_direction: int = 0
+    axis_known: int = 0
     by_type: dict = field(default_factory=dict)
     # 診斷用：無法解析的方向原文（含空白）與區間照相點
     unknown_direction_texts: dict = field(default_factory=dict)
@@ -208,7 +229,7 @@ class NormalizeReport:
         types = ", ".join(f"{k}={v}" for k, v in sorted(self.by_type.items()))
         return (f"原始 {self.total_rows} 筆 → 保留 {self.kept} 筆；"
                 f"座標無效 {self.skipped_no_coords}、合併重複 {self.duplicates_merged}、"
-                f"方向不明 {self.unknown_direction}；類型：{types}")
+                f"沒有單一方向 {self.unknown_direction}（其中已知南北／東西軸向 {self.axis_known}）；類型：{types}")
 
 
 def dedupe_key(lat: float, lon: float, heading: Optional[float]) -> tuple:
@@ -237,17 +258,22 @@ def normalize_rows(rows: Iterable[dict], report: Optional[NormalizeReport] = Non
             continue
         lat, lon = coords
         address = pick(row, "address") or ""
-        heading = parse_direction(pick(row, "direction"))
+        direction_text = pick(row, "direction")
+        heading = parse_direction(direction_text)
+        axis = parse_axis(direction_text) if heading is None else None
+        if axis is not None:
+            report.axis_known += 1
         if heading is None:
             report.unknown_direction += 1
             raw = pick(row, "direction") or "(空白)"
             report.unknown_direction_texts[raw] = report.unknown_direction_texts.get(raw, 0) + 1
         cam = Camera(
             id=make_id(lat, lon, heading),
-            type=detect_type(pick(row, "kind"), address),
+            type=detect_type(pick(row, "kind"), address, direction_text),
             lat=lat,
             lon=lon,
             heading=heading,
+            axis=axis,
             speedLimit=parse_limit(pick(row, "limit")),
             address=address,
             city=pick(row, "city"),

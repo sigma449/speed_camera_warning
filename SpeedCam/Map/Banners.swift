@@ -155,7 +155,13 @@ struct CameraDetailCard: View {
     }
 
     private var directionText: String {
-        guard let h = camera.heading else { return "取締方向：雙向或資料未提供" }
+        guard let h = camera.heading else {
+            switch camera.axis {
+            case 0: return "取締方向：南北雙向"
+            case 90: return "取締方向：東西雙向"
+            default: return "取締方向：雙向或資料未提供"
+            }
+        }
         let names = ["北", "東北", "東", "東南", "南", "西南", "西", "西北"]
         let idx = Int((GeoMath.normalize(h) + 22.5) / 45) % 8
         return "取締方向：往\(names[idx])行駛的車輛"

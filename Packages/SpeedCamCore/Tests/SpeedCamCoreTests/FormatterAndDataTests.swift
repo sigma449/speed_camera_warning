@@ -68,8 +68,9 @@ final class DatabaseTests: XCTestCase {
     func testDecodePipelineOutput() throws {
         let url = try XCTUnwrap(Bundle.module.url(forResource: "pipeline_output", withExtension: "json", subdirectory: "Fixtures"))
         let db = try CameraDatabase.decode(from: Data(contentsOf: url))
-        XCTAssertEqual(db.cameras.count, 10)
+        XCTAssertEqual(db.cameras.count, 11)
         XCTAssertTrue(db.cameras.contains { $0.type == .redLightSpeed })
+        XCTAssertTrue(db.cameras.contains { $0.type == .section && $0.axis == 0 && $0.heading == nil })
         XCTAssertTrue(db.cameras.contains { $0.heading == nil })
         XCTAssertEqual(db.sections.first?.lengthEstimated, true)
         XCTAssertEqual(Set(db.cameras.map(\.id)).count, db.cameras.count)

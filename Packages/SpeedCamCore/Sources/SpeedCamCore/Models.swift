@@ -44,6 +44,9 @@ public struct Camera: Codable, Hashable, Identifiable, Sendable {
     public var lon: Double
     /// 取締的行車方向（車輛行進的方位角）。nil 表示資料沒有方向或雙向。
     public var heading: Double?
+    /// 雙向照相的道路軸向：0 = 南北向、90 = 東西向。nil 表示不知道。
+    /// 有 heading 時不使用。
+    public var axis: Double?
     /// 速限（km/h）。
     public var speedLimit: Int?
     public var address: String
@@ -52,12 +55,14 @@ public struct Camera: Codable, Hashable, Identifiable, Sendable {
 
     public init(id: String, type: CameraType, lat: Double, lon: Double,
                 heading: Double? = nil, speedLimit: Int? = nil,
-                address: String = "", city: String? = nil, district: String? = nil) {
+                address: String = "", city: String? = nil, district: String? = nil,
+                axis: Double? = nil) {
         self.id = id
         self.type = type
         self.lat = lat
         self.lon = lon
         self.heading = heading
+        self.axis = axis
         self.speedLimit = speedLimit
         self.address = address
         self.city = city
