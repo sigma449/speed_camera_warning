@@ -233,3 +233,13 @@ def test_collect_urls_from_dataset_metadata():
     sources._collect_urls(meta["result"], urls)
     assert ("https://example.gov.tw/a.csv", "CSV") in urls
     assert ("https://example.gov.tw/a.json", "JSON") in urls
+
+
+def test_ssl_context_keeps_verification_but_not_strict_mode():
+    import ssl
+    ctx = sources.ssl_context()
+    assert ctx.verify_mode == ssl.CERT_REQUIRED
+    assert ctx.check_hostname is True
+    strict = getattr(ssl, "VERIFY_X509_STRICT", 0)
+    if strict:
+        assert not (ctx.verify_flags & strict)

@@ -70,8 +70,15 @@ struct RootView: View {
     }
 
     private var visibleCameras: [Camera] {
-        guard let region = visibleRegion else { return [] }
-        return model.cameras(in: region)
+        if let region = visibleRegion {
+            return model.cameras(in: region)
+        }
+        // 還沒收到地圖範圍時（剛開啟、尚未拖動），先顯示目前位置周圍 3 公里內的照相點。
+        if let fix = model.lastFix {
+            return model.cameras(in: MKCoordinateRegion(center: fix.point.coordinate,
+                                                        latitudinalMeters: 3_000, longitudinalMeters: 3_000))
+        }
+        return []
     }
 
     private var map: some View {

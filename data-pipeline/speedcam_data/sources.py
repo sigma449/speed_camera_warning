@@ -4,6 +4,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import ssl
 import urllib.request
 from typing import Any, Iterable, Optional
 
@@ -22,9 +23,22 @@ ATTRIBUTION = [
 ]
 
 
+def ssl_context() -> ssl.SSLContext:
+    """一般的憑證驗證（憑證鏈、主機名稱照常檢查），但關閉 Python 3.13 起預設的 X509 嚴格模式。
+
+    政府網站（例如 opdadm.moi.gov.tw）的憑證缺少 Subject Key Identifier 欄位，
+    在嚴格模式下會出現「CERTIFICATE_VERIFY_FAILED: Missing Subject Key Identifier」。
+    """
+    ctx = ssl.create_default_context()
+    strict = getattr(ssl, "VERIFY_X509_STRICT", 0)
+    if strict:
+        ctx.verify_flags &= ~strict
+    return ctx
+
+
 def http_get(url: str, timeout: float = 60) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "*/*"})
-    with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310（只連政府網站）
+    with urllib.request.urlopen(req, timeout=timeout, context=ssl_context()) as resp:  # noqa: S310（只連政府網站）
         return resp.read()
 
 
