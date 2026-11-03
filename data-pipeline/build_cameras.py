@@ -75,6 +75,9 @@ def main(argv: list[str] | None = None) -> int:
     sections = load_sections(args.sections)
     db, report = build(rows, sections)
     print(report.summary())
+    diag = report.diagnostics()
+    if diag:
+        print(diag)
     print(f"區間測速 {len(sections)} 段")
 
     if len(db["cameras"]) < args.min_count:

@@ -187,6 +187,22 @@ class NormalizeReport:
     duplicates_merged: int = 0
     unknown_direction: int = 0
     by_type: dict = field(default_factory=dict)
+    # 診斷用：無法解析的方向原文（含空白）與區間照相點
+    unknown_direction_texts: dict = field(default_factory=dict)
+    section_cameras: list = field(default_factory=list)
+
+    def diagnostics(self, top: int = 30) -> str:
+        lines = []
+        if self.unknown_direction_texts:
+            lines.append(f"無法解析的方向原文（前 {top} 名，共 {len(self.unknown_direction_texts)} 種）：")
+            ranked = sorted(self.unknown_direction_texts.items(), key=lambda kv: (-kv[1], kv[0]))
+            for text, n in ranked[:top]:
+                lines.append(f"  {n:4d}  {text!r}")
+        if self.section_cameras:
+            lines.append(f"區間照相點 {len(self.section_cameras)} 筆：")
+            for c in self.section_cameras:
+                lines.append(f"  {c}")
+        return "\n".join(lines)
 
     def summary(self) -> str:
         types = ", ".join(f"{k}={v}" for k, v in sorted(self.by_type.items()))
@@ -224,6 +240,8 @@ def normalize_rows(rows: Iterable[dict], report: Optional[NormalizeReport] = Non
         heading = parse_direction(pick(row, "direction"))
         if heading is None:
             report.unknown_direction += 1
+            raw = pick(row, "direction") or "(空白)"
+            report.unknown_direction_texts[raw] = report.unknown_direction_texts.get(raw, 0) + 1
         cam = Camera(
             id=make_id(lat, lon, heading),
             type=detect_type(pick(row, "kind"), address),
@@ -235,6 +253,9 @@ def normalize_rows(rows: Iterable[dict], report: Optional[NormalizeReport] = Non
             city=pick(row, "city"),
             district=pick(row, "district"),
         )
+        if cam.type == "section":
+            report.section_cameras.append(
+                f"{cam.city or ''}{cam.district or ''} {cam.address}｜{lat:.5f},{lon:.5f}｜方向 {pick(row, 'direction')!r}｜速限 {cam.speedLimit}")
         key = dedupe_key(lat, lon, heading)
         if key in merged:
             report.duplicates_merged += 1
