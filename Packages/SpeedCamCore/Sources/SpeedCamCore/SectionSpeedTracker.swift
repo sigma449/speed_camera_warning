@@ -12,6 +12,12 @@ public enum SectionEvent: Equatable, Sendable {
     case completed(section: SpeedSection, averageKmh: Double, withinLimit: Bool)
     /// 中途離開區間（例如下交流道），停止追蹤。
     case aborted(section: SpeedSection)
+    /// 區間內車速超過「速限＋區間容許值」（播一次語音加嗶聲）。
+    case overspeedStarted(threshold: Int)
+    /// 持續超速，每隔設定秒數嗶一聲。
+    case overspeedBeep
+    /// 恢復到門檻以內，或離開區間。
+    case overspeedEnded
 }
 
 /// 區間測速目前的狀態（畫面與 Live Activity 顯示用）。
@@ -31,6 +37,8 @@ public struct SectionStatus: Equatable, Sendable {
     public var averageKmh: Double
     /// 剩下的路建議不要超過的時速。
     public var suggestedMaxKmh: Double
+    /// 計算用的時速（速限＋區間容許值）。
+    public var effectiveLimitKmh: Double
 
     /// 倒數秒數（無條件進位成整數，畫面顯示用）。
     public var remainingWholeSeconds: Int { Int(remainingSeconds.rounded(.up)) }
@@ -43,7 +51,8 @@ public struct SectionResult: Equatable, Sendable {
 
 /// 區間測速追蹤器：
 /// - 經過起點時開始計時
-/// - 倒數 = 區間長度 ÷ 速限 ×（1 + 安全餘裕）− 已經過秒數
+/// - 倒數 = 區間長度 ÷（速限＋區間容許值）×（1 + 安全餘裕）− 已經過秒數
+/// - 區間內車速超過「速限＋區間容許值」時，每隔固定秒數嗶一聲
 /// - 倒數每跨過一個整分鐘提醒一次，最後 30、10 秒再各提醒一次，歸零時提醒一次
 public final class SectionSpeedTracker {
     public var settings: AlertSettings
@@ -60,6 +69,8 @@ public final class SectionSpeedTracker {
         var zeroAnnounced: Bool
         var minEndDistance: Double
         var minEndTime: Date?
+        var isOverspeed = false
+        var lastBeep: Date?
     }
 
     /// 進入起點範圍後，等到「最接近起點」的那一刻才開始計時（和照相點位置一致），
@@ -152,7 +163,8 @@ public final class SectionSpeedTracker {
                 let s = arm.section
                 let startTime = d <= 5 ? fix.timestamp : arm.minTime
                 let startPoint = d <= 5 ? fix.point : arm.minPoint
-                let minSec = s.minimumSeconds * (1 + settings.sectionSafetyMargin)
+                let minSec = s.minimumSeconds(atKmh: settings.sectionEffectiveLimit(s.speedLimit))
+                    * (1 + settings.sectionSafetyMargin)
                 return Active(section: s, startTime: startTime, minimumSeconds: minSec,
                               traveled: 0, lastPoint: startPoint, lastTime: startTime,
                               pendingMilestones: Self.milestones(forMinimumSeconds: minSec,
@@ -172,8 +184,8 @@ public final class SectionSpeedTracker {
         for s in sections where recentlyFinished[s.id] == nil {
             let d = GeoMath.distance(fix.point, s.start)
             guard d <= settings.sectionGateRadius else { continue }
-            // 道路可能彎曲，只要求大致朝終點方向（90° 以內）。
-            guard GeoMath.angleDifference(heading, s.heading) <= 90 else { continue }
+            // 有起點道路方向（里程牌計算）就用它；否則用起終點直線方向。兩者都只要求 90° 以內。
+            guard GeoMath.angleDifference(heading, s.entryHeading) <= 90 else { continue }
             arming = Arming(section: s, minDistance: d, minTime: fix.timestamp, minPoint: fix.point)
             return nil
         }
@@ -207,6 +219,22 @@ public final class SectionSpeedTracker {
             events.append(.zeroReached)
         }
 
+        // 區間內超速警示（以瞬間車速判斷）
+        let threshold = settings.sectionEffectiveLimit(a.section.speedLimit)
+        let over = fix.speedKmh > threshold
+        if over && !a.isOverspeed {
+            a.isOverspeed = true
+            a.lastBeep = fix.timestamp
+            events.append(.overspeedStarted(threshold: Int(threshold.rounded())))
+        } else if over, let last = a.lastBeep,
+                  fix.timestamp.timeIntervalSince(last) >= settings.overspeedBeepInterval {
+            a.lastBeep = fix.timestamp
+            events.append(.overspeedBeep)
+        } else if !over && a.isOverspeed {
+            a.isOverspeed = false
+            events.append(.overspeedEnded)
+        }
+
         // 終點判定：進入終點範圍後開始遠離，或行駛距離明顯超過區間長度。
         let dEnd = GeoMath.distance(fix.point, a.section.end)
         if dEnd <= settings.sectionGateRadius * 3 && dEnd < a.minEndDistance {
@@ -222,8 +250,9 @@ public final class SectionSpeedTracker {
             let endTime = a.minEndTime ?? fix.timestamp
             let total = endTime.timeIntervalSince(a.startTime)
             let avgKmh = total > 0 ? SpeedUnit.kmh(fromMps: a.section.lengthMeters / total) : 0
+            if a.isOverspeed { events.append(.overspeedEnded) }
             events.append(.completed(section: a.section, averageKmh: avgKmh,
-                                     withinLimit: avgKmh <= Double(a.section.speedLimit)))
+                                     withinLimit: avgKmh <= settings.sectionEffectiveLimit(a.section.speedLimit)))
             recentlyFinished[a.section.id] = fix.timestamp
             active = nil
             return
@@ -234,6 +263,7 @@ public final class SectionSpeedTracker {
         let farFromEnd = dEnd > a.section.lengthMeters + 1_000
         let timedOut = elapsed > a.minimumSeconds * 4 + 600
         if wentTooFar || farFromEnd || timedOut {
+            if a.isOverspeed { events.append(.overspeedEnded) }
             events.append(.aborted(section: a.section))
             recentlyFinished[a.section.id] = fix.timestamp
             active = nil
@@ -248,7 +278,7 @@ public final class SectionSpeedTracker {
         let remaining = max(0, a.minimumSeconds - elapsed)
         let remainingMeters = max(0, a.section.lengthMeters - a.traveled)
         let avg = elapsed > 1 ? SpeedUnit.kmh(fromMps: a.traveled / elapsed) : 0
-        let limit = Double(a.section.speedLimit)
+        let limit = settings.sectionEffectiveLimit(a.section.speedLimit)
         var suggested = limit
         if remaining > 0.5 {
             suggested = min(limit, SpeedUnit.kmh(fromMps: remainingMeters / remaining))
@@ -257,6 +287,7 @@ public final class SectionSpeedTracker {
                              minimumSeconds: a.minimumSeconds, remainingSeconds: remaining,
                              earliestExit: a.startTime.addingTimeInterval(a.minimumSeconds),
                              traveledMeters: a.traveled, remainingMeters: remainingMeters,
-                             averageKmh: avg, suggestedMaxKmh: suggested)
+                             averageKmh: avg, suggestedMaxKmh: suggested,
+                             effectiveLimitKmh: limit)
     }
 }

@@ -204,7 +204,11 @@ public final class CameraAlertEngine {
             }
             return
         }
-        let over = fix.speedKmh > Double(limit) + settings.overspeedToleranceKmh
+        // 區間測速的照相機用「區間容許值」，其他照相用一般的超速容許值。
+        let threshold = t.camera.type == .section
+            ? settings.sectionEffectiveLimit(limit)
+            : Double(limit) + settings.overspeedToleranceKmh
+        let over = fix.speedKmh > threshold
         if over && !isOverspeed {
             isOverspeed = true
             lastBeep = fix.timestamp

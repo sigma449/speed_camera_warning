@@ -126,8 +126,8 @@
  ],
  "sections": [
   {
-   "id": "s1",
-   "name": "測試",
+   "id": "s1-f",
+   "name": "測試（往北）",
    "start": {
     "lat": 25.0,
     "lon": 121.5
@@ -136,9 +136,26 @@
     "lat": 25.03,
     "lon": 121.5
    },
-   "lengthMeters": 3836.2,
-   "speedLimit": 60,
-   "lengthEstimated": true
+   "lengthMeters": 3300.0,
+   "speedLimit": 40,
+   "lengthEstimated": false,
+   "startHeading": 5.0
+  },
+  {
+   "id": "s1-r",
+   "name": "測試（往南）",
+   "start": {
+    "lat": 25.03,
+    "lon": 121.5
+   },
+   "end": {
+    "lat": 25.0,
+    "lon": 121.5
+   },
+   "lengthMeters": 3300.0,
+   "speedLimit": 40,
+   "lengthEstimated": false,
+   "startHeading": 185.0
   }
  ]
 }

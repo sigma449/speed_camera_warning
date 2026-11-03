@@ -160,7 +160,7 @@ def test_output_schema_matches_swift_model(tmp_path):
         assert {"id", "type", "lat", "lon", "address"} <= set(cam)
         assert cam["type"] in swift_types
     s = db["sections"][0]
-    assert set(s) == {"id", "name", "start", "end", "lengthMeters", "speedLimit", "lengthEstimated"}
+    assert set(s) <= {"id", "name", "start", "end", "lengthMeters", "speedLimit", "lengthEstimated", "startHeading"}
     assert set(s["start"]) == {"lat", "lon"}
     # 能被寫成 JSON
     json.dumps(db, ensure_ascii=False)
@@ -219,7 +219,16 @@ def test_sections_validation(row, msg):
 
 def test_bundled_manual_files_are_valid():
     from speedcam_data.sections import load_sections
-    assert isinstance(load_sections(os.path.join(HERE, "..", "manual", "sections.csv")), list)
+    # 不連網：用假的里程牌索引（沿著東西向直線，每 100 m 一支）
+    sections = load_sections(os.path.join(HERE, "..", "manual", "sections.csv"),
+                             log=lambda *_: None, fetch_index=lambda log=print: _fake_index())
+    assert len(sections) == 8          # 北宜 4 段 × 雙向
+    by_id = {s["id"]: s for s in sections}
+    assert by_id["beiyi-1-f"]["lengthMeters"] == 4100
+    assert by_id["beiyi-4-r"]["lengthMeters"] == 12300
+    assert all(s["speedLimit"] == 40 and not s["lengthEstimated"] for s in sections)
+    assert by_id["beiyi-1-f"]["name"].endswith("（往宜蘭）")
+    assert by_id["beiyi-1-r"]["start"] == by_id["beiyi-1-f"]["end"]
     rows = sources.read_local_rows([os.path.join(HERE, "..", "manual", "cameras_extra.csv")])
     assert isinstance(normalize_rows(rows), list)
 
@@ -243,3 +252,119 @@ def test_ssl_context_keeps_verification_but_not_strict_mode():
     strict = getattr(ssl, "VERIFY_X509_STRICT", 0)
     if strict:
         assert not (ctx.verify_flags & strict)
+
+
+# ---------------------------------------------------------------- 里程牌與區間
+from speedcam_data import mileposts  # noqa: E402
+from speedcam_data.sections import load_sections, needs_mileposts  # noqa: E402
+
+MILEPOST_HEADER = "公路編號,起點樁號,牌面內容,TWD97X,TWD97Y,WGS84X,WGS84Y"
+
+
+def _milepost_rows(start_km=0.0, end_km=80.0, step=0.1, road="台9"):
+    """沿北緯 24.95 往東的直線，每 step 公里一支里程牌（假資料：1 公里 = 0.004 經度，確保 80 公里都在台灣範圍內）。"""
+    rows = []
+    k = start_km
+    while k <= end_km + 1e-9:
+        rows.append({"公路編號": road, "起點樁號": f"{int(k):03d}K+{round((k - int(k)) * 1000):03d}",
+                     "牌面內容": f"{k:g}", "TWD97X": "300000", "TWD97Y": "2760000",
+                     "WGS84X": f"{121.5 + k * 0.004:.6f}", "WGS84Y": "24.950000"})
+        k = round(k + step, 4)
+    return rows
+
+
+def _fake_index():
+    return mileposts.build_index(_milepost_rows(), log=lambda *_: None)
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("台9線", "台9"), ("臺9線", "台9"), ("台009", "台9"), ("省道台9甲線", "台9甲"), ("9", "台9"),
+    ("台61", "台61"), ("", None), (None, None), ("國道5號", "台5"),
+])
+def test_normalize_road(text, expected):
+    assert mileposts.normalize_road(text) == expected
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("019K+100", 19.1), ("19K+100", 19.1), ("19+100", 19.1), ("19.1", 19.1), ("19K", 19.0),
+    ("23.1K", 23.1), ("068K+600M", 68.6), ("", None), (None, None), ("abc", None),
+])
+def test_parse_km(text, expected):
+    assert mileposts.parse_km(text) == expected
+
+
+def test_milepost_index_exact_and_interpolated():
+    index = mileposts.build_index(_milepost_rows(18, 24, step=0.5), log=lambda *_: None)
+    lat, lon = index.resolve("台9", 19.0)
+    assert lat == pytest.approx(24.95) and lon == pytest.approx(121.5 + 19 * 0.004)
+    lat, lon = index.resolve("台9", 23.1)   # 23.0 與 23.5 之間內插
+    assert lon == pytest.approx(121.5 + 23.1 * 0.004, abs=1e-6)
+    assert index.resolve("台9", 30) is None      # 超出範圍
+    assert index.resolve("台2", 19) is None      # 沒有這條路
+
+
+def test_milepost_index_rejects_large_gaps_and_averages_duplicates():
+    rows = _milepost_rows(10, 10) + _milepost_rows(12, 12)
+    index = mileposts.build_index(rows, log=lambda *_: None)
+    assert index.resolve("台9", 11) is None       # 間距 2 公里 > 1 公里，不內插
+    dup = _milepost_rows(10, 10)
+    dup[0]["WGS84Y"] = "24.950200"
+    index = mileposts.build_index(_milepost_rows(10, 10) + dup, log=lambda *_: None)
+    assert index.resolve("台9", 10)[0] == pytest.approx(24.9501)
+
+
+def test_milepost_columns_missing_raises():
+    with pytest.raises(ValueError, match="必要欄位"):
+        mileposts.build_index([{"foo": "1", "bar": "2"}], log=lambda *_: None)
+
+
+def test_sections_from_mileposts_bidirectional():
+    text = ("id,name,start_lat,start_lon,end_lat,end_lon,length_m,speed_limit,note,road,start_km,end_km,"
+            "bidirectional,forward_label,reverse_label\n"
+            "b1,北宜測試,,,,,,40,,台9,19,23.1,yes,往宜蘭,往台北\n"
+            "b2,單向測試,,,,,,50,,台9,26.2,32.2,,,\n")
+    assert needs_mileposts(text)
+    secs = parse_sections_csv(text, resolver=_fake_index().resolve, log=lambda *_: None)
+    assert [s["id"] for s in secs] == ["b1-f", "b1-r", "b2"]
+    f, r, single = secs
+    assert f["name"] == "北宜測試（往宜蘭）" and r["name"] == "北宜測試（往台北）"
+    assert f["start"] == r["end"] and f["end"] == r["start"]
+    assert f["lengthMeters"] == 4100 and f["lengthEstimated"] is False
+    assert f["start"]["lon"] < f["end"]["lon"]     # 里程增加 = 往東（測試資料）
+    assert single["lengthMeters"] == 6000
+    # 測試資料的道路往東：順向進入方向 90°、反向 270°
+    assert f["startHeading"] == pytest.approx(90, abs=0.5)
+    assert r["startHeading"] == pytest.approx(270, abs=0.5)
+
+
+def test_sections_with_explicit_coordinates_have_no_start_heading_unless_given():
+    text = ("id,name,start_lat,start_lon,end_lat,end_lon,length_m,speed_limit,forward_heading\n"
+            "a,x,25.0,121.5,25.03,121.5,3300,60,\n"
+            "b,y,25.0,121.5,25.03,121.5,3300,60,15\n")
+    a, b = parse_sections_csv(text, log=lambda *_: None)
+    assert "startHeading" not in a
+    assert b["startHeading"] == 15
+
+
+def test_load_sections_skips_when_mileposts_unavailable(tmp_path):
+    p = tmp_path / "s.csv"
+    p.write_text("id,name,start_lat,start_lon,end_lat,end_lon,length_m,speed_limit,note,road,start_km,end_km\n"
+                 "a,有座標,25.0,121.5,25.03,121.5,3300,60,,,,\n"
+                 "b,只有里程,,,,,,40,,台9,19,23.1\n", encoding="utf-8")
+    logs = []
+
+    def broken(log=print):
+        raise RuntimeError("network down")
+
+    secs = load_sections(str(p), log=logs.append, fetch_index=broken)
+    assert [s["id"] for s in secs] == ["a"]
+    assert any("略過" in m for m in logs)
+
+
+def test_load_sections_detects_duplicate_ids(tmp_path):
+    p = tmp_path / "s.csv"
+    p.write_text("id,name,start_lat,start_lon,end_lat,end_lon,length_m,speed_limit\n"
+                 "a,x,25.0,121.5,25.03,121.5,3300,60\n"
+                 "a,y,25.0,121.5,25.03,121.5,3300,60\n", encoding="utf-8")
+    with pytest.raises(SectionError, match="重複"):
+        load_sections(str(p), log=lambda *_: None)

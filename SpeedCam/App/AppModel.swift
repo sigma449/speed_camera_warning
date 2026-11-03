@@ -57,7 +57,7 @@ final class AppModel {
     var isOverspeed: Bool {
         if cameraTarget?.isOverspeed == true { return true }
         if let limit = displayedSpeedLimit, sectionStatus != nil {
-            return Double(currentSpeedKmh) > Double(limit) + settings.overspeedToleranceKmh
+            return Double(currentSpeedKmh) > settings.sectionEffectiveLimit(limit)
         }
         return false
     }
@@ -263,7 +263,9 @@ final class AppModel {
     private func handleSectionEvent(_ event: SectionEvent) {
         switch event {
         case let .entered(section, minimumSeconds):
-            announcer.speak(AnnouncementFormatter.sectionEntered(section: section, minimumSeconds: minimumSeconds), urgent: true)
+            announcer.speak(AnnouncementFormatter.sectionEntered(
+                section: section, minimumSeconds: minimumSeconds,
+                effectiveLimitKmh: settings.sectionEffectiveLimit(section.speedLimit)), urgent: true)
         case let .remaining(seconds):
             announcer.speak(AnnouncementFormatter.sectionRemaining(seconds: seconds))
         case .zeroReached:
@@ -271,6 +273,16 @@ final class AppModel {
         case let .completed(_, averageKmh, withinLimit):
             announcer.speak(AnnouncementFormatter.sectionCompleted(averageKmh: averageKmh, withinLimit: withinLimit))
         case .aborted:
+            break
+        case let .overspeedStarted(threshold):
+            // 照相機前的超速警示已經在嗶的話就不重複
+            guard cameraTarget?.isOverspeed != true else { break }
+            announcer.beep()
+            announcer.speak(AnnouncementFormatter.sectionOverspeed(threshold: threshold), urgent: true)
+        case .overspeedBeep:
+            guard cameraTarget?.isOverspeed != true else { break }
+            announcer.beep()
+        case .overspeedEnded:
             break
         }
     }

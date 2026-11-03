@@ -28,6 +28,13 @@ final class AnnouncementFormatterTests: XCTestCase {
         let s = SpeedSection(id: "s", name: "x", start: origin, end: origin, lengthMeters: 3_200, speedLimit: 60)
         XCTAssertEqual(AnnouncementFormatter.sectionEntered(section: s, minimumSeconds: 198),
                        "進入區間測速，全長3.2公里，速限60，至少需要198秒")
+        XCTAssertEqual(AnnouncementFormatter.sectionEntered(section: s, minimumSeconds: 238, effectiveLimitKmh: 50),
+                       "進入區間測速，全長3.2公里，速限60，至少需要238秒",
+                       "計算時速沒有高於速限時不念")
+        let bx = SpeedSection(id: "b", name: "北宜", start: origin, end: origin, lengthMeters: 4_100, speedLimit: 40)
+        XCTAssertEqual(AnnouncementFormatter.sectionEntered(section: bx, minimumSeconds: 304, effectiveLimitKmh: 50),
+                       "進入區間測速，全長4.1公里，速限40，以時速50計算，至少需要304秒")
+        XCTAssertEqual(AnnouncementFormatter.sectionOverspeed(threshold: 50), "區間測速，車速超過50")
         XCTAssertEqual(AnnouncementFormatter.sectionRemaining(seconds: 120), "區間測速，還有120秒")
         XCTAssertEqual(AnnouncementFormatter.sectionCompleted(averageKmh: 58.4, withinLimit: true), "區間測速結束，平均時速58")
     }
@@ -72,7 +79,11 @@ final class DatabaseTests: XCTestCase {
         XCTAssertTrue(db.cameras.contains { $0.type == .redLightSpeed })
         XCTAssertTrue(db.cameras.contains { $0.type == .section && $0.axis == 0 && $0.heading == nil })
         XCTAssertTrue(db.cameras.contains { $0.heading == nil })
-        XCTAssertEqual(db.sections.first?.lengthEstimated, true)
+        XCTAssertEqual(db.sections.map(\.id), ["s1-f", "s1-r"])
+        XCTAssertEqual(db.sections.first?.lengthEstimated, false)
+        XCTAssertEqual(db.sections.first?.startHeading, 5)
+        XCTAssertEqual(db.sections.last?.startHeading, 185)
+        XCTAssertEqual(db.sections.first?.end, db.sections.last?.start)
         XCTAssertEqual(Set(db.cameras.map(\.id)).count, db.cameras.count)
     }
 
@@ -83,6 +94,8 @@ final class DatabaseTests: XCTestCase {
         XCTAssertEqual(s.vehicleMode, .motorcycle)
         XCTAssertEqual(s.fastPreDistance, 600)
         XCTAssertEqual(s.overspeedBeepInterval, 3)
+        XCTAssertEqual(s.sectionToleranceKmh, 0)
+        XCTAssertEqual(s.sectionEffectiveLimit(40), 40)
         // 往返編碼
         let again = try JSONDecoder().decode(AlertSettings.self, from: JSONEncoder().encode(s))
         XCTAssertEqual(again, s)

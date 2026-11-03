@@ -39,6 +39,9 @@ public struct AlertSettings: Codable, Equatable, Sendable {
     // MARK: 區間測速
     /// 安全餘裕：最短合法時間再多加的比例（預設 3%）。
     public var sectionSafetyMargin: Double = 0.03
+    /// 區間容許值（km/h）：倒數與區間內的超速嗶聲都以「速限＋容許值」計算。
+    /// 預設 0（照表定速限）；例如北宜公路表定 40、寬限 50，可設成 10。
+    public var sectionToleranceKmh: Double = 0
     /// 進入或離開區間時，與起終點的判定距離。
     public var sectionGateRadius: Double = 60
     /// 是否在最後 30 秒、10 秒額外提醒。
@@ -61,6 +64,11 @@ public struct AlertSettings: Codable, Equatable, Sendable {
             isFastRoad = currentSpeedKmh >= Double(fastRoadSpeedLimit)
         }
         return isFastRoad ? (fastPreDistance, fastNearDistance) : (generalPreDistance, generalNearDistance)
+    }
+
+    /// 區間的計算速度（速限＋區間容許值）。
+    public func sectionEffectiveLimit(_ speedLimit: Int) -> Double {
+        Double(speedLimit) + max(0, sectionToleranceKmh)
     }
 
     /// 搜尋附近照相點時使用的半徑（比最大預告距離再大一點）。
@@ -86,6 +94,7 @@ public struct AlertSettings: Codable, Equatable, Sendable {
         rearmDistance = try c.decodeIfPresent(Double.self, forKey: .rearmDistance) ?? d.rearmDistance
         rearmInterval = try c.decodeIfPresent(TimeInterval.self, forKey: .rearmInterval) ?? d.rearmInterval
         sectionSafetyMargin = try c.decodeIfPresent(Double.self, forKey: .sectionSafetyMargin) ?? d.sectionSafetyMargin
+        sectionToleranceKmh = try c.decodeIfPresent(Double.self, forKey: .sectionToleranceKmh) ?? d.sectionToleranceKmh
         sectionGateRadius = try c.decodeIfPresent(Double.self, forKey: .sectionGateRadius) ?? d.sectionGateRadius
         sectionFinalCountdown = try c.decodeIfPresent(Bool.self, forKey: .sectionFinalCountdown) ?? d.sectionFinalCountdown
         voiceEnabled = try c.decodeIfPresent(Bool.self, forKey: .voiceEnabled) ?? d.voiceEnabled

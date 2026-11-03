@@ -84,9 +84,12 @@ public struct SpeedSection: Codable, Hashable, Identifiable, Sendable {
     public var speedLimit: Int
     /// 長度是不是估算值（沒有官方長度時為 true）。
     public var lengthEstimated: Bool
+    /// 起點附近的道路方向（由里程牌資料計算）。山路彎曲時比起終點直線方向準確。
+    public var startHeading: Double?
 
     public init(id: String, name: String, start: GeoPoint, end: GeoPoint,
-                lengthMeters: Double, speedLimit: Int, lengthEstimated: Bool = false) {
+                lengthMeters: Double, speedLimit: Int, lengthEstimated: Bool = false,
+                startHeading: Double? = nil) {
         self.id = id
         self.name = name
         self.start = start
@@ -94,15 +97,24 @@ public struct SpeedSection: Codable, Hashable, Identifiable, Sendable {
         self.lengthMeters = lengthMeters
         self.speedLimit = speedLimit
         self.lengthEstimated = lengthEstimated
+        self.startHeading = startHeading
     }
 
-    /// 起點往終點的直線方位角，用來判斷是不是同方向進入區間。
+    /// 起點往終點的直線方位角。
     public var heading: Double { GeoMath.bearing(from: start, to: end) }
+
+    /// 判斷是否同方向進入區間時使用的方向：有起點道路方向就用它，否則用起終點直線方向。
+    public var entryHeading: Double { startHeading ?? heading }
 
     /// 以速限行駛完整區間所需的最短秒數（不含安全餘裕）。
     public var minimumSeconds: Double {
-        guard speedLimit > 0 else { return 0 }
-        return lengthMeters / SpeedUnit.mps(fromKmh: Double(speedLimit))
+        minimumSeconds(atKmh: Double(speedLimit))
+    }
+
+    /// 以指定時速（例如速限＋容許值）行駛完整區間所需的最短秒數。
+    public func minimumSeconds(atKmh kmh: Double) -> Double {
+        guard kmh > 0 else { return 0 }
+        return lengthMeters / SpeedUnit.mps(fromKmh: kmh)
     }
 }
 

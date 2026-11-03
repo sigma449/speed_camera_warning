@@ -138,6 +138,23 @@ final class CameraAlertEngineTests: XCTestCase {
         XCTAssertFalse(events.contains { $0.event.isOverspeedStarted })
     }
 
+    func testSectionCameraUsesSectionTolerance() {
+        var settings = AlertSettings()
+        settings.sectionToleranceKmh = 10
+        let cam = camera(north: 1_000, limit: 40, type: .section)
+        // 48 km/h：超過 40 但在 50 以內 → 不嗶
+        let ok = runAlerts(engine([cam], settings: settings), straightTrack(from: origin, bearing: 0, speedKmh: 48, seconds: 90))
+        XCTAssertEqual(ok.filter { $0.event.isPre }.count, 1)
+        XCTAssertFalse(ok.contains { $0.event.isOverspeedStarted })
+        // 55 km/h：超過 50 → 嗶
+        let over = runAlerts(engine([cam], settings: settings), straightTrack(from: origin, bearing: 0, speedKmh: 55, seconds: 90))
+        XCTAssertEqual(over.filter { $0.event.isOverspeedStarted }.count, 1)
+        // 一般測速照相不受區間容許值影響：48 km/h 經過速限 40 的固定測速 → 嗶
+        let fixed = runAlerts(engine([camera(north: 1_000, limit: 40)], settings: settings),
+                              straightTrack(from: origin, bearing: 0, speedKmh: 48, seconds: 90))
+        XCTAssertEqual(fixed.filter { $0.event.isOverspeedStarted }.count, 1)
+    }
+
     func testRedLightCameraHasNoOverspeedWarning() {
         let cam = camera(north: 1_000, limit: 50, type: .redLight)
         let events = runAlerts(engine([cam]), straightTrack(from: origin, bearing: 0, speedKmh: 80, seconds: 60))

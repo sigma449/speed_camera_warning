@@ -21,21 +21,23 @@ sys.path.insert(0, HERE)
 
 from speedcam_data import sources  # noqa: E402
 from speedcam_data.normalize import NormalizeReport, normalize_rows  # noqa: E402
-from speedcam_data.sections import load_sections  # noqa: E402
+from speedcam_data import mileposts  # noqa: E402
+from speedcam_data.sections import load_sections, uses_mileposts  # noqa: E402
 
 DEFAULT_OUTPUT = os.path.join(HERE, "..", "SpeedCam", "Resources", "cameras.json")
 DEFAULT_SECTIONS = os.path.join(HERE, "manual", "sections.csv")
 DEFAULT_EXTRA = os.path.join(HERE, "manual", "cameras_extra.csv")
 
 
-def build(rows: list[dict], sections: list[dict], now: dt.datetime | None = None) -> tuple[dict, NormalizeReport]:
+def build(rows: list[dict], sections: list[dict], now: dt.datetime | None = None,
+          extra_sources: tuple = ()) -> tuple[dict, NormalizeReport]:
     now = now or dt.datetime.now(dt.timezone.utc)
     report = NormalizeReport()
     cameras = normalize_rows(rows, report)
     db = {
         "version": now.strftime("%Y-%m-%d"),
         "generatedAt": now.replace(microsecond=0).isoformat().replace("+00:00", "Z"),
-        "sources": list(sources.ATTRIBUTION),
+        "sources": list(sources.ATTRIBUTION) + list(extra_sources),
         "cameras": [c.to_json() for c in cameras],
         "sections": sections,
     }
@@ -73,7 +75,8 @@ def main(argv: list[str] | None = None) -> int:
         rows += extra
 
     sections = load_sections(args.sections)
-    db, report = build(rows, sections)
+    extra = (mileposts.ATTRIBUTION,) if sections and uses_mileposts(args.sections) else ()
+    db, report = build(rows, sections, extra_sources=extra)
     print(report.summary())
     diag = report.diagnostics()
     if diag:

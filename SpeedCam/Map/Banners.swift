@@ -65,6 +65,9 @@ struct SectionBanner: View {
             HStack(spacing: 6) {
                 Image(systemName: "timer")
                 Text(status.section.name)
+                if Int(status.effectiveLimitKmh.rounded()) > status.section.speedLimit {
+                    Text("・以 \(Int(status.effectiveLimitKmh.rounded())) 計算")
+                }
                 if status.section.lengthEstimated {
                     Text("・長度為估算").foregroundStyle(.yellow)
                 }

@@ -35,10 +35,20 @@ public enum AnnouncementFormatter {
         "您已超速，速限\(limit)"
     }
 
-    public static func sectionEntered(section: SpeedSection, minimumSeconds: Int) -> String {
+    /// effectiveLimitKmh：計算倒數用的時速（速限＋區間容許值）；比速限高時會一併念出來。
+    public static func sectionEntered(section: SpeedSection, minimumSeconds: Int,
+                                      effectiveLimitKmh: Double? = nil) -> String {
         let km = section.lengthMeters / 1_000
         let kmText = km == km.rounded() ? "\(Int(km))" : String(format: "%.1f", km)
-        return "進入區間測速，全長\(kmText)公里，速限\(section.speedLimit)，至少需要\(minimumSeconds)秒"
+        var text = "進入區間測速，全長\(kmText)公里，速限\(section.speedLimit)"
+        if let eff = effectiveLimitKmh, Int(eff.rounded()) > section.speedLimit {
+            text += "，以時速\(Int(eff.rounded()))計算"
+        }
+        return text + "，至少需要\(minimumSeconds)秒"
+    }
+
+    public static func sectionOverspeed(threshold: Int) -> String {
+        "區間測速，車速超過\(threshold)"
     }
 
     public static func sectionRemaining(seconds: Int) -> String {
