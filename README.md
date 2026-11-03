@@ -22,7 +22,7 @@ CarPlay 先用 iOS 26 的 Live Activity 顯示大字提醒；之後申請 CarPla
 
 ## 安裝到 iPhone（不需要 Mac、免費）
 
-請看 **[docs/SETUP.md](docs/SETUP.md)**：申請專用 Apple ID → 在 Windows 安裝 AltServer → 從 GitHub Actions 下載 IPA → 安裝。
+請看 **[docs/SETUP.md](docs/SETUP.md)**：申請專用 Apple ID → 在 Windows 用 winget 安裝 iTunes（非 Microsoft Store 版，不需要 iCloud）與 iloader → 用 iloader 把 SideStore 裝到 iPhone → 從 GitHub Actions 下載 IPA → 用 SideStore 安裝。之後每 7 天在 iPhone 上自己續簽，不需要電腦。
 
 ## 專案結構
 
@@ -56,7 +56,7 @@ data-pipeline/              Python：下載政府開放資料 → cameras.json
 | Workflow | 何時執行 | 做什麼 |
 |---|---|---|
 | **CI** | 每次 push | 核心邏輯測試（Swift）、資料處理測試（Python）、iOS 模擬器建置與截圖（Artifacts → `screenshots`） |
-| **Build IPA** | 手動 | 下載最新測速資料 → 編譯未簽署的 IPA（Artifacts → `SpeedCam-ipa`） |
+| **Build IPA** | 手動 | 下載最新測速資料 → 編譯未簽署的 IPA，給 SideStore／AltStore 側載（Artifacts → `SpeedCam-ipa`） |
 | **Refresh camera data** | 每週一 | 下載政府開放資料，有變動就開 PR |
 
 本機測試：

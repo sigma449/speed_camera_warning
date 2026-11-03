@@ -1,4 +1,4 @@
-name: Build IPA（未簽署，給 AltStore 側載用）
+name: Build IPA（未簽署，側載用）
 
 # 手動執行：GitHub 網頁 → Actions → 「Build IPA」→ Run workflow
 # 完成後在該次執行頁面下方的 Artifacts 下載 SpeedCam-ipa（zip 裡就是 SpeedCam.ipa）。
