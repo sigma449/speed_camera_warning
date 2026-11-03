@@ -128,10 +128,28 @@ SideStore 在手機上自己續簽時，需要假裝成「iPhone 有接著電腦
 
 ## 常見問題
 
-**Q：iloader 找不到 iPhone？**
-- 確認 iTunes 是用 winget 裝的電腦版，不是 Microsoft Store 版（裝完可以先打開 iTunes 一次，看它能不能認得 iPhone）。
-- iPhone 要解鎖，並且已經選「信任這部電腦」。
-- 換一條傳輸線或 USB 孔試試。
+**Q：iloader 找不到 iPhone，或出現「Failed to connect to usbmuxd: device socket io failed」？**
+
+iloader 是透過 iTunes 附帶的「Apple Mobile Device Service」（電腦本機 27015 埠）跟 iPhone 溝通。出現這個錯誤，代表 iloader 連不到這個服務。請依序試：
+
+1. **移除所有 Microsoft Store 版的 Apple 軟體**：到「設定 → 應用程式 → 已安裝的應用程式」，把 iTunes、Apple 裝置（Apple Devices）、Apple Mobile Device Support 全部解除安裝。再用 `winget install --id Apple.iTunes -e --source winget` 重新安裝電腦版 iTunes，裝完**重新開機**。iloader 的 GitHub 上有使用者回報這樣就解決了（[#396](https://github.com/nab138/iloader/issues/396)）。
+2. **重新啟動服務**：用「以系統管理員身分執行」打開 PowerShell，輸入 `Restart-Service "Apple Mobile Device Service"`。
+3. **先用 iTunes 確認**：iPhone 解鎖後接上電腦，點「信任」並輸入密碼，看 iTunes 左上角有沒有出現手機圖示。**iTunes 看不到的話，iloader 也一定看不到**。
+4. **換傳輸線或 USB 孔**：用原廠線，直接插電腦本體的 USB 孔，不要經過 Hub 或延長線（[#404](https://github.com/nab138/iloader/issues/404)）。
+5. **iPhone 必須設定密碼**。也可以到 iPhone「設定 → 開發者 → 清除信任的電腦」，再重新接上並點「信任」。
+6. **關掉 iTunes**，再用「以系統管理員身分執行」打開 iloader。
+
+還是不行的話，在 PowerShell 執行下面三行，把結果拿去問人（或回報給開發者）：
+
+```
+winget list --name Apple
+Get-Service "Apple Mobile Device Service"
+netstat -ano | findstr 27015
+```
+
+- 第一行：看裝了哪些 Apple 軟體，以及來源是 Store 還是 winget。
+- 第二行：服務狀態應該是 `Running`。
+- 第三行：應該要看到一行 `127.0.0.1:27015 ... LISTENING`。
 
 **Q：SideStore 續簽失敗？**
 - 確認 LocalDevVPN 有連線（狀態列會出現 VPN 圖示）。
