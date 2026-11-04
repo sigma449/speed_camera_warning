@@ -22,6 +22,8 @@ final class MapFollowController {
     @ObservationIgnored private var lastCourse = 0.0
     @ObservationIgnored private var lastFix: VehicleFix?
     @ObservationIgnored private var toastTask: Task<Void, Never>?
+    /// 導航預覽中不自動回到目前位置。
+    @ObservationIgnored private var autoRecenterSuspended = false
 
     private static let modeKey = "mapFollowMode"
 
@@ -78,6 +80,29 @@ final class MapFollowController {
         position = .region(region)
     }
 
+    /// 導航預覽：鏡頭移到指定範圍，預覽期間不自動回到目前位置。
+    func preview(region: MKCoordinateRegion) {
+        beginPreview()
+        setPosition(.region(region), animated: true)
+    }
+
+    func preview(rect: MKMapRect) {
+        beginPreview()
+        setPosition(.rect(rect), animated: true)
+    }
+
+    /// 預覽結束（開始導航或取消）：回到目前位置並恢復跟隨。
+    func endPreview() {
+        autoRecenterSuspended = false
+        recenter(animated: true)
+    }
+
+    private func beginPreview() {
+        isFollowing = false
+        autoRecenterSuspended = true
+        lastInteraction = Date()
+    }
+
     /// 使用者動了地圖（拖曳、縮放、旋轉）：停止跟隨，並記下時間（自動回到中心要等使用者放手一段時間）。
     func userMovedMap() {
         if isFollowing { isFollowing = false }
@@ -93,7 +118,8 @@ final class MapFollowController {
         }
         if isFollowing {
             apply(fix, animated: true)
-        } else if policy.shouldRecenter(fix: fix, isFollowing: false, lastInteraction: lastInteraction) {
+        } else if !autoRecenterSuspended,
+                  policy.shouldRecenter(fix: fix, isFollowing: false, lastInteraction: lastInteraction) {
             recenter(animated: true)
         }
     }

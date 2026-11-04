@@ -33,7 +33,10 @@ final class AppModel {
     private(set) var routeProgress: RouteProgress?
     private(set) var route: MKRoute?
     private(set) var destinationName: String?
+    private(set) var destinationCoordinate: CLLocationCoordinate2D?
     private(set) var isCalculatingRoute = false
+    /// 開始導航前的預覽（先看地點，再看路線，最後開始導航）。
+    private(set) var preview: NavigationPreview?
     private(set) var authorizationDenied = false
     private(set) var recentDestinations: [RecentDestination] = RecentDestinationStore.load()
     var statusMessage: String?
@@ -46,6 +49,10 @@ final class AppModel {
     let initialSearchQuery: String?
     /// 啟動時地圖顯示的範圍（CI 截圖用：`-mapCenter 24.905,121.695 -mapSpan 0.16`）。
     let initialMapRegion: MKCoordinateRegion?
+    /// 啟動後直接打開設定頁（CI 截圖用：`-settings`）。
+    let initialShowSettings: Bool
+    /// 啟動後直接預覽到這個地點的導航（CI 截圖用：`-previewTo 25.0478,121.5170,台北車站`）。
+    let initialPreviewTarget: (coordinate: CLLocationCoordinate2D, name: String)?
 
     var vehicleMode: VehicleMode {
         get { settings.vehicleMode }
@@ -92,6 +99,9 @@ final class AppModel {
             initialSearchQuery = nil
         }
         initialMapRegion = Self.parseMapRegion(arguments)
+        initialPreviewTarget = Self.parsePreviewTarget(arguments)
+        initialShowSettings = arguments.contains("-settings")
+        _ = MapLanguage.atLaunch   // 記下啟動時的語言設定
         Logger(subsystem: "tw.speedcammap.app", category: "launch")
             .notice("arguments: \(arguments.dropFirst().joined(separator: " "), privacy: .public); languages: \(Locale.preferredLanguages.joined(separator: ","), privacy: .public)")
         let loaded = Self.loadSettings()
@@ -116,6 +126,13 @@ final class AppModel {
             self?.applySnappedPath(path, toGroup: groupID)
         }
         applySettingsToComponents()
+    }
+
+    private static func parsePreviewTarget(_ arguments: [String]) -> (coordinate: CLLocationCoordinate2D, name: String)? {
+        guard let i = arguments.firstIndex(of: "-previewTo"), i + 1 < arguments.count else { return nil }
+        let parts = arguments[i + 1].split(separator: ",", maxSplits: 2).map(String.init)
+        guard parts.count >= 2, let lat = Double(parts[0]), let lon = Double(parts[1]) else { return nil }
+        return (CLLocationCoordinate2D(latitude: lat, longitude: lon), parts.count > 2 ? parts[2] : "目的地")
     }
 
     private static func parseMapRegion(_ arguments: [String]) -> MKCoordinateRegion? {
@@ -214,8 +231,71 @@ final class AppModel {
         try await navigation.search(completion: completion)
     }
 
-    func startNavigation(to recent: RecentDestination) async {
-        await startNavigation(to: MapItems.item(name: recent.name, coordinate: recent.coordinate), subtitle: recent.subtitle)
+    // MARK: 導航預覽
+
+    struct NavigationPreview {
+        enum Stage: Equatable { case place, route }
+        let item: MKMapItem
+        let name: String
+        let subtitle: String
+        let coordinate: CLLocationCoordinate2D
+        var route: MKRoute?
+        var stage: Stage = .place
+        /// 使用者已經要看路線（或時間到了），路線算好就切換過去。
+        var wantsRoute = false
+        var errorText: String?
+        /// 每次預覽不同（地點或階段）都會變，畫面用來重新觸發計時與鏡頭移動。
+        var key: String { "\(ObjectIdentifier(item).hashValue)-\(stage == .place ? "place" : "route")" }
+    }
+
+    @ObservationIgnored private var previewTask: Task<Void, Never>?
+
+    /// 選好目的地：先預覽地點，同時在背景規劃路線。
+    func beginPreview(to item: MKMapItem, subtitle: String? = nil) {
+        endNavigation(silently: true)
+        previewTask?.cancel()
+        preview = NavigationPreview(item: item, name: item.name ?? "未命名地點",
+                                    subtitle: subtitle ?? MapItems.subtitle(of: item),
+                                    coordinate: MapItems.coordinate(of: item))
+        isCalculatingRoute = true
+        previewTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.isCalculatingRoute = false }
+            do {
+                let route = try await self.navigation.calculateRoute(to: item, mode: self.settings.vehicleMode)
+                guard !Task.isCancelled, self.preview?.item === item else { return }
+                self.preview?.route = route
+                if self.preview?.wantsRoute == true { self.preview?.stage = .route }
+            } catch {
+                guard !Task.isCancelled, self.preview?.item === item else { return }
+                self.preview?.errorText = "路線規劃失敗：\(error.localizedDescription)"
+            }
+        }
+    }
+
+    func beginPreview(to recent: RecentDestination) {
+        beginPreview(to: MapItems.item(name: recent.name, coordinate: recent.coordinate), subtitle: recent.subtitle)
+    }
+
+    /// 從地點預覽切換到路線預覽（路線還在規劃的話，算好就切換）。
+    func showRoutePreview() {
+        guard var p = preview else { return }
+        p.wantsRoute = true
+        if p.route != nil { p.stage = .route }
+        preview = p
+    }
+
+    /// 開始導航（使用者按下，或倒數結束）。
+    func confirmPreview() {
+        guard let p = preview, let route = p.route else { return }
+        preview = nil
+        startNavigation(route: route, destination: p.item, subtitle: p.subtitle)
+    }
+
+    func cancelPreview() {
+        previewTask?.cancel()
+        preview = nil
+        isCalculatingRoute = false
     }
 
     func removeRecent(_ recent: RecentDestination) {
@@ -238,24 +318,24 @@ final class AppModel {
         RecentDestinationStore.save(recentDestinations)
     }
 
-    func startNavigation(to item: MKMapItem, subtitle: String? = nil) async {
-        isCalculatingRoute = true
-        defer { isCalculatingRoute = false }
-        do {
-            let newRoute = try await navigation.calculateRoute(to: item, mode: settings.vehicleMode)
-            navigation.start(route: newRoute, destination: item)
-            route = newRoute
-            destinationName = item.name
-            rememberDestination(item, subtitle: subtitle)
-            if !isCruising { startCruise() }
-            let km = newRoute.distance / 1_000
-            var text = "開始導航，全程\(String(format: "%.1f", km))公里"
-            if let first = navigation.firstInstruction { text += "，\(first)" }
-            announcer.speak(text)
-            statusMessage = nil
-        } catch {
-            statusMessage = "路線規劃失敗：\(error.localizedDescription)"
-        }
+    private func startNavigation(route newRoute: MKRoute, destination item: MKMapItem, subtitle: String?) {
+        navigation.start(route: newRoute, destination: item)
+        route = newRoute
+        destinationName = item.name
+        destinationCoordinate = MapItems.coordinate(of: item)
+        rememberDestination(item, subtitle: subtitle)
+        if !isCruising { startCruise() }
+        let km = newRoute.distance / 1_000
+        var text = "開始導航，全程\(String(format: "%.1f", km))公里"
+        if let first = navigation.firstInstruction { text += "，\(first)" }
+        announcer.speak(text)
+        statusMessage = nil
+    }
+
+    /// 改語言後重新開啟 App 之前：結束巡航（Live Activity 也一起結束）。
+    func prepareForRelaunch() {
+        cancelPreview()
+        stopCruise()
     }
 
     func endNavigation(silently: Bool = false) {
@@ -264,6 +344,7 @@ final class AppModel {
         route = nil
         routeProgress = nil
         destinationName = nil
+        destinationCoordinate = nil
         if !silently { announcer.speak("導航結束") }
     }
 

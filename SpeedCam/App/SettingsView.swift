@@ -8,10 +8,33 @@ struct SettingsView: View {
     @State private var mapLanguage = MapLanguage.selected
     @State private var showRestartNotice = false
 
+    /// 改了語言但還沒重新開啟 App。
+    private var languagePending: Bool { mapLanguage != MapLanguage.atLaunch }
+
     var body: some View {
         @Bindable var model = model
         NavigationStack {
             Form {
+                Section {
+                    Picker("搜尋與導航語言", selection: $mapLanguage) {
+                        ForEach([MapLanguage.traditionalChinese, .english, .system]) { language in
+                            Text(language.shortName).tag(language)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    if languagePending {
+                        Button {
+                            restartForLanguage()
+                        } label: {
+                            Label("立即重新開啟 App，改用「\(mapLanguage.displayName)」", systemImage: "arrow.clockwise")
+                        }
+                    }
+                } header: {
+                    Text("搜尋與導航語言")
+                } footer: {
+                    Text("地圖上的地名、搜尋結果、導航的轉彎指示都會用這個語言，不必改整支手機的語言。App 本身的文字一律是中文。iOS 規定要重新開啟 App 才會生效。目前使用：\(MapLanguage.active)")
+                }
+
                 Section("車種") {
                     Picker("車種", selection: $model.settings.vehicleMode) {
                         ForEach(VehicleMode.allCases, id: \.self) { mode in
@@ -31,18 +54,6 @@ struct SettingsView: View {
                     Text("開啟後，打開 App 就會開始偵測測速照相，不用再按 ▶︎。")
                 }
 
-                Section {
-                    Picker("語言", selection: $mapLanguage) {
-                        ForEach(MapLanguage.allCases) { language in
-                            Text(language.displayName).tag(language)
-                        }
-                    }
-                    LabeledContent("目前使用", value: MapLanguage.active)
-                } header: {
-                    Text("地圖與搜尋")
-                } footer: {
-                    Text("地圖上的地名和搜尋結果使用這個語言。App 內的文字不受影響。變更後要重新開啟 App 才會生效：從螢幕底部往上滑到多工畫面，把 App 往上滑掉，再重新打開。")
-                }
 
                 Section {
                     distanceStepper("一般道路・預告", value: $model.settings.generalPreDistance, range: 100...800)
@@ -125,12 +136,13 @@ struct SettingsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .onChange(of: mapLanguage) { _, newValue in
                 MapLanguage.select(newValue)
-                showRestartNotice = true
+                showRestartNotice = languagePending
             }
-            .alert("重新開啟 App 後生效", isPresented: $showRestartNotice) {
-                Button("好") {}
+            .alert("要現在重新開啟 App 嗎？", isPresented: $showRestartNotice) {
+                Button("立即重新開啟") { restartForLanguage() }
+                Button("稍後", role: .cancel) {}
             } message: {
-                Text("請從多工畫面把 App 往上滑掉，再重新打開。地圖上的地名和搜尋結果就會改用「\(mapLanguage.displayName)」。")
+                Text("App 會回到主畫面並關閉，再點一次「測速地圖」圖示，地名、搜尋和導航就會改用「\(mapLanguage.displayName)」。")
             }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -138,6 +150,11 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+    private func restartForLanguage() {
+        model.prepareForRelaunch()
+        AppRelauncher.closeToHomeScreen()
     }
 
     private func distanceStepper(_ title: String, value: Binding<Double>, range: ClosedRange<Double>) -> some View {

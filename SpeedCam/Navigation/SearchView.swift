@@ -37,13 +37,6 @@ struct SearchView: View {
                     suggestionsSection
                 }
             }
-            .overlay {
-                if model.isCalculatingRoute {
-                    ProgressView("規劃路線中…")
-                        .padding()
-                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
-                }
-            }
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "搜尋地點或地址")
             .searchFocused($searchFocused)
             .onSubmit(of: .search) { runSearch(query) }
@@ -115,15 +108,12 @@ struct SearchView: View {
             Section {
                 ForEach(model.recentDestinations) { recent in
                     Button {
-                        Task {
-                            await model.startNavigation(to: recent)
-                            dismiss()
-                        }
+                        model.beginPreview(to: recent)
+                        dismiss()
                     } label: {
                         row(symbol: "clock.arrow.circlepath", title: Text(recent.name), subtitle: recent.subtitle,
                             distance: MapItems.distanceText(from: model.searchCenter, to: recent.coordinate))
                     }
-                    .disabled(model.isCalculatingRoute)
                     .swipeActions {
                         Button("刪除", role: .destructive) { model.removeRecent(recent) }
                     }
@@ -157,7 +147,7 @@ struct SearchView: View {
                         title: Text(SearchCompleter.highlighted(suggestion.title, ranges: suggestion.titleHighlightRanges)),
                         subtitle: suggestion.subtitle, distance: nil)
                 }
-                .disabled(isSearching || model.isCalculatingRoute)
+                .disabled(isSearching)
             }
         }
     }
@@ -175,7 +165,6 @@ struct SearchView: View {
                         subtitle: MapItems.subtitle(of: item),
                         distance: MapItems.distanceText(from: model.searchCenter, to: MapItems.coordinate(of: item)))
                 }
-                .disabled(model.isCalculatingRoute)
             }
         } header: {
             Text("搜尋結果（\(results.count)）")
@@ -212,14 +201,13 @@ struct SearchView: View {
 
     // MARK: 動作
 
+    /// 選好地點：關掉搜尋，回到地圖先預覽地點和路線，再開始導航。
     private func navigate(to item: MKMapItem) {
-        Task {
-            await model.startNavigation(to: item)
-            dismiss()
-        }
+        model.beginPreview(to: item)
+        dismiss()
     }
 
-    /// 點了候選：只有一個地點就直接導航；是一類地點（例如「加油站」）就列出結果。
+    /// 點了候選：只有一個地點就直接預覽；是一類地點（例如「加油站」）就列出結果。
     private func select(_ suggestion: MKLocalSearchCompletion) {
         isSearching = true
         errorText = nil

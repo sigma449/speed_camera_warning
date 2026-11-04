@@ -105,6 +105,20 @@ xcrun simctl launch --terminate-running-process "${UDID}" "${BUNDLE_ID}" -mapCen
 sleep 10
 shot "13-beiyi-4"
 
+# 6) 導航預覽：先看地點（約 3 秒）→ 路線預覽（倒數 10 秒）→ 開始導航
+xcrun simctl launch --terminate-running-process "${UDID}" "${BUNDLE_ID}" -previewTo "25.0478,121.5170,台北車站"
+sleep 4
+shot "14-preview-place"
+sleep 5
+shot "15-preview-route"
+sleep 14
+shot "16-navigation-started"
+
+# 7) 設定頁最上面的「搜尋與導航語言」
+xcrun simctl launch --terminate-running-process "${UDID}" "${BUNDLE_ID}" -settings
+sleep 8
+shot "17-settings-language"
+
 # App 的紀錄（確認啟動參數、sheet、地圖範圍有沒有生效）
 xcrun simctl spawn "${UDID}" log show --last 15m --style compact \
   --predicate 'subsystem == "tw.speedcammap.app"' 2>/dev/null | tail -60 || true

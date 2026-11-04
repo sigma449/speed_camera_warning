@@ -56,6 +56,11 @@ Live Activity 在 iOS 26 會出現在 CarPlay 儀表板，**不需要 entitlemen
 - **高架／平面標示**：資料處理用地址判斷 `level`（「高架」→ elevated；「高架下」「平面」→ surface；
   高架照相點 350 m 內沒標示的 → surface）。語音念「高架測速照相」「平面測速照相」，橫幅和地圖詳細資訊有標籤。
   **以後的可能性**：用 iPhone 氣壓計（CMAltimeter 相對高度）偵測上下匝道的高度變化，自動忽略另一層的照相點。
+- **導航前先預覽**：選好目的地 → 地圖移到地點約 3 秒（或使用者點）→ 整條路線預覽 → 使用者按「開始導航」或倒數 10 秒後開始；
+  預覽時拖動地圖就暫停倒數，隨時可取消（`AppModel.NavigationPreview`、`NavigationPreviewCard`）。
+- **搜尋與導航語言**放在設定頁最上面（中文／English／跟隨 iPhone），選完可按「立即重新開啟 App」
+  （回到主畫面後結束，使用者再點圖示）。使用者的手機是英文，但搜尋和導航想用中文。
+  CI 截圖已確認用 zh-Hant-TW 啟動時，搜尋候選和地圖路名都會變中文；地址格式跟著地區，所以同時設定 `AppleLocale`。
 - **地圖與搜尋的語言**可以選「跟隨 iPhone／繁體中文／English」。MapKit 沒有指定語言的 API，
   所以寫入 App 自己的 `AppleLanguages`（跟 iOS「個別 App 語言」同一個機制），重新開啟 App 後生效。
   App 有 zh-Hant 和 en 兩個 lproj，兩邊的顯示名稱都是「測速地圖」。

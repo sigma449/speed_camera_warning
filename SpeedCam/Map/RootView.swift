@@ -14,6 +14,10 @@ struct RootView: View {
     @State private var selectedCameraID: String?
     @State private var showSearch = false
     @State private var showSettings = false
+    /// 導航預覽的倒數（秒）；nil 表示沒有倒數。
+    @State private var previewCountdown: Int?
+    /// 預覽時使用者拖動了地圖：停止自動前進，等使用者按。
+    @State private var previewPaused = false
 
     var body: some View {
         ZStack {
@@ -33,10 +37,18 @@ struct RootView: View {
                     MessageBanner(text: message) { model.statusMessage = nil }
                 }
                 Spacer()
-                if let camera = selectedCamera {
-                    CameraDetailCard(camera: camera) { selectedCameraID = nil }
+                if let preview = model.preview {
+                    NavigationPreviewCard(preview: preview, vehicleMode: model.vehicleMode,
+                                          countdown: previewCountdown,
+                                          onShowRoute: { model.showRoutePreview() },
+                                          onStart: { startPreviewedNavigation() },
+                                          onCancel: { cancelPreview() })
+                } else {
+                    if let camera = selectedCamera {
+                        CameraDetailCard(camera: camera) { selectedCameraID = nil }
+                    }
+                    recenterRow
                 }
-                recenterRow
                 BottomBar(showSearch: $showSearch, showSettings: $showSettings)
             }
             .padding(.horizontal, 12)
@@ -69,8 +81,16 @@ struct RootView: View {
         }
         .task {
             // 剛啟動時畫面還沒準備好，太早開 sheet 或改地圖範圍會被系統忽略，稍等一下再做（CI 截圖用的啟動參數）。
-            guard model.initialSearchQuery != nil || model.initialMapRegion != nil else { return }
+            guard model.initialSearchQuery != nil || model.initialMapRegion != nil
+                    || model.initialPreviewTarget != nil || model.initialShowSettings else { return }
             try? await Task.sleep(nanoseconds: 1_200_000_000)
+            if model.initialShowSettings {
+                showSettings = true
+            }
+            if let target = model.initialPreviewTarget {
+                model.beginPreview(to: MapItems.item(name: target.name, coordinate: target.coordinate))
+                uiLog.notice("started navigation preview")
+            }
             if let region = model.initialMapRegion {
                 follow.show(region: region)
                 uiLog.notice("applied initial map region")
@@ -83,6 +103,66 @@ struct RootView: View {
         .onChange(of: model.lastFix) { _, fix in
             if let fix { follow.handle(fix) }
         }
+        .onChange(of: model.preview?.key) { _, _ in
+            movePreviewCamera()
+        }
+        .task(id: model.preview?.key) {
+            await runPreviewTimer()
+        }
+    }
+
+    // MARK: 導航預覽
+
+    /// 地點階段：鏡頭移到目的地；路線階段：整條路線放進畫面（下方留位置給卡片）。
+    private func movePreviewCamera() {
+        guard let p = model.preview else { return }
+        switch p.stage {
+        case .place:
+            follow.preview(region: MKCoordinateRegion(center: p.coordinate, latitudinalMeters: 900, longitudinalMeters: 900))
+        case .route:
+            guard let route = p.route else { return }
+            let r = route.polyline.boundingMapRect
+            let padded = r.insetBy(dx: -r.width * 0.25 - 600, dy: -r.height * 0.2 - 600)
+            // 卡片蓋住畫面下方約三分之一，往下多留空間
+            let rect = MKMapRect(x: padded.minX, y: padded.minY, width: padded.width, height: padded.height + r.height * 0.7 + 800)
+            follow.preview(rect: rect)
+        }
+    }
+
+    /// 地點階段停 3 秒後看路線；路線階段倒數 10 秒後開始導航。使用者拖動地圖就停止自動前進。
+    private func runPreviewTimer() async {
+        previewPaused = false
+        previewCountdown = nil
+        guard let p = model.preview else { return }
+        switch p.stage {
+        case .place:
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            guard !Task.isCancelled, !previewPaused else { return }
+            model.showRoutePreview()
+        case .route:
+            for remaining in stride(from: 10, through: 1, by: -1) {
+                previewCountdown = remaining
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                if Task.isCancelled { return }
+                if previewPaused {
+                    previewCountdown = nil
+                    return
+                }
+            }
+            startPreviewedNavigation()
+        }
+    }
+
+    private func startPreviewedNavigation() {
+        previewCountdown = nil
+        model.confirmPreview()
+        follow.endPreview()
+    }
+
+    private func cancelPreview() {
+        previewCountdown = nil
+        model.cancelPreview()
+        follow.endPreview()
     }
 
     /// 右下角的「回到目前位置」按鈕。跟隨中再按一次會切換顯示方式（行進方向朝上 → 北方朝上 → 3D）。
@@ -147,6 +227,19 @@ struct RootView: View {
                     .stroke(.blue, lineWidth: 7)
             }
 
+            // 導航預覽：目的地和預覽路線
+            if let p = model.preview {
+                if p.stage == .route, let route = p.route {
+                    MapPolyline(route.polyline)
+                        .stroke(.blue.opacity(0.85), style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
+                }
+                Marker(p.name, coordinate: p.coordinate)
+                    .tint(.red)
+            } else if let destination = model.destinationCoordinate {
+                Marker(model.destinationName ?? "目的地", systemImage: "flag.checkered", coordinate: destination)
+                    .tint(.red)
+            }
+
             // 區間順著路形畫（有里程牌資料時）；同一段的兩個方向只畫一次。
             ForEach(model.sectionOverlays) { section in
                 MapPolyline(coordinates: section.displayPath.map(\.coordinate))
@@ -180,7 +273,10 @@ struct RootView: View {
             if follow.position.positionedByUser { follow.userMovedMap() }
         }
         .onChange(of: follow.position.positionedByUser) { _, byUser in
-            if byUser { follow.userMovedMap() }
+            if byUser {
+                follow.userMovedMap()
+                if model.preview != nil { previewPaused = true }
+            }
         }
     }
 }
