@@ -39,6 +39,8 @@ Live Activity 在 iOS 26 會出現在 CarPlay 儀表板，**不需要 entitlemen
 - **Live Activity**：要大字（使用者覺得神盾的太小）。
 - **開啟 App 就自動開始巡航**（預設開啟，設定頁可以關；`AppPreferences.autoStartCruise`）。
 - **搜尋目的地**：要像 Google 地圖那樣邊打字邊出現候選（`MKLocalSearchCompleter`），另有快速搜尋（加油站、停車場…）和最近的目的地（最多 15 筆）。
+- **區間在地圖上順著路形畫**：資料處理用里程牌座標產生 `path`（[[緯度, 經度], ...]，Douglas–Peucker 簡化到 6 m），
+  App 用 `SpeedSection.displayPath` 畫，沒有 path 時畫起終點直線；同一段的兩個方向只畫一次。
 - **地圖與搜尋的語言**可以選「跟隨 iPhone／繁體中文／English」。MapKit 沒有指定語言的 API，
   所以寫入 App 自己的 `AppleLanguages`（跟 iOS「個別 App 語言」同一個機制），重新開啟 App 後生效。
   App 有 zh-Hant 和 en 兩個 lproj，兩邊的顯示名稱都是「測速地圖」。
@@ -64,14 +66,19 @@ docs/SETUP.md                安裝教學（iloader＋SideStore）和 Windows �
 scripts/ci/                  CI 用的腳本（選 Xcode、截圖、檢查 App 名稱）
 ```
 
-App 用 `-demo` 啟動參數進入展示模式（CI 截圖用）；`-demoIfEmpty` 在沒有資料時改用展示資料。
+App 的啟動參數（CI 截圖用）：
+- `-demo`：展示模式
+- `-demoIfEmpty`：沒有資料時改用展示資料
+- `-gallery`：Live Activity 預覽頁
+- `-search 文字`：打開搜尋並輸入
+- `-mapCenter 緯度,經度 -mapSpan 度數`：指定地圖範圍
 
 ## 建置與測試
 
-- **Swift 核心邏輯**（57 個測試）：
+- **Swift 核心邏輯**（58 個測試）：
   `docker run --rm -v "$PWD/Packages/SpeedCamCore":/pkg -w /pkg swift:6.2-noble swift test`
   （雲端 session 裡 Docker 沒在跑的話先執行 `dockerd &`。）
-- **Python 資料處理**（147 個測試）：`python3 -m pytest -q data-pipeline`
+- **Python 資料處理**（152 個測試）：`python3 -m pytest -q data-pipeline`
 - **iOS App** 只能在 GitHub Actions 編譯：
   - `CI`（每次 push）：Swift 測試、pytest、iOS 模擬器建置和截圖。截圖會以 base64 印在 log 裡（`scripts/ci/print-screenshots.sh`），因為雲端 session 下載不了 artifact。
   - `Build IPA`（手動）：`gh workflow run build-ipa.yml --repo sigma449/speed_camera_warning --ref main`。會下載最新資料、編譯未簽署的 IPA（artifact `SpeedCam-ipa`，保留 30 天）。

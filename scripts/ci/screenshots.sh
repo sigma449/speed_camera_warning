@@ -83,5 +83,11 @@ xcrun simctl terminate "${UDID}" "${BUNDLE_ID}" || true
 xcrun simctl launch "${UDID}" "${BUNDLE_ID}" -search "Taipei Main Station" -AppleLanguages "(en)"
 sleep 10
 shot "08-search-suggestions-en"
+xcrun simctl terminate "${UDID}" "${BUNDLE_ID}" || true
+
+# 5) 北宜公路一帶：區間應該順著路形畫，而不是起終點直線
+xcrun simctl launch "${UDID}" "${BUNDLE_ID}" -mapCenter "24.905,121.695" -mapSpan 0.16
+sleep 12
+shot "09-sections-follow-road"
 
 ls -la "${OUT}"

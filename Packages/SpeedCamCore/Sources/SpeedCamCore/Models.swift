@@ -86,10 +86,12 @@ public struct SpeedSection: Codable, Hashable, Identifiable, Sendable {
     public var lengthEstimated: Bool
     /// 起點附近的道路方向（由里程牌資料計算）。山路彎曲時比起終點直線方向準確。
     public var startHeading: Double?
+    /// 沿路的座標（起點 → 終點，由里程牌資料產生），地圖上順著路形畫區間用。沒有時畫直線。
+    public var path: [GeoPoint]?
 
     public init(id: String, name: String, start: GeoPoint, end: GeoPoint,
                 lengthMeters: Double, speedLimit: Int, lengthEstimated: Bool = false,
-                startHeading: Double? = nil) {
+                startHeading: Double? = nil, path: [GeoPoint]? = nil) {
         self.id = id
         self.name = name
         self.start = start
@@ -98,6 +100,46 @@ public struct SpeedSection: Codable, Hashable, Identifiable, Sendable {
         self.speedLimit = speedLimit
         self.lengthEstimated = lengthEstimated
         self.startHeading = startHeading
+        self.path = path
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, name, start, end, lengthMeters, speedLimit, lengthEstimated, startHeading, path
+    }
+
+    /// JSON 裡的 path 是 [[緯度, 經度], ...]，比 {"lat":…,"lon":…} 小很多。
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        start = try c.decode(GeoPoint.self, forKey: .start)
+        end = try c.decode(GeoPoint.self, forKey: .end)
+        lengthMeters = try c.decode(Double.self, forKey: .lengthMeters)
+        speedLimit = try c.decode(Int.self, forKey: .speedLimit)
+        lengthEstimated = try c.decodeIfPresent(Bool.self, forKey: .lengthEstimated) ?? false
+        startHeading = try c.decodeIfPresent(Double.self, forKey: .startHeading)
+        let raw = (try? c.decodeIfPresent([[Double]].self, forKey: .path)) ?? nil
+        let points = raw?.compactMap { $0.count >= 2 ? GeoPoint(lat: $0[0], lon: $0[1]) : nil }
+        path = (points?.count ?? 0) >= 2 ? points : nil
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(name, forKey: .name)
+        try c.encode(start, forKey: .start)
+        try c.encode(end, forKey: .end)
+        try c.encode(lengthMeters, forKey: .lengthMeters)
+        try c.encode(speedLimit, forKey: .speedLimit)
+        try c.encode(lengthEstimated, forKey: .lengthEstimated)
+        try c.encodeIfPresent(startHeading, forKey: .startHeading)
+        try c.encodeIfPresent(path?.map { [$0.lat, $0.lon] }, forKey: .path)
+    }
+
+    /// 地圖上要畫的線：有沿路座標就用它，否則畫起終點直線。
+    public var displayPath: [GeoPoint] {
+        if let path, path.count >= 2 { return path }
+        return [start, end]
     }
 
     /// 起點往終點的直線方位角。

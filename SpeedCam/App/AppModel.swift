@@ -43,6 +43,8 @@ final class AppModel {
     let showGallery: Bool
     /// 啟動時直接打開搜尋並輸入這段文字（CI 截圖用：`-search 台北車站`）。
     let initialSearchQuery: String?
+    /// 啟動時地圖顯示的範圍（CI 截圖用：`-mapCenter 24.905,121.695 -mapSpan 0.16`）。
+    let initialMapRegion: MKCoordinateRegion?
 
     var vehicleMode: VehicleMode {
         get { settings.vehicleMode }
@@ -87,6 +89,7 @@ final class AppModel {
         } else {
             initialSearchQuery = nil
         }
+        initialMapRegion = Self.parseMapRegion(arguments)
         let loaded = Self.loadSettings()
         storedSettings = loaded
         alertEngine = CameraAlertEngine(index: SpatialIndex(cameras: []), settings: loaded)
@@ -106,6 +109,18 @@ final class AppModel {
             self?.authorizationChanged(status)
         }
         applySettingsToComponents()
+    }
+
+    private static func parseMapRegion(_ arguments: [String]) -> MKCoordinateRegion? {
+        guard let i = arguments.firstIndex(of: "-mapCenter"), i + 1 < arguments.count else { return nil }
+        let parts = arguments[i + 1].split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+        guard parts.count == 2 else { return nil }
+        var span = 0.05
+        if let j = arguments.firstIndex(of: "-mapSpan"), j + 1 < arguments.count, let s = Double(arguments[j + 1]) {
+            span = s
+        }
+        return MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: parts[0], longitude: parts[1]),
+                                  span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span * 1.4))
     }
 
     // MARK: 生命週期
@@ -380,6 +395,12 @@ final class AppModel {
     // MARK: 資料與設定
 
     var visibleCameraLimit: Int { 400 }
+
+    /// 地圖上要畫的區間：同一段的兩個方向（-f／-r）路線相同，只畫一次。
+    var sectionOverlays: [SpeedSection] {
+        var seen = Set<String>()
+        return database.sections.filter { seen.insert($0.groupID).inserted }
+    }
 
     func cameras(in region: MKCoordinateRegion) -> [Camera] {
         // 地圖縮得太小時不畫照相點，避免畫面塞滿、也省效能。

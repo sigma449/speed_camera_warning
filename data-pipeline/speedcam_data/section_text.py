@@ -325,6 +325,7 @@ def to_sections(segments: list[TextSegment], resolver, exclude: set = frozenset(
                 "name": f"{place}{label}（往{toward}）",
                 "start": st, "end": en,
                 "lengthMeters": length, "speedLimit": int(s.speed_limit), "lengthEstimated": False,
+                "road": s.road, "startKm": k_from, "endKm": k_to,
             }
             if heading is not None:
                 sec["startHeading"] = heading

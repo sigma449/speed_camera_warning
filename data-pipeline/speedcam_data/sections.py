@@ -60,6 +60,61 @@ def haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * R * math.asin(min(1.0, math.sqrt(a)))
 
 
+def simplify_path(points: list[tuple[float, float]], tolerance_m: float = 6.0) -> list[tuple[float, float]]:
+    """Douglas–Peucker 簡化：直路上多餘的點拿掉，彎道保留（偏差不超過 tolerance_m 公尺）。"""
+    if len(points) <= 2:
+        return list(points)
+    lat0 = math.radians(sum(p[0] for p in points) / len(points))
+    xy = [(math.radians(p[1]) * math.cos(lat0) * R, math.radians(p[0]) * R) for p in points]
+
+    def dist_to_segment(p, a, b) -> float:
+        (px, py), (ax, ay), (bx, by) = p, a, b
+        dx, dy = bx - ax, by - ay
+        if dx == 0 and dy == 0:
+            return math.hypot(px - ax, py - ay)
+        t = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)))
+        return math.hypot(px - (ax + t * dx), py - (ay + t * dy))
+
+    keep = [False] * len(points)
+    keep[0] = keep[-1] = True
+    stack = [(0, len(points) - 1)]
+    while stack:
+        i, j = stack.pop()
+        best, idx = 0.0, None
+        for k in range(i + 1, j):
+            d = dist_to_segment(xy[k], xy[i], xy[j])
+            if d > best:
+                best, idx = d, k
+        if idx is not None and best > tolerance_m:
+            keep[idx] = True
+            stack += [(i, idx), (idx, j)]
+    return [p for p, k in zip(points, keep) if k]
+
+
+def attach_paths(sections: list[dict], path_lookup, log=print) -> int:
+    """替有省道里程的區間加上沿路座標（"path": [[緯度, 經度], ...]），回傳成功的段數。
+
+    path_lookup(道路, 起點里程, 終點里程) → 座標清單或 None。
+    起訖點換成區間本身的座標（人工資料可能有微調），中間用里程牌。
+    """
+    done = 0
+    candidates = [s for s in sections if s.get("road") and s.get("startKm") is not None and s.get("endKm") is not None]
+    for s in candidates:
+        try:
+            pts = path_lookup(s["road"], s["startKm"], s["endKm"])
+        except Exception as exc:  # noqa: BLE001
+            log(f"  [警告] {s['id']} 路形計算失敗：{exc}")
+            pts = None
+        if not pts or len(pts) < 2:
+            continue
+        pts = [(s["start"]["lat"], s["start"]["lon"])] + list(pts[1:-1]) + [(s["end"]["lat"], s["end"]["lon"])]
+        pts = simplify_path(pts)
+        s["path"] = [[round(lat, 5), round(lon, 5)] for lat, lon in pts]
+        done += 1
+    log(f"區間路形：{done}／{len(candidates)} 段有沿路座標（其餘在地圖上畫直線）")
+    return done
+
+
 class SectionError(ValueError):
     pass
 
@@ -140,20 +195,26 @@ def parse_sections_csv(text: str, resolver: Optional[Resolver] = None, log=print
             if fwd_heading is not None or rev_heading is not None:
                 log(f"  {sid} 進入方向：順向 {fwd_heading}°、反向 {rev_heading}°")
 
-        def with_heading(d: dict, h: Optional[float]) -> dict:
+        from .mileposts import normalize_road
+        road_key = normalize_road(road) if has_km else None
+
+        def with_heading(d: dict, h: Optional[float], km_from=None, km_to=None) -> dict:
             if h is not None:
                 d["startHeading"] = h
+            if road_key and km_from is not None and km_to is not None:
+                d.update({"road": road_key, "startKm": km_from, "endKm": km_to})
             return d
 
         if (row.get("bidirectional") or "").strip().lower() in TRUE_WORDS:
             fwd = (row.get("forward_label") or "順向").strip()
             rev = (row.get("reverse_label") or "反向").strip()
             sections.append(with_heading({"id": f"{sid}-f", "name": f"{name}（{fwd}）",
-                                          "start": start, "end": end, **base}, fwd_heading))
+                                          "start": start, "end": end, **base}, fwd_heading, start_km, end_km))
             sections.append(with_heading({"id": f"{sid}-r", "name": f"{name}（{rev}）",
-                                          "start": end, "end": start, **base}, rev_heading))
+                                          "start": end, "end": start, **base}, rev_heading, end_km, start_km))
         else:
-            sections.append(with_heading({"id": sid, "name": name, "start": start, "end": end, **base}, fwd_heading))
+            sections.append(with_heading({"id": sid, "name": name, "start": start, "end": end, **base},
+                                         fwd_heading, start_km, end_km))
     return sections
 
 

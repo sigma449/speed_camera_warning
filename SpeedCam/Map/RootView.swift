@@ -60,6 +60,9 @@ struct RootView: View {
             if model.initialSearchQuery != nil {
                 showSearch = true
             }
+            if let region = model.initialMapRegion {
+                position = .region(region)
+            }
             if model.demoMode {
                 position = .region(MKCoordinateRegion(center: CameraStore.demoOrigin.coordinate,
                                                       latitudinalMeters: 2_500, longitudinalMeters: 2_500))
@@ -102,9 +105,11 @@ struct RootView: View {
                     .stroke(.blue, lineWidth: 7)
             }
 
-            ForEach(model.database.sections) { section in
-                MapPolyline(coordinates: [section.start.coordinate, section.end.coordinate])
-                    .stroke(Color.orange.opacity(0.6), style: StrokeStyle(lineWidth: 5, dash: [8, 6]))
+            // 區間順著路形畫（有里程牌資料時）；同一段的兩個方向只畫一次。
+            ForEach(model.sectionOverlays) { section in
+                MapPolyline(coordinates: section.displayPath.map(\.coordinate))
+                    .stroke(Color.orange.opacity(0.75),
+                            style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round, dash: [10, 7]))
             }
 
             // 展示模式沒有真實定位，用一台車的圖示代表目前位置。

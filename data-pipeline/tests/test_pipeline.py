@@ -19,7 +19,7 @@ from speedcam_data.normalize import (  # noqa: E402
     parse_direction,
     parse_limit,
 )
-from speedcam_data.sections import SectionError, parse_sections_csv  # noqa: E402
+from speedcam_data.sections import SectionError, attach_paths, parse_sections_csv, simplify_path  # noqa: E402
 
 FIX = os.path.join(HERE, "fixtures")
 
@@ -346,6 +346,82 @@ def test_sections_from_mileposts_bidirectional():
     # 測試資料的道路往東：順向進入方向 90°、反向 270°
     assert f["startHeading"] == pytest.approx(90, abs=0.5)
     assert r["startHeading"] == pytest.approx(270, abs=0.5)
+
+
+def _curve_rows(road="台9"):
+    """L 形道路：0～1 公里往東，1～2 公里往北，每 0.1 公里一支里程牌（1 公里 ≈ 0.01 度）。"""
+    rows = []
+    for i in range(21):
+        k = i / 10
+        if k <= 1:
+            lat, lon = 24.95, 121.5 + k * 0.01
+        else:
+            lat, lon = 24.95 + (k - 1) * 0.009, 121.51
+        rows.append({"公路編號": road, "起點樁號": f"{int(k):03d}K+{round((k - int(k)) * 1000):03d}",
+                     "TWD97X": "300000", "TWD97Y": "2760000", "WGS84X": f"{lon:.6f}", "WGS84Y": f"{lat:.6f}"})
+    return rows
+
+
+def test_milepost_path_follows_posts_in_travel_order():
+    index = mileposts.build_index(_curve_rows(), log=lambda *_: None)
+    fwd = index.path("台9", 0.55, 1.45)
+    assert len(fwd) == 11                                   # 起訖內插點＋中間 9 支（0.6～1.4）
+    assert fwd[0][1] == pytest.approx(121.5055, abs=1e-6)   # 0.55K 內插
+    assert (24.95, 121.51) in [(round(a, 6), round(b, 6)) for a, b in fwd]   # 經過轉角
+    rev = index.path("台9", 1.45, 0.55)
+    assert rev == list(reversed(fwd))
+    assert index.path("台2", 0, 1) is None
+
+
+def test_milepost_path_skips_bad_posts_and_rejects_gaps():
+    rows = _curve_rows()
+    rows[5]["WGS84Y"] = "25.300000"                         # 0.5K 座標填錯（跑到 40 公里外）
+    index = mileposts.build_index(rows, log=lambda *_: None)
+    path = index.path("台9", 0.2, 0.8)
+    assert all(lat < 25 for lat, _ in path)
+    assert len(path) == 6                                   # 0.2、0.3、0.4、0.6、0.7、0.8
+    sparse = mileposts.build_index(_milepost_rows(0, 1, step=1) + _milepost_rows(4, 5, step=1),
+                                   log=lambda *_: None)
+    assert sparse.path("台9", 0, 5) is None                 # 1～4 公里缺里程牌
+
+
+def test_simplify_path_drops_straight_points_but_keeps_corner():
+    straight = [(24.95, 121.5 + i * 0.001) for i in range(11)]
+    assert simplify_path(straight) == [straight[0], straight[-1]]
+    corner = [(24.95, 121.5 + i * 0.001) for i in range(6)] + [(24.95 + i * 0.001, 121.505) for i in range(1, 6)]
+    simplified = simplify_path(corner)
+    assert simplified == [corner[0], (24.95, 121.505), corner[-1]]
+
+
+def test_attach_paths_for_both_directions_and_only_with_mileage():
+    index = mileposts.build_index(_curve_rows(), log=lambda *_: None)
+    text = ("id,name,start_lat,start_lon,end_lat,end_lon,length_m,speed_limit,note,road,start_km,end_km,"
+            "bidirectional,forward_label,reverse_label\n"
+            "c1,彎路,,,,,,40,,台9,0.5,1.5,yes,往北,往西\n"
+            "c2,只有座標,24.95,121.5,24.96,121.51,1500,50,,,,,,,\n")
+    secs = parse_sections_csv(text, resolver=index.resolve, log=lambda *_: None)
+    f, r, plain = secs
+    assert (f["road"], f["startKm"], f["endKm"]) == ("台9", 0.5, 1.5)
+    assert (r["startKm"], r["endKm"]) == (1.5, 0.5)
+    assert attach_paths(secs, index.path, log=lambda *_: None) == 2
+    assert f["path"][0] == [f["start"]["lat"], f["start"]["lon"]]
+    assert f["path"][-1] == [f["end"]["lat"], f["end"]["lon"]]
+    assert [24.95, 121.51] in f["path"]                     # 有畫出轉角，不是直線
+    assert r["path"] == list(reversed(f["path"]))
+    assert "path" not in plain
+
+
+def test_add_paths_keeps_going_when_mileposts_unavailable():
+    secs = [{"id": "x", "road": "台9", "startKm": 0, "endKm": 1,
+             "start": {"lat": 24.95, "lon": 121.5}, "end": {"lat": 24.95, "lon": 121.51}}]
+
+    def broken(log=print):
+        raise OSError("offline")
+
+    logs = []
+    build_cameras.add_paths(secs, broken, log=logs.append)
+    assert "path" not in secs[0]
+    assert any("直線" in m for m in logs)
 
 
 def test_sections_with_explicit_coordinates_have_no_start_heading_unless_given():

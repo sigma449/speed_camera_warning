@@ -139,7 +139,24 @@
    "lengthMeters": 3300.0,
    "speedLimit": 40,
    "lengthEstimated": false,
-   "startHeading": 5.0
+   "startHeading": 5.0,
+   "road": "台9",
+   "startKm": 0,
+   "endKm": 3.3,
+   "path": [
+    [
+     25.0,
+     121.5
+    ],
+    [
+     25.015,
+     121.502
+    ],
+    [
+     25.03,
+     121.5
+    ]
+   ]
   },
   {
    "id": "s1-r",

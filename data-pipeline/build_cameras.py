@@ -22,7 +22,7 @@ sys.path.insert(0, HERE)
 from speedcam_data import sources  # noqa: E402
 from speedcam_data.normalize import NormalizeReport, normalize_rows  # noqa: E402
 from speedcam_data import mileposts  # noqa: E402
-from speedcam_data.sections import load_sections, manual_range_keys, uses_mileposts  # noqa: E402
+from speedcam_data.sections import attach_paths, load_sections, manual_range_keys, uses_mileposts  # noqa: E402
 from speedcam_data import section_text  # noqa: E402
 
 DEFAULT_OUTPUT = os.path.join(HERE, "..", "SpeedCam", "Resources", "cameras.json")
@@ -65,6 +65,18 @@ def auto_sections(rows: list[dict], text_rows: list[dict], manual_path: str, fet
         log(f"[警告] 里程牌資料無法取得，自動區間全部略過：{exc}")
         return []
     return section_text.to_sections(segments, index.resolve, exclude=manual_range_keys(manual_path), log=log)
+
+
+def add_paths(sections: list[dict], fetch_index, log=print) -> None:
+    """用里程牌資料替區間加上沿路座標，讓 App 在地圖上順著路形畫。里程牌資料拿不到時就畫直線。"""
+    if not any(s.get("road") for s in sections):
+        return
+    try:
+        index = fetch_index(log=log)
+    except Exception as exc:  # noqa: BLE001
+        log(f"[警告] 里程牌資料無法取得，區間在地圖上會畫成直線：{exc}")
+        return
+    attach_paths(sections, index.path, log=log)
 
 
 def build(rows: list[dict], sections: list[dict], now: dt.datetime | None = None,
@@ -125,6 +137,7 @@ def main(argv: list[str] | None = None) -> int:
             text_rows = sources.read_local_rows([args.sections_text])
         auto = auto_sections(rows, text_rows, args.sections, fetch_index)
         sections = sections + auto
+    add_paths(sections, fetch_index)
     extra: tuple = ()
     if sections and (auto or uses_mileposts(args.sections)):
         extra += (mileposts.ATTRIBUTION,)

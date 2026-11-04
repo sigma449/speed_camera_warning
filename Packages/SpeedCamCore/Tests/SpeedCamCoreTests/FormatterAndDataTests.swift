@@ -85,6 +85,27 @@ final class DatabaseTests: XCTestCase {
         XCTAssertEqual(db.sections.last?.startHeading, 185)
         XCTAssertEqual(db.sections.first?.end, db.sections.last?.start)
         XCTAssertEqual(Set(db.cameras.map(\.id)).count, db.cameras.count)
+        // 沿路座標：有 path 的照著畫，沒有的畫起終點直線
+        XCTAssertEqual(db.sections.first?.path?.count, 3)
+        XCTAssertEqual(db.sections.first?.displayPath[1], GeoPoint(lat: 25.015, lon: 121.502))
+        XCTAssertNil(db.sections.last?.path)
+        XCTAssertEqual(db.sections.last?.displayPath, [GeoPoint(lat: 25.03, lon: 121.5), GeoPoint(lat: 25.0, lon: 121.5)])
+    }
+
+    func testSectionPathRoundTripsAsCompactArrays() throws {
+        let path = [GeoPoint(lat: 24.9, lon: 121.6), GeoPoint(lat: 24.91, lon: 121.61), GeoPoint(lat: 24.92, lon: 121.6)]
+        let section = SpeedSection(id: "p", name: "路形", start: path[0], end: path[2], lengthMeters: 2_500,
+                                   speedLimit: 40, path: path)
+        let data = try JSONEncoder().encode(section)
+        let json = try XCTUnwrap(String(data: data, encoding: .utf8))
+        XCTAssertTrue(json.contains("[24.91,121.61]"), json)
+        XCTAssertEqual(try JSONDecoder().decode(SpeedSection.self, from: data), section)
+        // 壞掉的 path（少於兩點）視為沒有
+        let broken = #"{"id":"b","name":"x","start":{"lat":25,"lon":121},"end":{"lat":25.01,"lon":121},"lengthMeters":1000,"speedLimit":50,"path":[[25,121]]}"#
+        let decoded = try JSONDecoder().decode(SpeedSection.self, from: Data(broken.utf8))
+        XCTAssertNil(decoded.path)
+        XCTAssertFalse(decoded.lengthEstimated)
+        XCTAssertEqual(decoded.displayPath.count, 2)
     }
 
     func testSettingsDecodeWithMissingKeysUsesDefaults() throws {

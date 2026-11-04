@@ -94,6 +94,34 @@ class MilepostIndex:
         t = (km - k1) / (k2 - k1)
         return (lat1 + (lat2 - lat1) * t, lon1 + (lon2 - lon1) * t)
 
+    def path(self, road: str, km_from: float, km_to: float,
+             max_gap_km: float = 2.0) -> Optional[list[tuple[float, float]]]:
+        """從 km_from 沿路走到 km_to 的座標：起訖點（內插）加上中間所有里程牌，依行進順序排列。
+
+        用途是在地圖上把區間順著路形畫出來。
+        - 中間有超過 max_gap_km 的空缺（缺里程牌）時回傳 None，App 會改畫直線。
+        - 直線距離明顯超過里程差的里程牌（座標填錯）會被略過，避免畫出鋸齒。
+        """
+        from .sections import haversine  # 延遲載入，避免循環 import
+
+        a, b = self.resolve(road, km_from), self.resolve(road, km_to)
+        if a is None or b is None:
+            return None
+        lo, hi = sorted((km_from, km_to))
+        inner = [p for p in self._sorted(road) if lo + 0.0005 < p[0] < hi - 0.0005]
+        if km_from > km_to:
+            inner.reverse()
+        pts = [(km_from, a[0], a[1])] + inner + [(km_to, b[0], b[1])]
+        if any(abs(q[0] - p[0]) > max_gap_km + 1e-9 for p, q in zip(pts, pts[1:])):
+            return None
+        kept = [pts[0]]
+        for p in pts[1:-1]:
+            prev = kept[-1]
+            if haversine(prev[1], prev[2], p[1], p[2]) <= abs(p[0] - prev[0]) * 1000 * 1.3 + 80:
+                kept.append(p)
+        kept.append(pts[-1])
+        return [(lat, lon) for _, lat, lon in kept]
+
 
 def build_index(rows: list[dict], log=print) -> MilepostIndex:
     index = MilepostIndex()
