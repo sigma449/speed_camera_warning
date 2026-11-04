@@ -193,6 +193,22 @@ iloader 只需要這個元件，就算 iTunes 本身還在跳錯誤，也可以�
 
   第二行應該是 `Running`；第三行應該看到 27015 埠的連線（`LISTENING` 或 `ESTABLISHED`）。
 
+**Q：SideStore 登入時出現「This action cannot be completed at this time. (-80045)」？**
+
+這不是帳號或操作問題：2026 年 10 月中起 Apple 改了登入檢查，SideStore、AltStore、Sideloadly 等工具都出現同樣的錯誤（[SideStore #1709](https://github.com/SideStore/SideStore/issues/1709)、[#1705](https://github.com/SideStore/SideStore/issues/1705)）。原因是這些工具登入時送出的模擬裝置資料（Anisette）被 Apple 拒絕。官方修正還沒釋出，以下是社群回報有效的做法（2026-11 初）：
+
+1. 按 **Close** 關掉登入畫面 → 下方 **Settings** 分頁。
+2. **Anisette Servers** → 選 **SideStore (New)**；有「Enable Auto Rotation」開關就關掉。
+3. 按 **Reset adi.pb**（位置依版本不同）：
+   - 穩定版：**Anisette Servers** 頁面捲到最下面。
+   - Nightly 版：**User Customizations** 裡面。
+4. Nightly 版另外做：User Customizations → 關閉 **On-Device Anisette**；Anisette Client Configuration → Remote Server Sync → **Fetch** → **Save as Overrides**。
+5. 把 SideStore 從多工畫面滑掉、重新打開，再登入（可能會要求雙重認證碼）。
+6. 還是 -80045，或改成出現 ADP 錯誤：回到 Anisette Servers 換其他伺服器（例如 **Lill q**、**SideStore (.app)**）再試。
+7. 穩定版找不到這些選項：用 iloader 改裝 **SideStore (Nightly)**，再照上面做。
+
+都不行的話的**備案**：新版 iloader（2.4.1 起）可以正常登入，可以直接用 iloader 把 `SpeedCam.ipa` 裝到 iPhone、跳過 SideStore。缺點是每 7 天要接電腦、用 iloader 重裝一次才能續簽。
+
 **Q：SideStore 續簽失敗？**
 - 確認 LocalDevVPN 有連線（狀態列會出現 VPN 圖示）。
 - 配對檔可能失效了（例如 iPhone 重設過、或更新了 iOS）：把 iPhone 接回電腦，用 iloader 的配對檔管理功能重新放一次。
