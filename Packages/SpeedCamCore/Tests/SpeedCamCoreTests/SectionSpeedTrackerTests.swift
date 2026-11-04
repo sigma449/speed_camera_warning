@@ -89,6 +89,35 @@ final class SectionSpeedTrackerTests: XCTestCase {
         XCTAssertEqual(remaining, remaining.sorted(by: >))
     }
 
+    /// 建議時速 = 剩餘距離 ÷ 剩餘最短秒數，以「速限＋容許值」計算，照著開剛好在倒數歸零時到終點。
+    func testSuggestedSpeedUsesToleranceAndRemainingDistance() {
+        let s = section(length: 3_000, limit: 60)
+        let tracker = SectionSpeedTracker(sections: [s], settings: AlertSettings())   // 預設容許值 +10 → 以 70 計算
+        var statuses: [SectionStatus] = []
+        for f in straightTrack(from: origin, bearing: 0, speedKmh: 85, seconds: 80) {
+            if let st = tracker.process(f).status { statuses.append(st) }
+        }
+        let st = try! XCTUnwrap(statuses.last)
+        XCTAssertEqual(st.effectiveLimitKmh, 70)
+        let expected = SpeedUnit.kmh(fromMps: st.remainingMeters / st.remainingSeconds)
+        XCTAssertEqual(st.suggestedMaxKmh, expected, accuracy: 0.01)
+        XCTAssertLessThan(st.suggestedMaxKmh, 70, "開 85 之後，剩下的路要比 70 慢")
+        XCTAssertEqual(st.suggestedWholeKmh, Int(expected.rounded(.down)))
+        // 照建議時速開完剩下的路，所需時間剛好等於剩餘秒數
+        XCTAssertEqual(st.remainingMeters / SpeedUnit.mps(fromKmh: st.suggestedMaxKmh), st.remainingSeconds, accuracy: 0.5)
+    }
+
+    func testSuggestedSpeedNeverExceedsEffectiveLimit() {
+        let s = section(length: 3_000, limit: 60)
+        let tracker = SectionSpeedTracker(sections: [s], settings: AlertSettings())
+        var statuses: [SectionStatus] = []
+        // 開很慢：剩下的時間不多、距離還很長，算出來會超過 70，但建議不能超過「速限＋容許值」
+        for f in straightTrack(from: origin, bearing: 0, speedKmh: 30, seconds: 150) {
+            if let st = tracker.process(f).status { statuses.append(st) }
+        }
+        XCTAssertTrue(statuses.allSatisfy { $0.suggestedMaxKmh <= 70 + 1e-9 })
+    }
+
     func testOppositeDirectionDoesNotEnter() {
         let s = section()
         // 從終點北方往南開，經過起點時方向相反

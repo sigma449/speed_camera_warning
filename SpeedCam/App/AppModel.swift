@@ -51,6 +51,8 @@ final class AppModel {
     let initialMapRegion: MKCoordinateRegion?
     /// 啟動後直接打開設定頁（CI 截圖用：`-settings`）。
     let initialShowSettings: Bool
+    /// 搜尋壓力測試：打開搜尋，反覆輸入、刪除這段文字（CI 用來重現打字時閃退：`-typeSearch 台北車站`）。
+    let searchTypingTest: String?
     /// 啟動後直接預覽到這個地點的導航（CI 截圖用：`-previewTo 25.0478,121.5170,台北車站`）。
     let initialPreviewTarget: (coordinate: CLLocationCoordinate2D, name: String)?
 
@@ -101,6 +103,11 @@ final class AppModel {
         initialMapRegion = Self.parseMapRegion(arguments)
         initialPreviewTarget = Self.parsePreviewTarget(arguments)
         initialShowSettings = arguments.contains("-settings")
+        if let i = arguments.firstIndex(of: "-typeSearch"), i + 1 < arguments.count {
+            searchTypingTest = arguments[i + 1]
+        } else {
+            searchTypingTest = nil
+        }
         _ = MapLanguage.atLaunch   // 記下啟動時的語言設定
         Logger(subsystem: "tw.speedcammap.app", category: "launch")
             .notice("arguments: \(arguments.dropFirst().joined(separator: " "), privacy: .public); languages: \(Locale.preferredLanguages.joined(separator: ","), privacy: .public)")
@@ -418,7 +425,8 @@ final class AppModel {
                 section: section, minimumSeconds: minimumSeconds,
                 effectiveLimitKmh: settings.sectionEffectiveLimit(section.speedLimit, sectionID: section.groupID)), urgent: true)
         case let .remaining(seconds):
-            announcer.speak(AnnouncementFormatter.sectionRemaining(seconds: seconds))
+            announcer.speak(AnnouncementFormatter.sectionRemaining(seconds: seconds,
+                                                                   suggestedKmh: sectionStatus?.suggestedWholeKmh))
         case .zeroReached:
             announcer.speak(AnnouncementFormatter.sectionZero)
         case let .completed(_, averageKmh, withinLimit):
@@ -460,6 +468,7 @@ final class AppModel {
             s.mode = .section
             s.sectionEarliestExit = sec.earliestExit
             s.sectionAverageKmh = Int(sec.averageKmh.rounded())
+            s.sectionSuggestedKmh = sec.suggestedWholeKmh
             s.sectionLimit = sec.section.speedLimit
             s.sectionZero = sec.remainingSeconds <= 0
             s.isOverspeed = isOverspeed

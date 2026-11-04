@@ -62,9 +62,11 @@ struct SectionBanner: View {
                 }
                 Spacer(minLength: 0)
             }
+            if status.remainingSeconds > 0 {
+                suggestion
+            }
             HStack {
                 stat("均速", "\(Int(status.averageKmh.rounded()))")
-                stat("建議上限", "\(Int(status.suggestedMaxKmh.rounded()))")
                 stat("剩餘", AnnouncementFormatter.displayDistance(status.remainingMeters))
             }
             HStack(spacing: 6) {
@@ -82,6 +84,29 @@ struct SectionBanner: View {
         }
         .padding(14)
         .background(Color.black.opacity(0.82), in: RoundedRectangle(cornerRadius: 20))
+        .foregroundStyle(.white)
+    }
+
+    /// 建議時速：依剩餘距離與剩餘時間計算，照這個時速以下開完，平均就不會超過「速限＋容許值」。
+    private var suggestion: some View {
+        let kmh = status.suggestedWholeKmh
+        let tooFast = currentSpeed > kmh
+        return HStack(spacing: 10) {
+            Image(systemName: tooFast ? "tortoise.fill" : "checkmark.circle.fill")
+                .font(.title2)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("建議時速 \(kmh) 以下")
+                    .font(.system(size: 26, weight: .heavy, design: .rounded))
+                    .monospacedDigit()
+                Text(tooFast ? "目前 \(currentSpeed)，請放慢" : "依剩餘 \(AnnouncementFormatter.displayDistance(status.remainingMeters)) 計算")
+                    .font(.caption)
+                    .opacity(0.85)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background((tooFast ? Color.orange : Color.green).opacity(0.85), in: RoundedRectangle(cornerRadius: 14))
         .foregroundStyle(.white)
     }
 

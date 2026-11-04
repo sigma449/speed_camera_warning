@@ -7,7 +7,8 @@ enum AppPreferences {
     static let autoStartCruiseKey = "autoStartCruise"
 
     static var autoStartCruise: Bool {
-        UserDefaults.standard.object(forKey: autoStartCruiseKey) as? Bool ?? true
+        // bool(forKey:) 也接受啟動參數「-autoStartCruise NO」（CI 截圖用）
+        UserDefaults.standard.object(forKey: autoStartCruiseKey) == nil ? true : UserDefaults.standard.bool(forKey: autoStartCruiseKey)
     }
 }
 

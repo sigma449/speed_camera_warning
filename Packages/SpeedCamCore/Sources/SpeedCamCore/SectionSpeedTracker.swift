@@ -42,6 +42,9 @@ public struct SectionStatus: Equatable, Sendable {
 
     /// 倒數秒數（無條件進位成整數，畫面顯示用）。
     public var remainingWholeSeconds: Int { Int(remainingSeconds.rounded(.up)) }
+
+    /// 建議時速（無條件捨去，偏保守）：剩下的路照這個時速以下開，平均就不會超過「速限＋容許值」。
+    public var suggestedWholeKmh: Int { Int(suggestedMaxKmh.rounded(.down)) }
 }
 
 public struct SectionResult: Equatable, Sendable {

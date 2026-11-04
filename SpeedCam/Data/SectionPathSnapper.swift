@@ -109,16 +109,19 @@ final class SectionPathSnapper {
         let reference = section.displayPath
         let expected = section.lengthEstimated ? GeoMath.length(of: reference) : section.lengthMeters
 
-        // 1) 起點 → 終點一次規劃
-        if let route = await route(from: section.start, to: section.end) {
+        // 1) 起點 → 終點一次規劃；不合理再試反方向（起點可能被吸到快速道路對向車道，要繞一大圈迴轉）
+        for reversed in [false, true] {
+            let (a, b) = reversed ? (section.end, section.start) : (section.start, section.end)
+            guard let route = await route(from: a, to: b) else { continue }
             let deviation = RoadSnapping.maxDeviation(of: reference, from: route.points)
             if RoadSnapping.isPlausible(routeLength: route.distance, expected: expected,
                                         minRatio: 0.85, maxRatio: 1.2, slack: 150),
                deviation <= 200 {
-                log.notice("\(section.groupID, privacy: .public): 一次規劃成功（\(Int(route.distance)) m，偏差 \(Int(deviation)) m）")
-                return RoadSnapping.simplify(route.points, tolerance: 3)
+                log.notice("\(section.groupID, privacy: .public): 一次規劃成功\(reversed ? "（反方向）" : "", privacy: .public)（\(Int(route.distance)) m，偏差 \(Int(deviation)) m）")
+                let points = reversed ? Array(route.points.reversed()) : route.points
+                return RoadSnapping.simplify(points, tolerance: 3)
             }
-            log.notice("\(section.groupID, privacy: .public): 一次規劃不合理（\(Int(route.distance)) m / 預期 \(Int(expected)) m，偏差 \(Int(deviation)) m），改分段")
+            log.notice("\(section.groupID, privacy: .public): 一次規劃不合理\(reversed ? "（反方向）" : "", privacy: .public)（\(Int(route.distance)) m / 預期 \(Int(expected)) m，偏差 \(Int(deviation)) m）")
         }
 
         // 2) 沿著里程牌路形分段規劃
@@ -129,13 +132,15 @@ final class SectionPathSnapper {
         for segment in segments {
             guard let a = segment.first, let b = segment.last else { continue }
             var piece = segment
-            if let route = await route(from: a, to: b) {
-                let segmentLength = GeoMath.length(of: segment)
+            let segmentLength = GeoMath.length(of: segment)
+            for reversed in [false, true] {
+                guard let route = await route(from: reversed ? b : a, to: reversed ? a : b) else { continue }
                 if RoadSnapping.isPlausible(routeLength: route.distance, expected: segmentLength,
                                             minRatio: 0.8, maxRatio: 1.6, slack: 200),
                    RoadSnapping.maxDeviation(of: segment, from: route.points) <= 200 {
-                    piece = route.points
+                    piece = reversed ? Array(route.points.reversed()) : route.points
                     snappedSegments += 1
+                    break
                 }
             }
             output += output.isEmpty ? piece : Array(piece.dropFirst())

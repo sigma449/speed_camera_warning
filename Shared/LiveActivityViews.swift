@@ -114,7 +114,9 @@ struct SmallActivityView: View {
             return state.isOverspeed ? "超速！\(name)" : name
         case .section:
             let avg = state.sectionAverageKmh.map { "均速 \($0)" } ?? "區間測速"
-            return state.sectionZero ? "可依速限行駛・\(avg)" : "區間倒數・\(avg)"
+            if state.sectionZero { return "可依速限行駛・\(avg)" }
+            if let kmh = state.sectionSuggestedKmh { return "建議≤\(kmh)・\(avg)" }
+            return "區間倒數・\(avg)"
         case .navigation:
             return state.maneuverText ?? "導航中"
         case .idle:

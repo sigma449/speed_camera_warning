@@ -1,6 +1,9 @@
 import MapKit
+import os
 import SpeedCamCore
 import SwiftUI
+
+private let searchLog = Logger(subsystem: "tw.speedcammap.app", category: "search")
 
 /// 搜尋目的地並開始導航。
 /// - 沒有輸入時：快速搜尋按鈕（加油站、停車場…）和最近的目的地。
@@ -55,6 +58,11 @@ struct SearchView: View {
                 } else {
                     // 打開就可以直接打字
                     searchFocused = true
+                }
+            }
+            .task {
+                if let text = model.searchTypingTest {
+                    await runTypingStressTest(text)
                 }
             }
             .navigationTitle("目的地")
@@ -197,6 +205,28 @@ struct SearchView: View {
             }
         }
         .contentShape(Rectangle())
+    }
+
+    // MARK: 壓力測試（CI 用）
+
+    /// 模擬使用者慢慢打字、等結果、改字、刪掉重打，用來重現打字時閃退（使用者回報：打「台北車站」等一下就閃退）。
+    private func runTypingStressTest(_ text: String) async {
+        let chars = Array(text)
+        let edits = ["台", "台北", "台北車", "台北車站", "台北車站 ", "台北車站東", "台北車站東三門", "台北", "台", "", text]
+        for round in 1...4 {
+            searchLog.notice("typing round \(round)")
+            for n in 1...max(1, chars.count) {
+                query = String(chars.prefix(n))
+                try? await Task.sleep(nanoseconds: 350_000_000)
+            }
+            try? await Task.sleep(nanoseconds: 4_000_000_000)   // 停下來等候選結果
+            for q in edits {
+                query = q
+                try? await Task.sleep(nanoseconds: 250_000_000)
+            }
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+        }
+        searchLog.notice("typing test finished; suggestions=\(completer.suggestions.count)")
     }
 
     // MARK: 動作

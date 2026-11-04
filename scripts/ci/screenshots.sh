@@ -42,85 +42,120 @@ xcrun simctl privacy "${UDID}" grant location "${BUNDLE_ID}" || true
 xcrun simctl privacy "${UDID}" grant location-always "${BUNDLE_ID}" || true
 xcrun simctl location "${UDID}" set 25.0300,121.5650 || true
 
-# 一律用 --terminate-running-process 重新啟動：App 巡航中被結束時，iOS 會在背景把它重新叫起來（背景定位），
-# 這時直接 launch 只會把背景那個帶到前景，啟動參數不會生效。
+# 巡航中的 App 被結束後，iOS 會在背景把它重新叫起來（背景定位）；這時直接 launch 只會把背景那個帶到前景，
+# 啟動參數不會生效。所以：
+# - 每次啟動前先結束兩次（中間等一下，把背景重新叫起來的那個也結束）
+# - 不需要巡航的截圖加上「-autoStartCruise NO」，就不會再被背景叫起來
+launch_app() {
+  xcrun simctl terminate "${UDID}" "${BUNDLE_ID}" 2>/dev/null || true
+  sleep 2
+  xcrun simctl terminate "${UDID}" "${BUNDLE_ID}" 2>/dev/null || true
+  sleep 1
+  xcrun simctl launch --terminate-running-process "${UDID}" "${BUNDLE_ID}" "$@"
+}
+
 shot() {
   xcrun simctl io "${UDID}" screenshot "${OUT}/$1.png"
   echo "已截圖 $1"
 }
 
 # 1) Live Activity 預覽頁
-xcrun simctl launch --terminate-running-process "${UDID}" "${BUNDLE_ID}" -gallery
+launch_app -gallery
 sleep 10
 shot "01-live-activity-gallery"
-xcrun simctl terminate "${UDID}" "${BUNDLE_ID}" || true
 
 # 2) 展示模式：假軌跡以 62 km/h 往北開，600 m 處有速限 50 的測速照相，1.2 km 處進入區間
-xcrun simctl launch --terminate-running-process "${UDID}" "${BUNDLE_ID}" -demo
+launch_app -demo
 sleep 20
 shot "02-demo-pre-alert"
 sleep 10
 shot "03-demo-near-overspeed"
 sleep 50
 shot "04-demo-section-countdown"
-xcrun simctl terminate "${UDID}" "${BUNDLE_ID}" || true
 
 # 3) 一般啟動（使用 App 內建的真實資料；預設會自動開始巡航）
-xcrun simctl launch --terminate-running-process "${UDID}" "${BUNDLE_ID}"
+launch_app
 sleep 8
 shot "05-normal-launch"
-xcrun simctl terminate "${UDID}" "${BUNDLE_ID}" || true
 
-# 4) 搜尋候選：模擬器預設語言，以及指定繁體中文（確認地圖與搜尋的語言設定有效）
-xcrun simctl launch --terminate-running-process "${UDID}" "${BUNDLE_ID}" -search "台北車站"
+# 4) 搜尋候選：模擬器預設語言、繁體中文、英文（確認搜尋與導航語言的設定有效）
+launch_app -autoStartCruise NO -search "台北車站"
 sleep 14
 shot "06-search-suggestions-default-language"
-xcrun simctl terminate "${UDID}" "${BUNDLE_ID}" || true
 
-xcrun simctl launch --terminate-running-process "${UDID}" "${BUNDLE_ID}" -search "台北車站" -AppleLanguages "(zh-Hant-TW)"
+launch_app -autoStartCruise NO -search "台北車站" -AppleLanguages "(zh-Hant-TW)" -AppleLocale zh_TW
 sleep 14
 shot "07-search-suggestions-zh-Hant"
-xcrun simctl terminate "${UDID}" "${BUNDLE_ID}" || true
 
-xcrun simctl launch --terminate-running-process "${UDID}" "${BUNDLE_ID}" -search "Taipei Main Station" -AppleLanguages "(en)"
+launch_app -autoStartCruise NO -search "Taipei Main Station" -AppleLanguages "(en)"
 sleep 14
 shot "08-search-suggestions-en"
-xcrun simctl terminate "${UDID}" "${BUNDLE_ID}" || true
 
-# 5) 北宜公路：區間要貼著道路畫（App 會用 Apple 地圖的路線規劃貼齊，每段要幾秒）
-xcrun simctl launch --terminate-running-process "${UDID}" "${BUNDLE_ID}" -mapCenter "24.905,121.695" -mapSpan 0.16
-sleep 40
+# 4b) 搜尋壓力測試（中文）：反覆輸入、刪除「台北車站」約 45 秒，檢查 App 有沒有閃退
+launch_app -autoStartCruise NO -AppleLanguages "(zh-Hant-TW)" -AppleLocale zh_TW -typeSearch "台北車站"
+sleep 55
+shot "08b-search-typing-stress"
+if xcrun simctl spawn "${UDID}" launchctl list 2>/dev/null | grep -q "${BUNDLE_ID}"; then
+  echo "搜尋壓力測試：App 仍在執行"
+else
+  echo "::warning::搜尋壓力測試：App 已經不在執行（可能閃退）"
+fi
+CRASH=$(ls -t ~/Library/Logs/DiagnosticReports/ 2>/dev/null | grep -i "SpeedCam" | head -1 || true)
+if [[ -n "${CRASH}" ]]; then
+  echo "::warning::找到閃退報告 ${CRASH}"
+  python3 - "${HOME}/Library/Logs/DiagnosticReports/${CRASH}" <<'PY' || head -c 6000 "${HOME}/Library/Logs/DiagnosticReports/${CRASH}"
+import json, sys
+text = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+header, _, body = text.partition("\n")
+report = json.loads(body)
+print("exception:", json.dumps(report.get("exception"), ensure_ascii=False))
+print("termination:", json.dumps(report.get("termination"), ensure_ascii=False)[:600])
+images = report.get("usedImages", [])
+for t in report.get("threads", []):
+    if not t.get("triggered"):
+        continue
+    for f in t.get("frames", [])[:40]:
+        img = images[f.get("imageIndex", 0)].get("name", "?") if images else "?"
+        print(f"  {img:28} {f.get('symbol', '?')}  {f.get('sourceFile', '')}:{f.get('sourceLine', '')}")
+PY
+else
+  echo "沒有 SpeedCam 的閃退報告"
+fi
+
+# 5) 北宜公路：區間要貼著道路畫（App 會用 Apple 地圖的路線規劃貼齊，近的先做，每段要幾秒）
+launch_app -autoStartCruise NO -mapCenter "24.905,121.695" -mapSpan 0.16
+sleep 45
 shot "09-sections-follow-road"
 # 放大看彎道：第 1 段（19K–23.1K）全段、23.1K 終點附近的髮夾彎、第 2 段、第 4 段宜蘭端
-xcrun simctl launch --terminate-running-process "${UDID}" "${BUNDLE_ID}" -mapCenter "24.9545,121.6107" -mapSpan 0.035
+launch_app -autoStartCruise NO -mapCenter "24.9545,121.6107" -mapSpan 0.035
 sleep 12
 shot "10-beiyi-1"
-xcrun simctl launch --terminate-running-process "${UDID}" "${BUNDLE_ID}" -mapCenter "24.9563,121.6215" -mapSpan 0.01
+launch_app -autoStartCruise NO -mapCenter "24.9563,121.6215" -mapSpan 0.01
 sleep 10
 shot "11-beiyi-1-hairpin"
-xcrun simctl launch --terminate-running-process "${UDID}" "${BUNDLE_ID}" -mapCenter "24.9473,121.6590" -mapSpan 0.035
+launch_app -autoStartCruise NO -mapCenter "24.9473,121.6590" -mapSpan 0.035
 sleep 10
 shot "12-beiyi-2"
-xcrun simctl launch --terminate-running-process "${UDID}" "${BUNDLE_ID}" -mapCenter "24.8590,121.7840" -mapSpan 0.05
+launch_app -autoStartCruise NO -mapCenter "24.8590,121.7840" -mapSpan 0.05
 sleep 10
 shot "13-beiyi-4"
 
-# 6) 導航預覽：先看地點（約 3 秒）→ 路線預覽（倒數 10 秒）→ 開始導航
-xcrun simctl launch --terminate-running-process "${UDID}" "${BUNDLE_ID}" -previewTo "25.0478,121.5170,台北車站"
-sleep 4
-shot "14-preview-place"
-sleep 5
-shot "15-preview-route"
-sleep 14
-shot "16-navigation-started"
-
-# 7) 設定頁最上面的「搜尋與導航語言」
-xcrun simctl launch --terminate-running-process "${UDID}" "${BUNDLE_ID}" -settings
+# 6) 設定頁最上面的「搜尋與導航語言」
+launch_app -autoStartCruise NO -settings
 sleep 8
-shot "17-settings-language"
+shot "14-settings-language"
 
-# App 的紀錄（確認啟動參數、sheet、地圖範圍有沒有生效）
-xcrun simctl spawn "${UDID}" log show --last 15m --style compact \
-  --predicate 'subsystem == "tw.speedcammap.app"' 2>/dev/null | tail -60 || true
+# 7) 導航預覽：先看地點（約 3 秒）→ 路線預覽（倒數 10 秒）→ 開始導航（會開始巡航，所以放最後）
+launch_app -autoStartCruise NO -previewTo "25.0478,121.5170,台北車站"
+sleep 4
+shot "15-preview-place"
+sleep 5
+shot "16-preview-route"
+sleep 14
+shot "17-navigation-started"
+
+# App 的紀錄（確認啟動參數、sheet、地圖範圍、區間貼齊有沒有生效）
+xcrun simctl spawn "${UDID}" log show --last 20m --style compact \
+  --predicate 'subsystem == "tw.speedcammap.app"' 2>/dev/null | grep -E "arguments|appeared|applied|opened|preview|typing|beiyi|一次規劃|分段" | tail -120 || true
 
 ls -la "${OUT}"

@@ -82,7 +82,8 @@ struct RootView: View {
         .task {
             // 剛啟動時畫面還沒準備好，太早開 sheet 或改地圖範圍會被系統忽略，稍等一下再做（CI 截圖用的啟動參數）。
             guard model.initialSearchQuery != nil || model.initialMapRegion != nil
-                    || model.initialPreviewTarget != nil || model.initialShowSettings else { return }
+                    || model.initialPreviewTarget != nil || model.initialShowSettings
+                    || model.searchTypingTest != nil else { return }
             try? await Task.sleep(nanoseconds: 1_200_000_000)
             if model.initialShowSettings {
                 showSettings = true
@@ -95,7 +96,7 @@ struct RootView: View {
                 follow.show(region: region)
                 uiLog.notice("applied initial map region")
             }
-            if model.initialSearchQuery != nil {
+            if model.initialSearchQuery != nil || model.searchTypingTest != nil {
                 showSearch = true
                 uiLog.notice("opened search sheet")
             }

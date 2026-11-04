@@ -51,8 +51,13 @@ public enum AnnouncementFormatter {
         "區間測速，車速超過\(threshold)"
     }
 
-    public static func sectionRemaining(seconds: Int) -> String {
-        "區間測速，還有\(seconds)秒"
+    /// suggestedKmh：依剩餘距離算出的建議時速（剩下的路照這個時速以下開，平均就不會超過速限＋容許值）。
+    public static func sectionRemaining(seconds: Int, suggestedKmh: Int? = nil) -> String {
+        var text = "區間測速，還有\(seconds)秒"
+        if let kmh = suggestedKmh, kmh > 0 {
+            text += "，建議時速\(kmh)以下"
+        }
+        return text
     }
 
     public static let sectionZero = "區間時間已到，可依速限行駛"

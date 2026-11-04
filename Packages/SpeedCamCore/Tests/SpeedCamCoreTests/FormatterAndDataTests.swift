@@ -52,6 +52,9 @@ final class AnnouncementFormatterTests: XCTestCase {
         XCTAssertEqual(AnnouncementFormatter.sectionOverspeed(threshold: 50), "區間測速，車速超過50")
         XCTAssertEqual(AnnouncementFormatter.sectionRemaining(seconds: 120), "區間測速，還有120秒")
         XCTAssertEqual(AnnouncementFormatter.sectionCompleted(averageKmh: 58.4, withinLimit: true), "區間測速結束，平均時速58")
+        XCTAssertEqual(AnnouncementFormatter.sectionRemaining(seconds: 180, suggestedKmh: 45),
+                       "區間測速，還有180秒，建議時速45以下")
+        XCTAssertEqual(AnnouncementFormatter.sectionRemaining(seconds: 30), "區間測速，還有30秒")
     }
 
     func testManeuverText() {

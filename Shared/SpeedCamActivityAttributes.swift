@@ -31,6 +31,8 @@ struct SpeedCamActivityAttributes: ActivityAttributes {
         var sectionAverageKmh: Int?
         var sectionLimit: Int?
         var sectionZero: Bool = false
+        /// 依剩餘距離算出的建議時速（剩下的路照這個以下開，平均不會超過速限＋容許值）。
+        var sectionSuggestedKmh: Int?
 
         // 導航
         var maneuverText: String?
@@ -52,7 +54,7 @@ extension SpeedCamActivityAttributes.ContentState {
     static let previewOverspeed = Self(mode: .camera, cameraTypeName: "測速照相", cameraSymbol: "camera.fill",
                                        distanceMeters: 120, speedLimit: 50, isOverspeed: true, currentSpeedKmh: 63)
     static let previewSection = Self(mode: .section, sectionEarliestExit: Date().addingTimeInterval(125),
-                                     sectionAverageKmh: 58, sectionLimit: 60, currentSpeedKmh: 57)
+                                     sectionAverageKmh: 58, sectionLimit: 60, sectionSuggestedKmh: 54, currentSpeedKmh: 57)
     static let previewSectionZero = Self(mode: .section, sectionEarliestExit: Date(),
                                          sectionAverageKmh: 55, sectionLimit: 60, sectionZero: true, currentSpeedKmh: 60)
     static let previewNavigation = Self(mode: .navigation, maneuverText: "右轉進入忠孝東路",
