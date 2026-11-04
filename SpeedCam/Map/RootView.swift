@@ -89,7 +89,7 @@ struct RootView: View {
                 showSettings = true
             }
             if let target = model.initialPreviewTarget {
-                model.beginPreview(to: MapItems.item(name: target.name, coordinate: target.coordinate))
+                model.beginPreview(to: MapItems.item(name: target.name, coordinate: target.coordinate), subtitle: "")
                 uiLog.notice("started navigation preview")
             }
             if let region = model.initialMapRegion {
