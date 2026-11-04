@@ -55,6 +55,7 @@ jobs:
           mkdir Payload
           cp -R build/Build/Products/Release-iphoneos/SpeedCam.app Payload/
           ls Payload/SpeedCam.app/PlugIns || echo "::warning::找不到 Widget Extension（PlugIns）"
+          bash scripts/ci/check-bundle-names.sh Payload/SpeedCam.app
           zip -qry SpeedCam.ipa Payload
           ls -lh SpeedCam.ipa
 

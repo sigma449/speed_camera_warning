@@ -92,7 +92,7 @@ SideStore 在手機上自己續簽時，需要假裝成「iPhone 有接著電腦
 1. 確認 **LocalDevVPN 已連線**。
 2. 打開 SideStore → 下方「**My Apps**」→ 左上角「**＋**」→ 選 `SpeedCam.ipa`。
 3. 如果出現 App ID 相關提示，同意即可（這個 App 包含主程式和 Live Activity 擴充功能，會使用 2 個 App ID）。
-4. 安裝完成後，主畫面會出現「**測速地圖**」。
+4. 安裝完成後，主畫面會出現「**測速地圖**」（SideStore 的 My Apps 清單裡顯示英文名稱 **SpeedCam**，是同一個 App）。
 
 > 備用方式：iloader 也能直接從電腦匯入 IPA 安裝。但這樣裝的 App 之後續簽需要再接電腦，所以建議用 SideStore 安裝。
 
@@ -208,6 +208,10 @@ iloader 只需要這個元件，就算 iTunes 本身還在跳錯誤，也可以�
 7. 穩定版找不到這些選項：用 iloader 改裝 **SideStore (Nightly)**，再照上面做。
 
 都不行的話的**備案**：新版 iloader（2.4.1 起）可以正常登入，可以直接用 iloader 把 `SpeedCam.ipa` 裝到 iPhone、跳過 SideStore。缺點是每 7 天要接電腦、用 iloader 重裝一次才能續簽。
+
+**Q：SideStore 安裝時出現「Bundle identifier unavailable: An invalid value '測速地圖' was provided for the parameter 'appIdName'」？**
+
+這是 2026-11-04 以前的舊版 IPA 才有的問題：SideStore 會拿 App 的名稱向 Apple 註冊 App ID，而 Apple 只接受英數字。新版 IPA 的內部名稱已改成英文 **SpeedCam**（主畫面仍顯示「測速地圖」），請重新到 Actions 下載最新的 SpeedCam-ipa 再安裝一次。失敗的那次安裝不會用掉 App ID 額度。
 
 **Q：SideStore 續簽失敗？**
 - 確認 LocalDevVPN 有連線（狀態列會出現 VPN 圖示）。

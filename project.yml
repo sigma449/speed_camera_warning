@@ -38,7 +38,10 @@ targets:
     info:
       path: Config/SpeedCam-Info.plist
       properties:
-        CFBundleDisplayName: 測速地圖
+        # Info.plist 裡的名稱只能用英數字：SideStore／AltStore 會拿它去向 Apple 註冊 App ID，
+        # Apple 不接受中文（錯誤訊息：invalid value … for the parameter 'appIdName'）。
+        # 主畫面上的「測速地圖」由 SpeedCam/Resources/zh-Hant.lproj/InfoPlist.strings 提供。
+        CFBundleDisplayName: SpeedCam
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSRequiresIPhoneOS: true
@@ -74,7 +77,8 @@ targets:
     info:
       path: Config/SpeedCamWidgets-Info.plist
       properties:
-        CFBundleDisplayName: 測速地圖
+        # 同上，只能用英數字（SideStore 會註冊成「SpeedCam SpeedCam Widgets」）。
+        CFBundleDisplayName: SpeedCam Widgets
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSExtension:

@@ -1,0 +1,4 @@
+/* 主畫面與「設定」裡顯示的 App 名稱。
+   Info.plist 本身用英文 SpeedCam，因為側載工具向 Apple 註冊 App ID 時不接受中文。 */
+"CFBundleDisplayName" = "測速地圖";
+"CFBundleName" = "測速地圖";
