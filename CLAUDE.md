@@ -43,6 +43,9 @@ Live Activity 在 iOS 26 會出現在 CarPlay 儀表板，**不需要 entitlemen
 - **搜尋目的地**：要像 Google 地圖那樣邊打字邊出現候選（`MKLocalSearchCompleter`），另有快速搜尋（加油站、停車場…）和最近的目的地（最多 15 筆）。
 - **區間在地圖上順著路形畫**：資料處理用里程牌座標產生 `path`（[[緯度, 經度], ...]，Douglas–Peucker 簡化到 6 m），
   App 用 `SpeedSection.displayPath` 畫，沒有 path 時畫起終點直線；同一段的兩個方向只畫一次。
+  使用者實機發現里程牌路形在髮夾彎會抄近路，所以 App 再用 Apple 地圖的路線規劃貼齊道路（`SectionPathSnapper`）：
+  先試起點 → 終點一次規劃（長度 0.85～1.2 倍、偏離里程牌路形 ≤ 200 m 才採用），不行就沿路形每 1.2 km 分段規劃；
+  結果存在 Application Support 的 `snappedSectionPaths.v1.json`，每段只算一次；請求間隔 1.5 秒，地圖中心附近的先做。
 - **回到目前位置按鈕**（右下角，`MapFollowController`）：依車速縮放（`MapFollowCamera.distance`），預設行進方向朝上；
   跟隨中再按一次會依序切換「行進方向朝上 → 北方朝上 → 3D」，選擇會記住。巡航中由 App 自己算鏡頭（MapCamera），
   沒有定位時改用系統的 `.userLocation` 跟隨。

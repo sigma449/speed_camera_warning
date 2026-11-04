@@ -172,6 +172,8 @@ struct RootView: View {
         }
         .onMapCameraChange(frequency: .onEnd) { context in
             visibleRegion = context.region
+            model.requestRoadSnapping(near: GeoPoint(lat: context.region.center.latitude,
+                                                     lon: context.region.center.longitude))
         }
         .onMapCameraChange(frequency: .continuous) { _ in
             // 使用者還在拖曳或縮放：持續更新「最後一次碰地圖」的時間

@@ -87,10 +87,23 @@ sleep 14
 shot "08-search-suggestions-en"
 xcrun simctl terminate "${UDID}" "${BUNDLE_ID}" || true
 
-# 5) 北宜公路一帶：區間應該順著路形畫，而不是起終點直線
+# 5) 北宜公路：區間要貼著道路畫（App 會用 Apple 地圖的路線規劃貼齊，每段要幾秒）
 xcrun simctl launch --terminate-running-process "${UDID}" "${BUNDLE_ID}" -mapCenter "24.905,121.695" -mapSpan 0.16
-sleep 15
+sleep 40
 shot "09-sections-follow-road"
+# 放大看彎道：第 1 段（19K–23.1K）全段、23.1K 終點附近的髮夾彎、第 2 段、第 4 段宜蘭端
+xcrun simctl launch --terminate-running-process "${UDID}" "${BUNDLE_ID}" -mapCenter "24.9545,121.6107" -mapSpan 0.035
+sleep 12
+shot "10-beiyi-1"
+xcrun simctl launch --terminate-running-process "${UDID}" "${BUNDLE_ID}" -mapCenter "24.9563,121.6215" -mapSpan 0.01
+sleep 10
+shot "11-beiyi-1-hairpin"
+xcrun simctl launch --terminate-running-process "${UDID}" "${BUNDLE_ID}" -mapCenter "24.9473,121.6590" -mapSpan 0.035
+sleep 10
+shot "12-beiyi-2"
+xcrun simctl launch --terminate-running-process "${UDID}" "${BUNDLE_ID}" -mapCenter "24.8590,121.7840" -mapSpan 0.05
+sleep 10
+shot "13-beiyi-4"
 
 # App 的紀錄（確認啟動參數、sheet、地圖範圍有沒有生效）
 xcrun simctl spawn "${UDID}" log show --last 15m --style compact \

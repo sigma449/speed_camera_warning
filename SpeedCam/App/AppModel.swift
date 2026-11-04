@@ -74,6 +74,7 @@ final class AppModel {
     @ObservationIgnored private let announcer = VoiceAnnouncer()
     @ObservationIgnored private let activity = ActivityController()
     @ObservationIgnored private let navigation = NavigationController()
+    @ObservationIgnored private let pathSnapper = SectionPathSnapper()
     @ObservationIgnored private var alertEngine: CameraAlertEngine
     @ObservationIgnored private var sectionTracker: SectionSpeedTracker
     @ObservationIgnored private var demoTask: Task<Void, Never>?
@@ -111,6 +112,9 @@ final class AppModel {
         location.onAuthorizationChange = { [weak self] status in
             self?.authorizationChanged(status)
         }
+        pathSnapper.onSnapped = { [weak self] groupID, path in
+            self?.applySnappedPath(path, toGroup: groupID)
+        }
         applySettingsToComponents()
     }
 
@@ -135,6 +139,7 @@ final class AppModel {
             startDemo()
         } else {
             refineSectionLengths()
+            requestRoadSnapping(near: searchCenter.map { GeoPoint(lat: $0.latitude, lon: $0.longitude) })
             // 打開 App 就開始測速偵測（可在設定關閉）。
             if AppPreferences.autoStartCruise && !showGallery {
                 startCruise()
@@ -416,9 +421,31 @@ final class AppModel {
                              limit: visibleCameraLimit)
     }
 
+    // MARK: 區間路形貼齊道路
+
+    /// 請 Apple 地圖把區間路形貼齊道路（只處理還沒做過的，近的先做）。地圖移動後由 RootView 呼叫。
+    func requestRoadSnapping(near center: GeoPoint?) {
+        guard !demoMode, !database.sections.isEmpty else { return }
+        pathSnapper.enqueue(sectionOverlays, near: center ?? lastFix?.point)
+    }
+
+    private func applySnappedPath(_ path: [GeoPoint], toGroup groupID: String) {
+        for i in database.sections.indices where database.sections[i].groupID == groupID {
+            database.sections[i].path = RoadSnapping.oriented(path, startingNear: database.sections[i].start)
+        }
+    }
+
     private func applyDatabase(_ db: CameraDatabase) {
         var db = db
         db.sections = SectionLengthRefiner.applyCached(to: db.sections)
+        if !demoMode {
+            db.sections = db.sections.map { s in
+                guard let snapped = pathSnapper.cachedPath(for: s) else { return s }
+                var copy = s
+                copy.path = snapped
+                return copy
+            }
+        }
         database = db
         index = SpatialIndex(cameras: db.cameras)
         alertEngine.replaceIndex(index)
@@ -430,9 +457,15 @@ final class AppModel {
         guard database.sections.contains(where: { $0.lengthEstimated }) else { return }
         Task {
             let refined = await SectionLengthRefiner.refine(database.sections)
-            database.sections = refined
-            sectionTracker.replaceSections(refined)
-            alertEngine.sections = refined
+            // 只更新長度（等待期間路形可能已經貼齊道路，不要被舊的覆蓋）
+            let lengths = Dictionary(refined.map { ($0.id, $0.lengthMeters) }, uniquingKeysWith: { a, _ in a })
+            for i in database.sections.indices {
+                if let length = lengths[database.sections[i].id] {
+                    database.sections[i].lengthMeters = length
+                }
+            }
+            sectionTracker.replaceSections(database.sections)
+            alertEngine.sections = database.sections
         }
     }
 
