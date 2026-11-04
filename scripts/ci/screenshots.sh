@@ -92,18 +92,26 @@ sleep 14
 shot "08-search-suggestions-en"
 
 # 4b) 搜尋壓力測試（中文）：反覆輸入、刪除「台北車站」約 45 秒，檢查 App 有沒有閃退
-launch_app -autoStartCruise NO -AppleLanguages "(zh-Hant-TW)" -AppleLocale zh_TW -typeSearch "台北車站"
+xcrun simctl terminate "${UDID}" "${BUNDLE_ID}" 2>/dev/null || true
+sleep 2
+xcrun simctl terminate "${UDID}" "${BUNDLE_ID}" 2>/dev/null || true
+STRESS_ERR="${PWD}/${OUT}/search-stress-stderr.txt"
+xcrun simctl launch --terminate-running-process --stderr="${STRESS_ERR}" "${UDID}" "${BUNDLE_ID}" \
+  -autoStartCruise NO -AppleLanguages "(zh-Hant-TW)" -AppleLocale zh_TW -typeSearch "台北車站"
 sleep 55
 shot "08b-search-typing-stress"
+echo "---- App 的錯誤輸出（最後 40 行）----"
+tail -40 "${STRESS_ERR}" 2>/dev/null || echo "（沒有錯誤輸出）"
 if xcrun simctl spawn "${UDID}" launchctl list 2>/dev/null | grep -q "${BUNDLE_ID}"; then
   echo "搜尋壓力測試：App 仍在執行"
 else
   echo "::warning::搜尋壓力測試：App 已經不在執行（可能閃退）"
 fi
-CRASH=$(ls -t ~/Library/Logs/DiagnosticReports/ 2>/dev/null | grep -i "SpeedCam" | head -1 || true)
+sleep 3
+CRASH=$(find "${HOME}/Library/Logs/DiagnosticReports" /Library/Logs/DiagnosticReports -name "SpeedCam*.ips" -mmin -20 2>/dev/null | head -1 || true)
 if [[ -n "${CRASH}" ]]; then
   echo "::warning::找到閃退報告 ${CRASH}"
-  python3 - "${HOME}/Library/Logs/DiagnosticReports/${CRASH}" <<'PY' || head -c 6000 "${HOME}/Library/Logs/DiagnosticReports/${CRASH}"
+  python3 - "${CRASH}" <<'PY' || head -c 6000 "${CRASH}"
 import json, sys
 text = open(sys.argv[1], encoding="utf-8", errors="replace").read()
 header, _, body = text.partition("\n")

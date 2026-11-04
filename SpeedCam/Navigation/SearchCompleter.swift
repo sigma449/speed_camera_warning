@@ -3,11 +3,23 @@ import MapKit
 import Observation
 import SwiftUI
 
+/// 一筆候選。畫面需要的文字在收到結果時就先算好，清單用自己的 id，不用陣列索引。
+///
+/// 之前用 `ForEach(suggestions.indices)` 再用索引取資料：打中文時候選會一直更新、數量會變，
+/// 畫面還拿舊的索引去取新的陣列就會超出範圍而閃退（使用者回報、CI 壓力測試重現）。
+struct SearchSuggestion: Identifiable {
+    let id: String
+    let completion: MKLocalSearchCompletion
+    let title: AttributedString
+    let subtitle: String
+    let isCategory: Bool
+}
+
 /// 邊打字邊顯示候選地點（像 Google 地圖的自動完成），用 MapKit 的 MKLocalSearchCompleter。
 @MainActor
 @Observable
 final class SearchCompleter: NSObject, MKLocalSearchCompleterDelegate {
-    private(set) var suggestions: [MKLocalSearchCompletion] = []
+    private(set) var suggestions: [SearchSuggestion] = []
     private(set) var failed = false
 
     private let completer = MKLocalSearchCompleter()
@@ -35,7 +47,14 @@ final class SearchCompleter: NSObject, MKLocalSearchCompleterDelegate {
 
     nonisolated func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
         Task { @MainActor in
-            self.suggestions = completer.results
+            var seen = Set<String>()
+            self.suggestions = completer.results.enumerated().map { index, c in
+                var id = "\(c.title)|\(c.subtitle)"
+                if !seen.insert(id).inserted { id += "#\(index)" }
+                return SearchSuggestion(id: id, completion: c,
+                                        title: Self.highlighted(c.title, ranges: c.titleHighlightRanges),
+                                        subtitle: c.subtitle, isCategory: c.subtitle.isEmpty)
+            }
             self.failed = false
         }
     }

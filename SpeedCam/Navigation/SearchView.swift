@@ -14,7 +14,7 @@ struct SearchView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
     @State private var completer = SearchCompleter()
-    @State private var results: [MKMapItem] = []
+    @State private var results: [SearchResultRow] = []
     /// 目前的搜尋結果是用哪段文字查的；輸入改變時用來判斷要不要清掉結果。
     @State private var resultsQuery: String?
     @State private var isSearching = false
@@ -146,14 +146,12 @@ struct SearchView: View {
                 Text(completer.failed ? "暫時找不到候選，按鍵盤上的「搜尋」試試看" : "輸入中…")
                     .foregroundStyle(.secondary)
             }
-            ForEach(completer.suggestions.indices, id: \.self) { i in
-                let suggestion = completer.suggestions[i]
+            ForEach(completer.suggestions) { suggestion in
                 Button {
-                    select(suggestion)
+                    select(suggestion.completion)
                 } label: {
-                    row(symbol: suggestion.subtitle.isEmpty ? "magnifyingglass" : "mappin.circle.fill",
-                        title: Text(SearchCompleter.highlighted(suggestion.title, ranges: suggestion.titleHighlightRanges)),
-                        subtitle: suggestion.subtitle, distance: nil)
+                    row(symbol: suggestion.isCategory ? "magnifyingglass" : "mappin.circle.fill",
+                        title: Text(suggestion.title), subtitle: suggestion.subtitle, distance: nil)
                 }
                 .disabled(isSearching)
             }
@@ -164,14 +162,12 @@ struct SearchView: View {
 
     private var resultsSection: some View {
         Section {
-            ForEach(results.indices, id: \.self) { i in
-                let item = results[i]
+            ForEach(results) { result in
                 Button {
-                    navigate(to: item)
+                    navigate(to: result.item)
                 } label: {
-                    row(symbol: "mappin.circle.fill", title: Text(item.name ?? "未命名地點"),
-                        subtitle: MapItems.subtitle(of: item),
-                        distance: MapItems.distanceText(from: model.searchCenter, to: MapItems.coordinate(of: item)))
+                    row(symbol: "mappin.circle.fill", title: Text(result.name), subtitle: result.subtitle,
+                        distance: MapItems.distanceText(from: model.searchCenter, to: result.coordinate))
                 }
             }
         } header: {
@@ -280,13 +276,25 @@ struct SearchView: View {
 
     private func show(_ items: [MKMapItem], for text: String, sortByDistance: Bool) {
         resultsQuery = text
+        var sorted = items
         if sortByDistance, let center = model.searchCenter {
-            results = items.sorted {
+            sorted = items.sorted {
                 MapItems.distance(from: center, to: MapItems.coordinate(of: $0))
                     < MapItems.distance(from: center, to: MapItems.coordinate(of: $1))
             }
-        } else {
-            results = items
+        }
+        results = sorted.enumerated().map { index, item in
+            SearchResultRow(id: index, item: item, name: item.name ?? "未命名地點",
+                            subtitle: MapItems.subtitle(of: item), coordinate: MapItems.coordinate(of: item))
         }
     }
+}
+
+/// 搜尋結果的一列（顯示用的資料先算好，清單用 id 不用索引）。
+struct SearchResultRow: Identifiable {
+    let id: Int
+    let item: MKMapItem
+    let name: String
+    let subtitle: String
+    let coordinate: CLLocationCoordinate2D
 }
