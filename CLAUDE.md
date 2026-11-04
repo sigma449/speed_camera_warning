@@ -142,6 +142,8 @@ App 的啟動參數（CI 截圖用）：
   「下」應該是指附近往建國南路、光復南路的下匝道，不是「高架下方」。目前用「高架／平面」標示讓駕駛判斷（見上方規格）。
 - **SwiftUI 清單不要用 `ForEach(array.indices)` 再用索引取資料**：資料一直更新、數量變少時會超出範圍閃退。
   使用者在中文介面搜尋「台北車站」時閃退，CI 壓力測試（`-typeSearch`）重現；改成 `SearchSuggestion`／`SearchResultRow` 這種自帶 id 的資料。
+  修正後完整 CI 與「搜尋壓力測試」流程（`search-stress.yml`，手動觸發，約 8 分鐘）連跑 3 次都沒有閃退。
+- **`Int(...)` 轉換無限大或 NaN 會閃退**：距離、偏差這類可能是 `.infinity` 的值，轉成 Int 前先限制範圍。
 - **CI 截圖的啟動參數會被吃掉**：巡航中的 App 被結束後，iOS 會在背景重新叫起它（背景定位），
   下一次 launch 只會把它帶到前景。`screenshots.sh` 的 `launch_app` 會先結束兩次，不需要巡航的截圖加 `-autoStartCruise NO`。
 - **剛啟動時太早開 sheet 或改地圖範圍會被系統忽略**：CI 截圖用的啟動參數改在 `.task` 裡等 1.2 秒再做。

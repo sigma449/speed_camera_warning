@@ -108,12 +108,14 @@ final class SectionPathSnapper {
     private func snap(_ section: SpeedSection) async -> [GeoPoint]? {
         let reference = section.displayPath
         let expected = section.lengthEstimated ? GeoMath.length(of: reference) : section.lengthMeters
+        guard reference.count >= 2, expected.isFinite, expected > 0 else { return nil }
 
         // 1) 起點 → 終點一次規劃；不合理再試反方向（起點可能被吸到快速道路對向車道，要繞一大圈迴轉）
         for reversed in [false, true] {
             let (a, b) = reversed ? (section.end, section.start) : (section.start, section.end)
-            guard let route = await route(from: a, to: b) else { continue }
-            let deviation = RoadSnapping.maxDeviation(of: reference, from: route.points)
+            guard let route = await route(from: a, to: b), route.points.count >= 2 else { continue }
+            // 偏差可能是無限大（路形是空的），轉成 Int 會閃退，先限制範圍
+            let deviation = min(RoadSnapping.maxDeviation(of: reference, from: route.points), 999_999)
             if RoadSnapping.isPlausible(routeLength: route.distance, expected: expected,
                                         minRatio: 0.85, maxRatio: 1.2, slack: 150),
                deviation <= 200 {
@@ -134,7 +136,8 @@ final class SectionPathSnapper {
             var piece = segment
             let segmentLength = GeoMath.length(of: segment)
             for reversed in [false, true] {
-                guard let route = await route(from: reversed ? b : a, to: reversed ? a : b) else { continue }
+                guard let route = await route(from: reversed ? b : a, to: reversed ? a : b),
+                      route.points.count >= 2 else { continue }
                 if RoadSnapping.isPlausible(routeLength: route.distance, expected: segmentLength,
                                             minRatio: 0.8, maxRatio: 1.6, slack: 200),
                    RoadSnapping.maxDeviation(of: segment, from: route.points) <= 200 {

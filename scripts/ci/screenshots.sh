@@ -102,10 +102,12 @@ sleep 55
 shot "08b-search-typing-stress"
 echo "---- App 的錯誤輸出（最後 40 行）----"
 tail -40 "${STRESS_ERR}" 2>/dev/null || echo "（沒有錯誤輸出）"
-if xcrun simctl spawn "${UDID}" launchctl list 2>/dev/null | grep -q "${BUNDLE_ID}"; then
-  echo "搜尋壓力測試：App 仍在執行"
+# 以 App 自己記錄的「typing test finished」判斷（launchctl 的檢查曾經誤判）
+if xcrun simctl spawn "${UDID}" log show --last 3m --style compact \
+     --predicate 'subsystem == "tw.speedcammap.app" AND category == "search"' 2>/dev/null | grep -q "typing test finished"; then
+  echo "搜尋壓力測試：完成，沒有閃退"
 else
-  echo "::warning::搜尋壓力測試：App 已經不在執行（可能閃退）"
+  echo "::warning::搜尋壓力測試：沒有跑完（可能閃退），請看截圖 08b"
 fi
 sleep 3
 CRASH=$(find "${HOME}/Library/Logs/DiagnosticReports" /Library/Logs/DiagnosticReports -name "SpeedCam*.ips" -mmin -20 2>/dev/null | head -1 || true)

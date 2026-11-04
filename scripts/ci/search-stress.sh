@@ -45,10 +45,11 @@ for run in $(seq 1 "${RUNS}"); do
     -autoStartCruise NO -AppleLanguages "(zh-Hant-TW)" -AppleLocale zh_TW -typeSearch "台北車站"
   sleep 58
   xcrun simctl io "${UDID}" screenshot "${OUT}/stress-${run}.png" > /dev/null
-  if xcrun simctl spawn "${UDID}" launchctl list 2>/dev/null | grep -q "${BUNDLE_ID}"; then
-    echo "結果：App 仍在執行"
+  if xcrun simctl spawn "${UDID}" log show --start "${START}" --style compact \
+       --predicate 'subsystem == "tw.speedcammap.app" AND category == "search"' 2>/dev/null | grep -q "typing test finished"; then
+    echo "結果：完成，沒有閃退"
   else
-    echo "::warning::結果：App 已經不在執行"
+    echo "::warning::結果：沒有跑完（可能閃退）"
     failures=$((failures + 1))
   fi
 
