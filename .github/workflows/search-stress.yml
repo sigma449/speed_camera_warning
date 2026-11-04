@@ -1,0 +1,34 @@
+name: 搜尋壓力測試
+
+# 只建置模擬器版本並跑搜尋壓力測試（不下載測速資料、不拍其他截圖），比完整 CI 快。
+on:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: 重複幾次
+        default: "3"
+
+jobs:
+  stress:
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - name: 選擇 Xcode
+        run: bash scripts/ci/select-xcode.sh
+      - name: 產生 Xcode 專案
+        run: |
+          brew install xcodegen
+          xcodegen generate
+      - name: 建置（模擬器）
+        run: |
+          set -o pipefail
+          xcodebuild -project SpeedCam.xcodeproj -scheme SpeedCam -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO build 2>&1 | tee build.log | grep -E "error:|BUILD (SUCCEEDED|FAILED)" || true
+          grep -q "BUILD SUCCEEDED" build.log
+      - name: 搜尋壓力測試
+        run: bash scripts/ci/search-stress.sh build/Build/Products/Debug-iphonesimulator/SpeedCam.app "${{ github.event.inputs.runs || '3' }}"
+      - name: 截圖輸出到 log
+        if: always()
+        run: bash scripts/ci/print-screenshots.sh screenshots
