@@ -35,9 +35,10 @@ public enum MapFollowMode: String, CaseIterable, Codable, Sendable {
 
 /// 跟隨目前位置時的鏡頭設定：依車速縮放，行進方向朝上時把車子放在畫面偏下。
 public enum MapFollowCamera {
-    /// 鏡頭距離（公尺）：市區低速約 700 m（畫面大約涵蓋 500 公尺），越快看越遠，高速公路最多 3,000 m（約 2 公里）。
+    /// 鏡頭距離（公尺）。iPhone 直向畫面的寬度大約是鏡頭距離的 0.36 倍：
+    /// 停車或低速 1,300 m（畫面寬約 500 公尺），時速 60 約 3,300 m（約 1.2 公里），高速公路最多 5,500 m（約 2 公里）。
     public static func distance(forSpeedKmh speed: Double, mode: MapFollowMode) -> Double {
-        let base = min(3_000, max(700, 600 + max(0, speed) * 22))
+        let base = min(5_500, max(1_300, 1_200 + max(0, speed) * 35))
         // 3D 傾斜時前方本來就看得比較遠，鏡頭拉近一點
         return mode == .headingUp3D ? base * 0.8 : base
     }
@@ -45,7 +46,7 @@ public enum MapFollowCamera {
     /// 畫面中心要放在車子前方多遠（公尺）。行進方向朝上而且有在移動時，前方多留一些畫面。
     public static func lookAhead(distance: Double, speedKmh: Double, mode: MapFollowMode) -> Double {
         guard mode.rotatesWithHeading, speedKmh >= 10 else { return 0 }
-        return distance * (mode == .headingUp3D ? 0.12 : 0.2)
+        return distance * (mode == .headingUp3D ? 0.1 : 0.15)
     }
 
     /// 平滑車速，避免縮放一直跳動。

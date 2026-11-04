@@ -15,17 +15,17 @@ final class MapFollowTests: XCTestCase {
         let stopped = MapFollowCamera.distance(forSpeedKmh: 0, mode: .headingUp)
         let city = MapFollowCamera.distance(forSpeedKmh: 40, mode: .headingUp)
         let highway = MapFollowCamera.distance(forSpeedKmh: 110, mode: .headingUp)
-        XCTAssertEqual(stopped, 700)
+        XCTAssertEqual(stopped, 1_300)
         XCTAssertGreaterThan(city, stopped)
         XCTAssertGreaterThan(highway, city)
-        XCTAssertEqual(MapFollowCamera.distance(forSpeedKmh: 200, mode: .headingUp), 3_000)
+        XCTAssertEqual(MapFollowCamera.distance(forSpeedKmh: 200, mode: .headingUp), 5_500)
         XCTAssertLessThan(MapFollowCamera.distance(forSpeedKmh: 40, mode: .headingUp3D), city)
     }
 
     func testLookAheadOnlyWhenMovingAndHeadingUp() {
         XCTAssertEqual(MapFollowCamera.lookAhead(distance: 1_000, speedKmh: 5, mode: .headingUp), 0)
         XCTAssertEqual(MapFollowCamera.lookAhead(distance: 1_000, speedKmh: 50, mode: .northUp), 0)
-        XCTAssertEqual(MapFollowCamera.lookAhead(distance: 1_000, speedKmh: 50, mode: .headingUp), 200)
+        XCTAssertEqual(MapFollowCamera.lookAhead(distance: 1_000, speedKmh: 50, mode: .headingUp), 150)
     }
 
     private func fix(_ t: TimeInterval, kmh: Double, accuracy: Double = 5) -> VehicleFix {
