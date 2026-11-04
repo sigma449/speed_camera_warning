@@ -72,7 +72,7 @@ pip install -r data-pipeline/requirements-dev.txt && python3 -m pytest -q data-p
 ## 資料
 
 - 照相點：內政部警政署「測速執法設置點」（政府資料開放平臺，資料集 7320），依[政府資料開放授權條款－第1版](https://data.gov.tw/license)使用。
-- 區間測速：目前由人工維護 `data-pipeline/manual/sections.csv`（政府資料沒有統一的區間資料）。
+- 區間測速：從開放資料「設置地點」的文字自動產生（例如「台9線68k+600m至56k+600m」），用公路局「省道里程坐標」（資料集 7040）換算座標；另外有人工維護的 `data-pipeline/manual/sections.csv`（北宜公路）。詳見 [data-pipeline/README.md](data-pipeline/README.md)。
 - 你也可以在 `data-pipeline/manual/cameras_extra.csv` 補充照相點。
 
 ## 路線圖
