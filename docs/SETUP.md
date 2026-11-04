@@ -130,26 +130,68 @@ SideStore 在手機上自己續簽時，需要假裝成「iPhone 有接著電腦
 
 **Q：iloader 找不到 iPhone，或出現「Failed to connect to usbmuxd: device socket io failed」？**
 
-iloader 是透過 iTunes 附帶的「Apple Mobile Device Service」（電腦本機 27015 埠）跟 iPhone 溝通。出現這個錯誤，代表 iloader 連不到這個服務。請依序試：
+iloader 是透過 Apple 的「Apple Mobile Device Service」（電腦本機 27015 埠）跟 iPhone 溝通，這個服務和 iPhone 的驅動程式都來自「Apple Mobile Device Support」這個元件（iTunes 安裝檔裡附的）。依你看到的狀況選對應的段落。
 
-1. **移除所有 Microsoft Store 版的 Apple 軟體**：到「設定 → 應用程式 → 已安裝的應用程式」，把 iTunes、Apple 裝置（Apple Devices）、Apple Mobile Device Support 全部解除安裝。再用 `winget install --id Apple.iTunes -e --source winget` 重新安裝電腦版 iTunes，裝完**重新開機**。iloader 的 GitHub 上有使用者回報這樣就解決了（[#396](https://github.com/nab138/iloader/issues/396)）。
-2. **重新啟動服務**：用「以系統管理員身分執行」打開 PowerShell，輸入 `Restart-Service "Apple Mobile Device Service"`。
-3. **先用 iTunes 確認**：iPhone 解鎖後接上電腦，點「信任」並輸入密碼，看 iTunes 左上角有沒有出現手機圖示。**iTunes 看不到的話，iloader 也一定看不到**。
-4. **換傳輸線或 USB 孔**：用原廠線，直接插電腦本體的 USB 孔，不要經過 Hub 或延長線（[#404](https://github.com/nab138/iloader/issues/404)）。
-5. **iPhone 必須設定密碼**。也可以到 iPhone「設定 → 開發者 → 清除信任的電腦」，再重新接上並點「信任」。
-6. **關掉 iTunes**，再用「以系統管理員身分執行」打開 iloader。
+> 以下凡是動到服務或系統資料夾的指令，都要在**系統管理員**的 PowerShell 執行（開始按鈕按右鍵 → **Terminal (Admin)**，視窗標題要有「Administrator」）。用一般權限執行會出現「Cannot open … service」。
 
-還是不行的話，在 PowerShell 執行下面三行，把結果拿去問人（或回報給開發者）：
+**狀況 A：iTunes 跳出「This iPhone cannot be used because the required software is not installed」**
 
-```
-winget list --name Apple
-Get-Service "Apple Mobile Device Service"
-netstat -ano | findstr 27015
-```
+代表 Apple Mobile Device Support 沒裝起來（用 winget 裝整包 iTunes 時偶爾會這樣）。把這個元件從安裝檔裡拿出來單獨安裝：
 
-- 第一行：看裝了哪些 Apple 軟體，以及來源是 Store 還是 winget。
-- 第二行：服務狀態應該是 `Running`。
-- 第三行：應該要看到一行 `127.0.0.1:27015 ... LISTENING`。
+1. 下載 iTunes 安裝檔（只下載，不執行）：
+
+   ```
+   winget download --id Apple.iTunes -e --source winget -d "$env:USERPROFILE\Downloads\iTunesSetup"
+   ```
+
+2. 安裝 7-Zip（`winget install --id 7zip.7zip -e --source winget`），到 `下載\iTunesSetup` 找到 iTunes 安裝檔，按右鍵 → **Show more options** → **7-Zip** → **Extract to "…\"**，解開後會看到 `AppleMobileDeviceSupport64.msi`。
+3. 如果「Settings → Apps → Installed apps」裡已經有「Apple Mobile Device Support」，先解除安裝。
+4. 在解開的資料夾空白處按住 Shift＋右鍵 → **Open in Terminal**，執行（會跳出系統管理員確認，並在桌面留下安裝紀錄 `amds-install.log`）：
+
+   ```
+   Start-Process msiexec -ArgumentList "/i `"$PWD\AppleMobileDeviceSupport64.msi`" /l*v `"$env:USERPROFILE\Desktop\amds-install.log`"" -Verb RunAs -Wait
+   ```
+
+   一定要像這樣用**完整路徑**（`$PWD\…`）；只寫檔名會出現「This installation package could not be opened」，因為提權後的工作目錄是 `C:\Windows\System32`。也可以直接在檔案總管雙擊那個 `.msi` 安裝。
+5. 裝完**重新開機**。裝置管理員的「Universal Serial Bus devices」底下應該會出現 **Apple Mobile Device USB Device**。
+
+iloader 只需要這個元件，就算 iTunes 本身還在跳錯誤，也可以直接試 iloader。
+
+**狀況 B：裝置管理員裡 iPhone 顯示成「MTP USB Device」，或在「Other devices」有驚嘆號**
+
+代表 Windows 用了內建的通用驅動程式，Apple 的驅動程式沒有綁上去：
+
+1. iPhone 解鎖並接上電腦 → 裝置管理員 → 對那個裝置按右鍵 → **Update driver** → **Browse my computer for drivers** → **Let me pick from a list of available drivers on my computer** → **Have Disk…** → **Browse…**。
+2. 選 `C:\Program Files\Common Files\Apple\Mobile Device Support\Drivers\usbaapl64.inf` → **OK** → **Next**。（找不到這個檔案就先做狀況 A。）
+
+**狀況 C：iloader 顯示「No devices found」**
+
+服務正常，但沒有跟 iPhone 完成配對。清掉電腦上的舊配對紀錄再重新信任：
+
+1. 拔掉 iPhone，在 PowerShell 執行下面這行（會自動用系統管理員身分開新視窗，最後顯示 `Running` 就完成了）：
+
+   ```
+   Start-Process powershell -Verb RunAs -ArgumentList '-NoExit','-Command','Stop-Service "Apple Mobile Device Service"; Remove-Item "C:\ProgramData\Apple\Lockdown\*" -Force -ErrorAction SilentlyContinue; Start-Service "Apple Mobile Device Service"; Get-Service "Apple Mobile Device Service"'
+   ```
+
+2. iPhone 解鎖後重新接上，跳出「要信任這部電腦嗎？」時點「**信任**」並輸入密碼，然後在 iloader 按 **Refresh**。
+3. 手機沒有跳出信任視窗的話：iPhone「設定 → 一般 → 移轉或重置 iPhone → 重置 → **重置定位與隱私權**」（會清除所有信任過的電腦，App 之後會重新詢問定位權限，不會刪資料），再重新接上。
+4. 還是不行：在裝置管理員對「Apple Mobile Device USB Device」按右鍵 → **Uninstall device**（不要勾移除驅動程式），拔掉 iPhone 再接回去讓 Windows 重新綁定。
+
+**通用檢查**
+
+- 用原廠線，直接插電腦本體的 USB 孔，不要經過 Hub 或延長線（[#404](https://github.com/nab138/iloader/issues/404)）；有些副廠線只能充電。
+- iPhone 必須設定密碼，接上時要解鎖。
+- 有 Microsoft Store 版的 iTunes、Apple 裝置（Apple Devices）時先移除，避免和電腦版搶裝置（[#396](https://github.com/nab138/iloader/issues/396)）。
+- 診斷用的三行指令（結果可以拿去問人）：
+
+  ```
+  winget list --name Apple
+  Get-Service "Apple Mobile Device Service"
+  netstat -ano | findstr 27015
+  ```
+
+  第二行應該是 `Running`；第三行應該看到 27015 埠的連線（`LISTENING` 或 `ESTABLISHED`）。
 
 **Q：SideStore 續簽失敗？**
 - 確認 LocalDevVPN 有連線（狀態列會出現 VPN 圖示）。
