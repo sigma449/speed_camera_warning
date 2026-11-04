@@ -63,9 +63,25 @@ sleep 50
 shot "04-demo-section-countdown"
 xcrun simctl terminate "${UDID}" "${BUNDLE_ID}" || true
 
-# 3) 一般啟動（使用 App 內建的真實資料）
+# 3) 一般啟動（使用 App 內建的真實資料；預設會自動開始巡航）
 xcrun simctl launch "${UDID}" "${BUNDLE_ID}"
 sleep 8
 shot "05-normal-launch"
+xcrun simctl terminate "${UDID}" "${BUNDLE_ID}" || true
+
+# 4) 搜尋候選：模擬器預設語言，以及指定繁體中文（確認地圖與搜尋的語言設定有效）
+xcrun simctl launch "${UDID}" "${BUNDLE_ID}" -search "台北車站"
+sleep 10
+shot "06-search-suggestions-default-language"
+xcrun simctl terminate "${UDID}" "${BUNDLE_ID}" || true
+
+xcrun simctl launch "${UDID}" "${BUNDLE_ID}" -search "台北車站" -AppleLanguages "(zh-Hant-TW)"
+sleep 10
+shot "07-search-suggestions-zh-Hant"
+xcrun simctl terminate "${UDID}" "${BUNDLE_ID}" || true
+
+xcrun simctl launch "${UDID}" "${BUNDLE_ID}" -search "Taipei Main Station" -AppleLanguages "(en)"
+sleep 10
+shot "08-search-suggestions-en"
 
 ls -la "${OUT}"

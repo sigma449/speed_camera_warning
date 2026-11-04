@@ -33,6 +33,11 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
 
     var isRunning: Bool { updatesTask != nil }
 
+    /// 系統記得的最後位置（沒有在巡航時，搜尋用它找附近的地點）。
+    var lastKnownCoordinate: CLLocationCoordinate2D? {
+        manager.location?.coordinate
+    }
+
     func start() {
         guard updatesTask == nil else { return }
         backgroundSession = CLBackgroundActivitySession()

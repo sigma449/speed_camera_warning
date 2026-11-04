@@ -4,6 +4,9 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
+    @AppStorage(AppPreferences.autoStartCruiseKey) private var autoStartCruise = true
+    @State private var mapLanguage = MapLanguage.selected
+    @State private var showRestartNotice = false
 
     var body: some View {
         @Bindable var model = model
@@ -18,6 +21,27 @@ struct SettingsView: View {
                     .pickerStyle(.segmented)
                     Text("重機模式規劃路線時會避開國道（高速公路）與收費道路。")
                         .font(.footnote).foregroundStyle(.secondary)
+                }
+
+                Section {
+                    Toggle("開啟 App 時自動開始巡航", isOn: $autoStartCruise)
+                } header: {
+                    Text("巡航")
+                } footer: {
+                    Text("開啟後，打開 App 就會開始偵測測速照相，不用再按 ▶︎。")
+                }
+
+                Section {
+                    Picker("語言", selection: $mapLanguage) {
+                        ForEach(MapLanguage.allCases) { language in
+                            Text(language.displayName).tag(language)
+                        }
+                    }
+                    LabeledContent("目前使用", value: MapLanguage.active)
+                } header: {
+                    Text("地圖與搜尋")
+                } footer: {
+                    Text("地圖上的地名和搜尋結果使用這個語言。App 內的文字不受影響。變更後要重新開啟 App 才會生效：從螢幕底部往上滑到多工畫面，把 App 往上滑掉，再重新打開。")
                 }
 
                 Section {
@@ -99,6 +123,15 @@ struct SettingsView: View {
             }
             .navigationTitle("設定")
             .navigationBarTitleDisplayMode(.inline)
+            .onChange(of: mapLanguage) { _, newValue in
+                MapLanguage.select(newValue)
+                showRestartNotice = true
+            }
+            .alert("重新開啟 App 後生效", isPresented: $showRestartNotice) {
+                Button("好") {}
+            } message: {
+                Text("請從多工畫面把 App 往上滑掉，再重新打開。地圖上的地名和搜尋結果就會改用「\(mapLanguage.displayName)」。")
+            }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("完成") { dismiss() }

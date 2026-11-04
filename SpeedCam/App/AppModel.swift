@@ -34,12 +34,15 @@ final class AppModel {
     private(set) var destinationName: String?
     private(set) var isCalculatingRoute = false
     private(set) var authorizationDenied = false
+    private(set) var recentDestinations: [RecentDestination] = RecentDestinationStore.load()
     var statusMessage: String?
 
     /// 展示模式：用假資料與假軌跡跑一遍（CI 截圖、沒有真實資料時使用）。
     let demoMode: Bool
     /// 顯示 Live Activity 預覽頁（CI 截圖用）。
     let showGallery: Bool
+    /// 啟動時直接打開搜尋並輸入這段文字（CI 截圖用：`-search 台北車站`）。
+    let initialSearchQuery: String?
 
     var vehicleMode: VehicleMode {
         get { settings.vehicleMode }
@@ -79,6 +82,11 @@ final class AppModel {
     init(arguments: [String] = ProcessInfo.processInfo.arguments) {
         demoMode = arguments.contains("-demo")
         showGallery = arguments.contains("-gallery")
+        if let i = arguments.firstIndex(of: "-search"), i + 1 < arguments.count {
+            initialSearchQuery = arguments[i + 1]
+        } else {
+            initialSearchQuery = nil
+        }
         let loaded = Self.loadSettings()
         storedSettings = loaded
         alertEngine = CameraAlertEngine(index: SpatialIndex(cameras: []), settings: loaded)
@@ -109,6 +117,10 @@ final class AppModel {
             startDemo()
         } else {
             refineSectionLengths()
+            // 打開 App 就開始測速偵測（可在設定關閉）。
+            if AppPreferences.autoStartCruise && !showGallery {
+                startCruise()
+            }
         }
     }
 
@@ -165,12 +177,45 @@ final class AppModel {
 
     // MARK: 導航
 
-    func search(_ query: String) async throws -> [MKMapItem] {
-        let center = lastFix.map { CLLocationCoordinate2D(latitude: $0.point.lat, longitude: $0.point.lon) }
-        return try await navigation.search(query, near: center)
+    /// 搜尋的中心點：巡航中用最新定位，否則用系統記得的最後位置。
+    var searchCenter: CLLocationCoordinate2D? {
+        if let fix = lastFix { return fix.point.coordinate }
+        return location.lastKnownCoordinate
     }
 
-    func startNavigation(to item: MKMapItem) async {
+    func search(_ query: String) async throws -> [MKMapItem] {
+        try await navigation.search(query, near: searchCenter)
+    }
+
+    func search(completion: MKLocalSearchCompletion) async throws -> [MKMapItem] {
+        try await navigation.search(completion: completion)
+    }
+
+    func startNavigation(to recent: RecentDestination) async {
+        await startNavigation(to: MapItems.item(name: recent.name, coordinate: recent.coordinate), subtitle: recent.subtitle)
+    }
+
+    func removeRecent(_ recent: RecentDestination) {
+        recentDestinations.removeAll { $0.id == recent.id }
+        RecentDestinationStore.save(recentDestinations)
+    }
+
+    func clearRecents() {
+        recentDestinations = []
+        RecentDestinationStore.save([])
+    }
+
+    private func rememberDestination(_ item: MKMapItem, subtitle: String?) {
+        let entry = RecentDestination(name: item.name ?? "未命名地點",
+                                      subtitle: subtitle ?? MapItems.subtitle(of: item),
+                                      lat: MapItems.coordinate(of: item).latitude,
+                                      lon: MapItems.coordinate(of: item).longitude,
+                                      date: Date())
+        recentDestinations = RecentDestinationStore.adding(entry, to: recentDestinations)
+        RecentDestinationStore.save(recentDestinations)
+    }
+
+    func startNavigation(to item: MKMapItem, subtitle: String? = nil) async {
         isCalculatingRoute = true
         defer { isCalculatingRoute = false }
         do {
@@ -178,6 +223,7 @@ final class AppModel {
             navigation.start(route: newRoute, destination: item)
             route = newRoute
             destinationName = item.name
+            rememberDestination(item, subtitle: subtitle)
             if !isCruising { startCruise() }
             let km = newRoute.distance / 1_000
             var text = "開始導航，全程\(String(format: "%.1f", km))公里"

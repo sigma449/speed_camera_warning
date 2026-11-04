@@ -26,6 +26,12 @@ final class NavigationController {
         return response.mapItems
     }
 
+    /// 使用者點了自動完成的候選：查出實際地點（可能是一個，也可能是一類地點的多個結果）。
+    func search(completion: MKLocalSearchCompletion) async throws -> [MKMapItem] {
+        let response = try await MKLocalSearch(request: MKLocalSearch.Request(completion: completion)).start()
+        return response.mapItems
+    }
+
     // MARK: 路線
 
     /// 規劃路線。重機模式會避開高速公路（國道），也避開收費道路。

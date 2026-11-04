@@ -37,6 +37,11 @@ Live Activity 在 iOS 26 會出現在 CarPlay 儀表板，**不需要 entitlemen
 - **北宜公路（台9線）**4 段雙向區間，表定 40：19–23.1K、26.2–32.2K、33.3–37.2K、**56.6**–68.6K（第 4 段經使用者確認是 56.6K）。
 - **車種**：汽車／重機；重機路線避開國道與收費道路（`MKDirections` 的 `highwayPreference = .avoid`）。
 - **Live Activity**：要大字（使用者覺得神盾的太小）。
+- **開啟 App 就自動開始巡航**（預設開啟，設定頁可以關；`AppPreferences.autoStartCruise`）。
+- **搜尋目的地**：要像 Google 地圖那樣邊打字邊出現候選（`MKLocalSearchCompleter`），另有快速搜尋（加油站、停車場…）和最近的目的地（最多 15 筆）。
+- **地圖與搜尋的語言**可以選「跟隨 iPhone／繁體中文／English」。MapKit 沒有指定語言的 API，
+  所以寫入 App 自己的 `AppleLanguages`（跟 iOS「個別 App 語言」同一個機制），重新開啟 App 後生效。
+  App 有 zh-Hant 和 en 兩個 lproj，兩邊的顯示名稱都是「測速地圖」。
 
 ## 程式結構
 
@@ -98,6 +103,10 @@ App 用 `-demo` 啟動參數進入展示模式（CI 截圖用）；`-demoIfEmpty
   `sources.ssl_context()` 關閉了 `VERIFY_X509_STRICT`，憑證鏈仍然會驗證。
 - **資料下載失敗時**：Build IPA 會改用 repo 裡的 cameras.json，但那是空的，所以會停止建置。這是刻意的。
 - **SideStore 登入錯誤 -80045**（2026-10 起 Apple 的變更）：處理方式寫在 `docs/SETUP.md` 的常見問題。
+- **高架道路與平面道路**：App 只用經緯度和方向判斷，分不出高架和平面，兩者重疊的路段會互相誤報。
+  例如市民大道：高架照相點（速限 80）和平面照相點（市民大道三段 214 號前，速限 40）只差約 250 m。
+  原始資料的「市民高架道下建國南路」「市民高架道下光復南路」是**高架上的照相點**：速限 80、東西雙向，平面道路速限只有 40～50。
+  「下」應該是指附近往建國南路、光復南路的下匝道，不是「高架下方」。這個問題還沒處理。
 
 ## Git
 
@@ -106,11 +115,16 @@ App 用 `-demo` 啟動參數進入展示模式（CI 截圖用）；`-demoIfEmpty
 
 ## 目前進度和下一步（2026-11-04）
 
-1. 使用者已經用 iloader 裝好 SideStore，也登入成功。第一次安裝 IPA 時遇到 appIdName 錯誤，已修正（App 名稱改成英文 SpeedCam）。
-   新的 IPA 在 Build IPA run 41789975056，**等使用者回報安裝結果**。
-2. 安裝成功後請使用者實際上路測試，回報這些情況：
+1. 使用者已經用 iloader 裝好 SideStore，也裝好 App（appIdName 錯誤已修正，App 名稱改成英文 SpeedCam）。
+2. 使用者在室內試用後的回饋（2026-11-04）：
+   - 希望打開就開始偵測
+   - 搜尋要有自動完成
+   - 地圖與搜尋的語言要能調整
+   這三項已經實作，等 CI 和新的 IPA。
+3. 遠端還有臨時分支 `tools/inspect-shimin`（檢查市民高架資料用）。雲端 session 的代理擋下刪除，要請使用者在 GitHub 網頁上刪除。
+4. 請使用者實際上路測試，回報這些情況：
    - 提醒的時機
    - 方向誤報
    - 北宜區間開始和結束的時機
    - CarPlay 儀表板上 Live Activity 的顯示
-3. 之後再依使用者的決定進行 Phase 2（付費帳號、CarPlay 導航）或 Phase 3（重機停車）。
+5. 之後再依使用者的決定進行 Phase 2（付費帳號、CarPlay 導航）或 Phase 3（重機停車）。

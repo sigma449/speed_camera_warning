@@ -12,6 +12,33 @@ enum MapItems {
         item.placemark.title ?? ""
     }
 
+    static func coordinate(of item: MKMapItem) -> CLLocationCoordinate2D {
+        item.location.coordinate
+    }
+
+    /// 最近目的地用：用座標和名稱建立地點。
+    static func item(name: String, coordinate: CLLocationCoordinate2D) -> MKMapItem {
+        let item = MKMapItem(location: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude), address: nil)
+        item.name = name
+        return item
+    }
+
+    /// 「850 公尺」「3.2 公里」「25 公里」
+    static func distanceText(from origin: CLLocationCoordinate2D?, to target: CLLocationCoordinate2D) -> String? {
+        guard let origin else { return nil }
+        let meters = CLLocation(latitude: origin.latitude, longitude: origin.longitude)
+            .distance(from: CLLocation(latitude: target.latitude, longitude: target.longitude))
+        if meters < 1_000 { return "\(Int((meters / 10).rounded()) * 10) 公尺" }
+        if meters < 10_000 { return String(format: "%.1f 公里", meters / 1_000) }
+        return "\(Int((meters / 1_000).rounded())) 公里"
+    }
+
+    static func distance(from origin: CLLocationCoordinate2D?, to target: CLLocationCoordinate2D) -> Double {
+        guard let origin else { return 0 }
+        return CLLocation(latitude: origin.latitude, longitude: origin.longitude)
+            .distance(from: CLLocation(latitude: target.latitude, longitude: target.longitude))
+    }
+
     static func coordinates(of polyline: MKPolyline) -> [GeoPoint] {
         let count = polyline.pointCount
         guard count > 0 else { return [] }

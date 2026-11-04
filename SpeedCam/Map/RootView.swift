@@ -40,7 +40,7 @@ struct RootView: View {
         }
         .sheet(isPresented: $showSearch) {
             SearchView()
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.large])
         }
         .sheet(isPresented: $showSettings) {
             SettingsView()
@@ -57,6 +57,9 @@ struct RootView: View {
             Text("請到「設定 → 隱私權與安全性 → 定位服務」允許「測速地圖」使用你的位置。")
         }
         .onAppear {
+            if model.initialSearchQuery != nil {
+                showSearch = true
+            }
             if model.demoMode {
                 position = .region(MKCoordinateRegion(center: CameraStore.demoOrigin.coordinate,
                                                       latitudinalMeters: 2_500, longitudinalMeters: 2_500))
