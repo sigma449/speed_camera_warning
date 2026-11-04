@@ -22,6 +22,21 @@ final class AnnouncementFormatterTests: XCTestCase {
         let red = Camera(id: "y", type: .redLight, lat: 25, lon: 121, heading: 0, speedLimit: 50)
         XCTAssertEqual(AnnouncementFormatter.cameraAlert(camera: red, announcedDistance: 100),
                        "前方100公尺，闖紅燈照相")
+        let up = Camera(id: "e", type: .fixed, lat: 25, lon: 121, speedLimit: 80, level: .elevated)
+        XCTAssertEqual(AnnouncementFormatter.cameraAlert(camera: up, announcedDistance: 300),
+                       "前方300公尺，高架測速照相，速限80")
+        let down = Camera(id: "s", type: .fixed, lat: 25, lon: 121, heading: 90, speedLimit: 40, level: .surface)
+        XCTAssertEqual(AnnouncementFormatter.cameraAlert(camera: down, announcedDistance: 100),
+                       "前方100公尺，平面測速照相，速限40")
+    }
+
+    func testRoadLevelDecodingToleratesUnknownValues() throws {
+        let json = #"[{"id":"a","type":"fixed","lat":25,"lon":121,"address":"x","level":"elevated"},"#
+            + #"{"id":"b","type":"fixed","lat":25,"lon":121,"address":"y","level":"tunnel"},"#
+            + #"{"id":"c","type":"fixed","lat":25,"lon":121,"address":"z"}]"#
+        let cams = try JSONDecoder().decode([Camera].self, from: Data(json.utf8))
+        XCTAssertEqual(cams.map(\.level), [.elevated, .unknown, nil])
+        XCTAssertEqual(cams.map(\.displayTypeName), ["高架測速照相", "測速照相", "測速照相"])
     }
 
     func testSectionTexts() {

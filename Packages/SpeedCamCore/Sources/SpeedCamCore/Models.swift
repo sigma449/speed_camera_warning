@@ -36,6 +36,28 @@ public enum CameraType: String, Codable, CaseIterable, Sendable {
     }
 }
 
+/// 照相點在高架還是平面道路（只在兩者可能混淆的地方標示）。
+public enum RoadLevel: String, Codable, Sendable {
+    case elevated
+    case surface
+    /// 資料裡出現 App 不認得的值（新版資料）時使用，畫面和語音都不標示。
+    case unknown
+
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = RoadLevel(rawValue: raw) ?? .unknown
+    }
+
+    /// 「高架」「平面」；unknown 回傳 nil。
+    public var displayName: String? {
+        switch self {
+        case .elevated: return "高架"
+        case .surface: return "平面"
+        case .unknown: return nil
+        }
+    }
+}
+
 /// 一個測速照相點。
 public struct Camera: Codable, Hashable, Identifiable, Sendable {
     public var id: String
@@ -52,11 +74,13 @@ public struct Camera: Codable, Hashable, Identifiable, Sendable {
     public var address: String
     public var city: String?
     public var district: String?
+    /// 高架或平面。App 分不出使用者在哪一層，所以提醒時念出來讓駕駛判斷。
+    public var level: RoadLevel?
 
     public init(id: String, type: CameraType, lat: Double, lon: Double,
                 heading: Double? = nil, speedLimit: Int? = nil,
                 address: String = "", city: String? = nil, district: String? = nil,
-                axis: Double? = nil) {
+                axis: Double? = nil, level: RoadLevel? = nil) {
         self.id = id
         self.type = type
         self.lat = lat
@@ -67,9 +91,18 @@ public struct Camera: Codable, Hashable, Identifiable, Sendable {
         self.address = address
         self.city = city
         self.district = district
+        self.level = level
     }
 
     public var point: GeoPoint { GeoPoint(lat: lat, lon: lon) }
+
+    /// 「高架」「平面」標籤；沒有標示時為 nil。
+    public var levelName: String? { level?.displayName }
+
+    /// 含高架／平面的類型名稱，例如「高架測速照相」。語音、橫幅、Live Activity 共用。
+    public var displayTypeName: String {
+        (levelName ?? "") + type.displayName
+    }
 }
 
 /// 一段區間測速。

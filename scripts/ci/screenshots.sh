@@ -49,7 +49,7 @@ shot() {
 
 # 1) Live Activity 預覽頁
 xcrun simctl launch "${UDID}" "${BUNDLE_ID}" -gallery
-sleep 6
+sleep 10
 shot "01-live-activity-gallery"
 xcrun simctl terminate "${UDID}" "${BUNDLE_ID}" || true
 
@@ -71,23 +71,27 @@ xcrun simctl terminate "${UDID}" "${BUNDLE_ID}" || true
 
 # 4) 搜尋候選：模擬器預設語言，以及指定繁體中文（確認地圖與搜尋的語言設定有效）
 xcrun simctl launch "${UDID}" "${BUNDLE_ID}" -search "台北車站"
-sleep 10
+sleep 14
 shot "06-search-suggestions-default-language"
 xcrun simctl terminate "${UDID}" "${BUNDLE_ID}" || true
 
 xcrun simctl launch "${UDID}" "${BUNDLE_ID}" -search "台北車站" -AppleLanguages "(zh-Hant-TW)"
-sleep 10
+sleep 14
 shot "07-search-suggestions-zh-Hant"
 xcrun simctl terminate "${UDID}" "${BUNDLE_ID}" || true
 
 xcrun simctl launch "${UDID}" "${BUNDLE_ID}" -search "Taipei Main Station" -AppleLanguages "(en)"
-sleep 10
+sleep 14
 shot "08-search-suggestions-en"
 xcrun simctl terminate "${UDID}" "${BUNDLE_ID}" || true
 
 # 5) 北宜公路一帶：區間應該順著路形畫，而不是起終點直線
 xcrun simctl launch "${UDID}" "${BUNDLE_ID}" -mapCenter "24.905,121.695" -mapSpan 0.16
-sleep 12
+sleep 15
 shot "09-sections-follow-road"
+
+# App 的紀錄（確認啟動參數、sheet、地圖範圍有沒有生效）
+xcrun simctl spawn "${UDID}" log show --last 15m --style compact \
+  --predicate 'subsystem == "tw.speedcammap.app"' 2>/dev/null | tail -60 || true
 
 ls -la "${OUT}"

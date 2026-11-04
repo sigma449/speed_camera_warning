@@ -11,8 +11,10 @@ sys.path.insert(0, os.path.dirname(HERE))
 import build_cameras  # noqa: E402
 from speedcam_data import sources  # noqa: E402
 from speedcam_data.normalize import (  # noqa: E402
+    NormalizeReport,
     detect_type,
     parse_axis,
+    parse_level,
     in_taiwan,
     normalize_rows,
     parse_coordinates,
@@ -662,3 +664,38 @@ def test_extract_assigns_same_group_to_segments_of_one_row():
     segs = section_text.extract_from_rows(rows)
     groups = [s.group for s in segs]
     assert groups[0] == groups[1] != groups[2]
+
+
+@pytest.mark.parametrize("address,expected", [
+    ("市民高架道下建國南路", "elevated"),      # 「下」是下匝道，照相點在高架上
+    ("市民大道高架京站百貨前", "elevated"),
+    ("建國高架道和平東路上方", "elevated"),
+    ("國道一號五楊高架北向64.3公里", "elevated"),
+    ("台61線29.5K(高架)", "elevated"),
+    ("中環路2段台65線高架下（新泰路401巷29號對面）", "surface"),
+    ("南科南路與新港社高架橋前", None),
+    ("市民大道三段214號前", None),
+    ("", None),
+])
+def test_parse_level(address, expected):
+    assert parse_level(address) == expected
+
+
+def test_surface_marked_near_elevated_cameras():
+    rows = [
+        {"CityName": "臺北市", "Address": "市民高架道下建國南路", "Longitude": "121.54244", "Latitude": "25.044632",
+         "direct": "東西雙向", "limit": "80"},
+        {"CityName": "臺北市", "Address": "市民大道三段214號前", "Longitude": "121.53994", "Latitude": "25.044518",
+         "direct": "西向東", "limit": "40"},
+        {"CityName": "臺北市", "Address": "忠孝東路四段1號前", "Longitude": "121.54400", "Latitude": "25.041600",
+         "direct": "西向東", "limit": "50"},   # 約 400 公尺外，不標示
+    ]
+    report = NormalizeReport()
+    cams = {c.address: c for c in normalize_rows(rows, report)}
+    assert cams["市民高架道下建國南路"].level == "elevated"
+    assert cams["市民大道三段214號前"].level == "surface"
+    assert cams["忠孝東路四段1號前"].level is None
+    assert cams["市民大道三段214號前"].to_json()["level"] == "surface"
+    assert "level" not in cams["忠孝東路四段1號前"].to_json()
+    assert (report.elevated, report.surface) == (1, 1)
+    assert "高架 1、平面 1" in report.summary()

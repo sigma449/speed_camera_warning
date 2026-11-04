@@ -15,8 +15,13 @@ struct CameraBanner: View {
                     .font(.system(size: 46, weight: .heavy, design: .rounded))
                     .monospacedDigit()
                     .foregroundStyle(target.isOverspeed ? Color.white : Color.yellow)
-                Label(target.camera.type.displayName, systemImage: target.camera.symbolName)
-                    .font(.headline)
+                HStack(spacing: 6) {
+                    Label(target.camera.type.displayName, systemImage: target.camera.symbolName)
+                        .font(.headline)
+                    if let level = target.camera.levelName {
+                        LevelTag(text: level)
+                    }
+                }
                 Text(target.camera.address)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -138,6 +143,20 @@ struct MessageBanner: View {
     }
 }
 
+/// 「高架」「平面」標籤。App 分不出你在哪一層，看到標籤可以自己判斷這支照相是不是你這條路。
+struct LevelTag: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.subheadline.weight(.heavy))
+            .padding(.horizontal, 8)
+            .padding(.vertical, 2)
+            .background(text == "高架" ? Color.teal : Color.brown, in: Capsule())
+            .foregroundStyle(.white)
+    }
+}
+
 struct CameraDetailCard: View {
     let camera: Camera
     let onClose: () -> Void
@@ -146,7 +165,12 @@ struct CameraDetailCard: View {
         HStack(alignment: .top, spacing: 12) {
             SpeedLimitSign(limit: camera.speedLimit, size: 48)
             VStack(alignment: .leading, spacing: 4) {
-                Label(camera.type.displayName, systemImage: camera.symbolName).font(.headline)
+                HStack(spacing: 6) {
+                    Label(camera.type.displayName, systemImage: camera.symbolName).font(.headline)
+                    if let level = camera.levelName {
+                        LevelTag(text: level)
+                    }
+                }
                 Text(camera.address).font(.subheadline)
                 Text(directionText).font(.footnote).foregroundStyle(.secondary)
             }

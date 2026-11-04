@@ -162,6 +162,50 @@ def detect_type(kind: Optional[str], address: Optional[str], direction: Optional
 
 
 # ---------------------------------------------------------------------------
+# 高架／平面
+# ---------------------------------------------------------------------------
+# App 只用經緯度判斷，分不出高架和下面的平面道路，兩邊的照相點會互相誤報。
+# 先在資料裡標出來，提醒時說「高架測速照相」「平面測速照相」，讓駕駛自己判斷。
+_SURFACE_WORDS = ("高架下", "高架橋下", "平面道路", "平面車道", "(平面)", "（平面）")
+_ELEVATED_UNSURE = ("高架橋前", "高架前")   # 在高架入口前的平面路段，不標示
+SURFACE_NEAR_ELEVATED_M = 350
+
+
+def parse_level(address: Optional[str]) -> Optional[str]:
+    """從地址判斷照相點在高架（elevated）還是平面（surface）；看不出來回傳 None。
+
+    - 「市民高架道下建國南路」是高架上的照相點（「下」指往建國南路的下匝道），不是高架下方。
+    - 「台65線高架下」才是高架下方的平面道路。
+    """
+    if not address:
+        return None
+    s = re.sub(r"\s+", "", address)
+    if any(w in s for w in _SURFACE_WORDS):
+        return "surface"
+    if "高架" in s and not any(w in s for w in _ELEVATED_UNSURE):
+        return "elevated"
+    return None
+
+
+def _distance_m(a_lat: float, a_lon: float, b_lat: float, b_lon: float) -> float:
+    p1, p2 = math.radians(a_lat), math.radians(b_lat)
+    dp, dl = p2 - p1, math.radians(b_lon - a_lon)
+    h = math.sin(dp / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dl / 2) ** 2
+    return 2 * 6371008.8 * math.asin(min(1.0, math.sqrt(h)))
+
+
+def mark_surface_near_elevated(cameras: list, radius_m: float = SURFACE_NEAR_ELEVATED_M) -> int:
+    """高架照相點附近（radius_m 內）沒有標示的照相點，視為下方或旁邊的平面道路。回傳標示的數量。"""
+    elevated = [c for c in cameras if c.level == "elevated"]
+    count = 0
+    for c in cameras:
+        if c.level is None and any(_distance_m(c.lat, c.lon, e.lat, e.lon) <= radius_m for e in elevated):
+            c.level = "surface"
+            count += 1
+    return count
+
+
+# ---------------------------------------------------------------------------
 # 主流程
 # ---------------------------------------------------------------------------
 @dataclass
@@ -177,6 +221,8 @@ class Camera:
     district: Optional[str] = None
     # 雙向照相的道路軸向（0 = 南北、90 = 東西），有 heading 時不使用
     axis: Optional[float] = None
+    # 高架（elevated）或平面（surface）；只在兩者可能混淆的地方標示
+    level: Optional[str] = None
 
     def to_json(self) -> dict:
         d = {
@@ -196,6 +242,8 @@ class Camera:
             d["city"] = self.city
         if self.district:
             d["district"] = self.district
+        if self.level:
+            d["level"] = self.level
         return d
 
 
@@ -207,6 +255,8 @@ class NormalizeReport:
     duplicates_merged: int = 0
     unknown_direction: int = 0
     axis_known: int = 0
+    elevated: int = 0
+    surface: int = 0
     by_type: dict = field(default_factory=dict)
     # 診斷用：無法解析的方向原文（含空白）與區間照相點
     unknown_direction_texts: dict = field(default_factory=dict)
@@ -229,7 +279,8 @@ class NormalizeReport:
         types = ", ".join(f"{k}={v}" for k, v in sorted(self.by_type.items()))
         return (f"原始 {self.total_rows} 筆 → 保留 {self.kept} 筆；"
                 f"座標無效 {self.skipped_no_coords}、合併重複 {self.duplicates_merged}、"
-                f"沒有單一方向 {self.unknown_direction}（其中已知南北／東西軸向 {self.axis_known}）；類型：{types}")
+                f"沒有單一方向 {self.unknown_direction}（其中已知南北／東西軸向 {self.axis_known}）；"
+                f"高架 {self.elevated}、平面 {self.surface}；類型：{types}")
 
 
 def dedupe_key(lat: float, lon: float, heading: Optional[float]) -> tuple:
@@ -278,6 +329,7 @@ def normalize_rows(rows: Iterable[dict], report: Optional[NormalizeReport] = Non
             address=address,
             city=pick(row, "city"),
             district=pick(row, "district"),
+            level=parse_level(address),
         )
         if cam.type == "section":
             report.section_cameras.append(
@@ -292,11 +344,15 @@ def normalize_rows(rows: Iterable[dict], report: Optional[NormalizeReport] = Non
                 old.speedLimit = cam.speedLimit
             if len(cam.address) > len(old.address):
                 old.address = cam.address
+            old.level = old.level or cam.level
             continue
         merged[key] = cam
 
     cameras = sorted(merged.values(), key=lambda c: c.id)
+    mark_surface_near_elevated(cameras)
     report.kept = len(cameras)
+    report.elevated = sum(1 for c in cameras if c.level == "elevated")
+    report.surface = sum(1 for c in cameras if c.level == "surface")
     report.by_type = {}
     for c in cameras:
         report.by_type[c.type] = report.by_type.get(c.type, 0) + 1

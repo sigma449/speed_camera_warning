@@ -2,6 +2,7 @@ import CoreLocation
 import Foundation
 import MapKit
 import Observation
+import os
 import SpeedCamCore
 import UIKit
 
@@ -90,6 +91,8 @@ final class AppModel {
             initialSearchQuery = nil
         }
         initialMapRegion = Self.parseMapRegion(arguments)
+        Logger(subsystem: "tw.speedcammap.app", category: "launch")
+            .notice("arguments: \(arguments.dropFirst().joined(separator: " "), privacy: .public); languages: \(Locale.preferredLanguages.joined(separator: ","), privacy: .public)")
         let loaded = Self.loadSettings()
         storedSettings = loaded
         alertEngine = CameraAlertEngine(index: SpatialIndex(cameras: []), settings: loaded)
@@ -376,7 +379,7 @@ final class AppModel {
             s.isOverspeed = isOverspeed
         } else if let target = cameraTarget, target.phase >= .pre {
             s.mode = .camera
-            s.cameraTypeName = target.camera.type.displayName
+            s.cameraTypeName = target.camera.displayTypeName
             s.cameraSymbol = target.camera.symbolName
             s.distanceMeters = target.distance
             s.speedLimit = target.camera.speedLimit

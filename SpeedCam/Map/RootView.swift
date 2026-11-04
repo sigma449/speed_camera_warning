@@ -1,12 +1,15 @@
 import MapKit
+import os
 import SpeedCamCore
 import SwiftUI
 import UIKit
 
+private let uiLog = Logger(subsystem: "tw.speedcammap.app", category: "ui")
+
 /// 主畫面：全螢幕地圖，上方顯示提醒／導航資訊，下方是速度與操作按鈕。
 struct RootView: View {
     @Environment(AppModel.self) private var model
-    @State private var position: MapCameraPosition = .userLocation(followsHeading: true, fallback: .automatic)
+    @State private var follow = MapFollowController()
     @State private var visibleRegion: MKCoordinateRegion?
     @State private var selectedCameraID: String?
     @State private var showSearch = false
@@ -33,6 +36,7 @@ struct RootView: View {
                 if let camera = selectedCamera {
                     CameraDetailCard(camera: camera) { selectedCameraID = nil }
                 }
+                recenterRow
                 BottomBar(showSearch: $showSearch, showSettings: $showSettings)
             }
             .padding(.horizontal, 12)
@@ -57,16 +61,54 @@ struct RootView: View {
             Text("請到「設定 → 隱私權與安全性 → 定位服務」允許「測速地圖」使用你的位置。")
         }
         .onAppear {
+            uiLog.notice("RootView appeared; search=\(model.initialSearchQuery ?? "-", privacy: .public) region=\(model.initialMapRegion != nil, privacy: .public)")
+            if model.demoMode {
+                follow.setInitial(region: MKCoordinateRegion(center: CameraStore.demoOrigin.coordinate,
+                                                             latitudinalMeters: 2_500, longitudinalMeters: 2_500))
+            }
+        }
+        .task {
+            // 剛啟動時畫面還沒準備好，太早開 sheet 或改地圖範圍會被系統忽略，稍等一下再做（CI 截圖用的啟動參數）。
+            guard model.initialSearchQuery != nil || model.initialMapRegion != nil else { return }
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            if let region = model.initialMapRegion {
+                follow.show(region: region)
+                uiLog.notice("applied initial map region")
+            }
             if model.initialSearchQuery != nil {
                 showSearch = true
+                uiLog.notice("opened search sheet")
             }
-            if let region = model.initialMapRegion {
-                position = .region(region)
+        }
+        .onChange(of: model.lastFix) { _, fix in
+            if let fix { follow.handle(fix) }
+        }
+    }
+
+    /// 右下角的「回到目前位置」按鈕。跟隨中再按一次會切換顯示方式（行進方向朝上 → 北方朝上 → 3D）。
+    private var recenterRow: some View {
+        HStack(spacing: 8) {
+            Spacer()
+            if let toast = follow.toast {
+                Text(toast)
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(.regularMaterial, in: Capsule())
+                    .transition(.opacity)
             }
-            if model.demoMode {
-                position = .region(MKCoordinateRegion(center: CameraStore.demoOrigin.coordinate,
-                                                      latitudinalMeters: 2_500, longitudinalMeters: 2_500))
+            Button {
+                follow.buttonTapped()
+            } label: {
+                Image(systemName: follow.buttonSymbol)
+                    .font(.system(size: 20, weight: .semibold))
+                    .frame(width: 48, height: 48)
+                    .background(.regularMaterial, in: Circle())
+                    .foregroundStyle(follow.isFollowing ? Color.blue : Color.primary)
+                    .shadow(radius: 2)
             }
+            .buttonStyle(.plain)
+            .accessibilityLabel(follow.buttonAccessibilityLabel)
         }
     }
 
@@ -88,7 +130,7 @@ struct RootView: View {
     }
 
     private var map: some View {
-        Map(position: $position, selection: $selectedCameraID) {
+        Map(position: $follow.position, selection: $selectedCameraID) {
             UserAnnotation()
 
             ForEach(visibleCameras) { camera in
@@ -124,12 +166,19 @@ struct RootView: View {
         }
         .mapStyle(.standard(pointsOfInterest: .excludingAll, showsTraffic: true))
         .mapControls {
-            MapUserLocationButton()
+            // 系統的「回到目前位置」按鈕不會調整縮放，改用右下角自己的按鈕
             MapCompass()
             MapScaleView()
         }
         .onMapCameraChange(frequency: .onEnd) { context in
             visibleRegion = context.region
+        }
+        .onMapCameraChange(frequency: .continuous) { _ in
+            // 使用者還在拖曳或縮放：持續更新「最後一次碰地圖」的時間
+            if follow.position.positionedByUser { follow.userMovedMap() }
+        }
+        .onChange(of: follow.position.positionedByUser) { _, byUser in
+            if byUser { follow.userMovedMap() }
         }
     }
 }
