@@ -199,6 +199,8 @@ struct RootView: View {
     }
 
     private var visibleCameras: [Camera] {
+        // 導航預覽時暫時不畫照相點，避免擋住目的地和路線（預覽結束就恢復）
+        if model.preview != nil { return [] }
         if let region = visibleRegion {
             return model.cameras(in: region)
         }
