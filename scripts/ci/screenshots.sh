@@ -77,7 +77,8 @@ sleep 20
 shot "02-demo-pre-alert"
 sleep 10
 shot "03-demo-near-overspeed"
-sleep 50
+# 約 70 秒才會進入區間，CI 的速度又不固定，多等一點才一定拍得到倒數橫幅
+sleep 65
 shot "04-demo-section-countdown"
 
 # 3) 一般啟動（使用 App 內建的真實資料；預設會自動開始巡航）
