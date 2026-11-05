@@ -109,7 +109,7 @@ App 的啟動參數（CI 截圖用）：
 - **iOS App** 只能在 GitHub Actions 編譯：
   - `CI`（每次 push）：Swift 測試、pytest、iOS 模擬器建置和截圖。截圖會以 base64 印在 log 裡（`scripts/ci/print-screenshots.sh`），因為雲端 session 下載不了 artifact。
   - `Build IPA`（手動）：`gh workflow run build-ipa.yml --repo sigma449/speed_camera_warning --ref main`。會下載最新資料、編譯未簽署的 IPA（artifact `SpeedCam-ipa`，保留 30 天）。
-  - `Refresh camera data`（每週一）：資料有變動就開 PR。需要 repo 設定開啟「Allow GitHub Actions to create and approve pull requests」（使用者是否已開啟：未確認）。
+  - `Refresh camera data`（每週一）：資料有變動就開 PR。需要 repo 設定開啟「Allow GitHub Actions to create and approve pull requests」（2026-11-05 用 GitHub API 確認已開啟）。
 - 用 `gh run watch <id> --exit-status` 等結果，`gh run view <id> --log` 讀 log。
 - 環境：runner `macos-26`、Xcode 26.6、iOS 26.0 deployment target、`SWIFT_VERSION 5.0`、`SWIFT_STRICT_CONCURRENCY minimal`。
 
@@ -173,8 +173,6 @@ App 的啟動參數（CI 截圖用）：
    - 部分快速道路區間貼齊失敗，保留里程牌路形：台61 157.8–151.6、41.5–46.9；台64 1.6–5.4；台9 110.96–108.224。
    - 大眾運輸偵測（TDX 軌道線型）、氣壓計判斷高架／平面：未做。
    - App 被 iOS 背景重新叫起（巡航中被系統結束）時不會自動恢復巡航，可考慮實作。
-   - 臨時分支 `tools/inspect-shimin` 待使用者在 GitHub 網頁刪除（雲端 session 的代理擋下刪除）。
-   - repo 的「Allow GitHub Actions to create and approve pull requests」是否開啟：未確認。
    - 之後依使用者決定進行 Phase 2（付費帳號、CarPlay 導航）或 Phase 3（重機停車）。
 4. **新 session 接手**：
    - 先讀本檔和 `docs/SETUP.md`。
