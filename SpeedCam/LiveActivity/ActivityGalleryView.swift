@@ -13,8 +13,13 @@ struct ActivityGalleryView: View {
         ("巡航", .previewIdle),
     ]
 
-    /// `-galleryBottom`：從頁面底部開始顯示，CI 才拍得到第一個畫面放不下的尺寸和鎖定畫面。
-    private let startsAtBottom = ProcessInfo.processInfo.arguments.contains("-galleryBottom")
+    /// 預覽頁比一個畫面長。`-galleryMiddle`、`-galleryBottom` 指定從哪裡開始顯示，CI 才拍得到整頁。
+    private let startAnchor: UnitPoint = {
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("-galleryBottom") { return .bottom }
+        if arguments.contains("-galleryMiddle") { return .center }
+        return .top
+    }()
 
     var body: some View {
         ScrollView {
@@ -47,7 +52,7 @@ struct ActivityGalleryView: View {
             }
             .padding()
         }
-        .defaultScrollAnchor(startsAtBottom ? .bottom : .top)
+        .defaultScrollAnchor(startAnchor)
         .background(Color(white: 0.12))
     }
 

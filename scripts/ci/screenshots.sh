@@ -63,10 +63,13 @@ shot() {
 launch_app -gallery
 sleep 10
 shot "01-live-activity-gallery"
-# 預覽頁比一個畫面長，另外拍下半部（170 pt 的導航與巡航、240×100 pt、鎖定畫面）
+# 預覽頁比一個畫面長，另外拍中段（170 pt 的導航與巡航）和底部（240×100 pt、鎖定畫面）
+launch_app -gallery -galleryMiddle
+sleep 8
+shot "01b-live-activity-gallery-middle"
 launch_app -gallery -galleryBottom
 sleep 8
-shot "01b-live-activity-gallery-bottom"
+shot "01c-live-activity-gallery-bottom"
 
 # 2) 展示模式：假軌跡以 62 km/h 往北開，600 m 處有速限 50 的測速照相，1.2 km 處進入區間
 launch_app -demo

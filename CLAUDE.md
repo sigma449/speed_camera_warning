@@ -97,7 +97,7 @@ scripts/ci/                  CI 用的腳本（選 Xcode、截圖、檢查 App �
 App 的啟動參數（CI 截圖用）：
 - `-demo`：展示模式
 - `-demoIfEmpty`：沒有資料時改用展示資料
-- `-gallery`：Live Activity 預覽頁（加 `-galleryBottom` 從頁面底部開始顯示）
+- `-gallery`：Live Activity 預覽頁（加 `-galleryMiddle`、`-galleryBottom` 從頁面中段、底部開始顯示）
 - `-search 文字`：打開搜尋並輸入
 - `-mapCenter 緯度,經度 -mapSpan 度數`：指定地圖範圍
 - `-settings`：打開設定頁
@@ -107,7 +107,7 @@ App 的啟動參數（CI 截圖用）：
 
 ## 建置與測試
 
-- **Swift 核心邏輯**（72 個測試）：
+- **Swift 核心邏輯**（80 個測試）：
   `docker run --rm -v "$PWD/Packages/SpeedCamCore":/pkg -w /pkg swift:6.2-noble swift test`
   （雲端 session 裡 Docker 沒在跑的話先執行 `dockerd &`。）
 - **Python 資料處理**（162 個測試）：`python3 -m pytest -q data-pipeline`
