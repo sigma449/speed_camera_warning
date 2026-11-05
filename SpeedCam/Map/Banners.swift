@@ -4,6 +4,19 @@ import UIKit
 
 // 主畫面上方的資訊橫幅與下方的操作列。字體刻意放大，方便開車時快速瞄一眼。
 
+/// 橫幅配色。底色全部不透明，地圖的路名才不會透出來干擾閱讀；
+/// 有顏色的底色都選得夠深，白字的對比至少 4.5:1（系統的亮紅、亮綠、亮橘配白字只有約 2～3:1）。
+enum BannerStyle {
+    static let dark = Color.black
+    static let overspeed = Color(red: 0.77, green: 0.12, blue: 0.12)
+    static let good = Color(red: 0.0, green: 0.48, blue: 0.20)
+    static let caution = Color(red: 0.72, green: 0.35, blue: 0.0)
+    static let elevated = Color(red: 0.0, green: 0.42, blue: 0.52)
+    static let surface = Color(red: 0.45, green: 0.30, blue: 0.16)
+    /// 橫幅裡的小字。不用 .secondary：它在紅底上會變成對比很低的粉色。
+    static let secondaryText = Color.white.opacity(0.88)
+}
+
 struct CameraBanner: View {
     let target: CameraTarget
 
@@ -24,13 +37,13 @@ struct CameraBanner: View {
                 }
                 Text(target.camera.address)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(BannerStyle.secondaryText)
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
         }
         .padding(14)
-        .background(target.isOverspeed ? Color.red.opacity(0.9) : Color.black.opacity(0.8),
+        .background(target.isOverspeed ? BannerStyle.overspeed : BannerStyle.dark,
                     in: RoundedRectangle(cornerRadius: 20))
         .foregroundStyle(.white)
         .accessibilityElement(children: .combine)
@@ -53,7 +66,7 @@ struct SectionBanner: View {
                             .foregroundStyle(.orange)
                         Text("才能到終點（區間倒數）")
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(BannerStyle.secondaryText)
                     } else {
                         Text("可依速限行駛")
                             .font(.system(size: 34, weight: .heavy, design: .rounded))
@@ -80,10 +93,10 @@ struct SectionBanner: View {
                 }
             }
             .font(.footnote)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(BannerStyle.secondaryText)
         }
         .padding(14)
-        .background(Color.black.opacity(0.82), in: RoundedRectangle(cornerRadius: 20))
+        .background(BannerStyle.dark, in: RoundedRectangle(cornerRadius: 20))
         .foregroundStyle(.white)
     }
 
@@ -99,14 +112,13 @@ struct SectionBanner: View {
                     .font(.system(size: 26, weight: .heavy, design: .rounded))
                     .monospacedDigit()
                 Text(tooFast ? "目前 \(currentSpeed)，請放慢" : "依剩餘 \(AnnouncementFormatter.displayDistance(status.remainingMeters)) 計算")
-                    .font(.caption)
-                    .opacity(0.85)
+                    .font(.caption.weight(.semibold))
             }
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background((tooFast ? Color.orange : Color.green).opacity(0.85), in: RoundedRectangle(cornerRadius: 14))
+        .background(tooFast ? BannerStyle.caution : BannerStyle.good, in: RoundedRectangle(cornerRadius: 14))
         .foregroundStyle(.white)
     }
 
@@ -115,7 +127,7 @@ struct SectionBanner: View {
             Text(value)
                 .font(.system(size: 24, weight: .bold, design: .rounded))
                 .monospacedDigit()
-            Text(title).font(.caption).foregroundStyle(.secondary)
+            Text(title).font(.caption).foregroundStyle(BannerStyle.secondaryText)
         }
         .frame(maxWidth: .infinity)
     }
@@ -140,14 +152,14 @@ struct NavigationBanner: View {
                 if let destination {
                     Text("往 \(destination)・剩 \(AnnouncementFormatter.displayDistance(progress.distanceRemaining))")
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(BannerStyle.secondaryText)
                         .lineLimit(1)
                 }
             }
             Spacer(minLength: 0)
         }
         .padding(14)
-        .background(Color.green.opacity(0.85), in: RoundedRectangle(cornerRadius: 20))
+        .background(BannerStyle.good, in: RoundedRectangle(cornerRadius: 20))
         .foregroundStyle(.white)
     }
 }
@@ -163,7 +175,7 @@ struct MessageBanner: View {
             Button(action: onClose) { Image(systemName: "xmark.circle.fill") }
         }
         .padding(12)
-        .background(Color.orange.opacity(0.9), in: RoundedRectangle(cornerRadius: 14))
+        .background(BannerStyle.caution, in: RoundedRectangle(cornerRadius: 14))
         .foregroundStyle(.white)
     }
 }
@@ -177,7 +189,7 @@ struct LevelTag: View {
             .font(.subheadline.weight(.heavy))
             .padding(.horizontal, 8)
             .padding(.vertical, 2)
-            .background(text == "高架" ? Color.teal : Color.brown, in: Capsule())
+            .background(text == "高架" ? BannerStyle.elevated : BannerStyle.surface, in: Capsule())
             .foregroundStyle(.white)
     }
 }
@@ -267,7 +279,7 @@ struct BottomBar: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(model.isOverspeed ? Color.red : Color.black.opacity(0.8), in: Capsule())
+        .background(model.isOverspeed ? BannerStyle.overspeed : Color.black.opacity(0.8), in: Capsule())
         .foregroundStyle(.white)
     }
 
