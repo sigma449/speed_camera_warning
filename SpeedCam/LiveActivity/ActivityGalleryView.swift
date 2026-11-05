@@ -13,6 +13,9 @@ struct ActivityGalleryView: View {
         ("巡航", .previewIdle),
     ]
 
+    /// `-galleryBottom`：從頁面底部開始顯示，CI 才拍得到第一個畫面放不下的尺寸和鎖定畫面。
+    private let startsAtBottom = ProcessInfo.processInfo.arguments.contains("-galleryBottom")
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
@@ -44,6 +47,7 @@ struct ActivityGalleryView: View {
             }
             .padding()
         }
+        .defaultScrollAnchor(startsAtBottom ? .bottom : .top)
         .background(Color(white: 0.12))
     }
 

@@ -55,6 +55,8 @@ public struct AlertSettings: Codable, Equatable, Sendable {
     public var voiceEnabled: Bool = true
     public var beepEnabled: Bool = true
     public var liveActivityEnabled: Bool = true
+    /// 重要時刻（接近照相點、超速、區間開始與歸零）讓 Live Activity 跳出提醒。
+    public var liveActivityAlertsEnabled: Bool = true
     public var vehicleMode: VehicleMode = .car
 
     public init() {}
@@ -112,6 +114,7 @@ public struct AlertSettings: Codable, Equatable, Sendable {
         voiceEnabled = try c.decodeIfPresent(Bool.self, forKey: .voiceEnabled) ?? d.voiceEnabled
         beepEnabled = try c.decodeIfPresent(Bool.self, forKey: .beepEnabled) ?? d.beepEnabled
         liveActivityEnabled = try c.decodeIfPresent(Bool.self, forKey: .liveActivityEnabled) ?? d.liveActivityEnabled
+        liveActivityAlertsEnabled = try c.decodeIfPresent(Bool.self, forKey: .liveActivityAlertsEnabled) ?? d.liveActivityAlertsEnabled
         vehicleMode = try c.decodeIfPresent(VehicleMode.self, forKey: .vehicleMode) ?? d.vehicleMode
     }
 }

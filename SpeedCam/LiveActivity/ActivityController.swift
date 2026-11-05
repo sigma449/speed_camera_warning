@@ -1,5 +1,6 @@
 import ActivityKit
 import Foundation
+import SpeedCamCore
 
 /// 管理 Live Activity：開始、節流更新、結束。
 /// 只在本機更新（不使用推播），所以免費的開發者帳號也能用。
@@ -44,7 +45,9 @@ final class ActivityController {
 
     /// 更新內容。為了省電與避免被系統限流，只在有意義的變化時才更新：
     /// 模式或速限改變、超速狀態改變、距離變化超過一定幅度（近距離時 20 m，遠距離 50 m）、車速變化 5 km/h 以上。
-    func update(_ state: State, force: Bool = false) {
+    /// 有 alert 時一定會更新，並讓系統跳出提醒（CarPlay 不在 Dashboard 頁面時顯示為畫面底部的通知）。
+    /// 本機更新就能發提醒，不需要推播。聲音目前用系統預設音（Apple 文件只有預設音和自訂檔案兩種，沒有靜音選項）。
+    func update(_ state: State, force: Bool = false, alert: ActivityAlertContent? = nil) {
         guard let activity else { return }
         if activity.activityState == .ended || activity.activityState == .dismissed {
             self.activity = nil
@@ -52,7 +55,7 @@ final class ActivityController {
         }
         let now = Date()
         let interval = now.timeIntervalSince(lastUpdate)
-        if !force, let last = lastState {
+        if !force, alert == nil, let last = lastState {
             let significant = state.mode != last.mode
                 || state.speedLimit != last.speedLimit
                 || state.isOverspeed != last.isOverspeed
@@ -73,8 +76,13 @@ final class ActivityController {
         lastState = state
         lastUpdate = now
         let content = ActivityContent(state: state, staleDate: now.addingTimeInterval(120))
+        let configuration = alert.map {
+            AlertConfiguration(title: LocalizedStringResource(stringLiteral: $0.title),
+                               body: LocalizedStringResource(stringLiteral: $0.body),
+                               sound: .default)
+        }
         Task {
-            await activity.update(content)
+            await activity.update(content, alertConfiguration: configuration)
         }
     }
 

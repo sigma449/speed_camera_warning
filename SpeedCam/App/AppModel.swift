@@ -389,7 +389,11 @@ final class AppModel {
             for event in nav.events { handleRouteEvent(event) }
         }
 
-        activity.update(activityState())
+        let alert = settings.liveActivityAlertsEnabled
+            ? ActivityAlertPolicy.alert(cameraEvents: cam.events, sectionEvents: sec.events,
+                                        cameraOverspeedActive: cameraTarget?.isOverspeed == true)
+            : nil
+        activity.update(activityState(), alert: alert)
     }
 
     private func handleCameraEvent(_ event: CameraAlertEvent, fix: VehicleFix) {

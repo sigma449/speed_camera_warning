@@ -26,6 +26,8 @@
 CarPlay 的限制：只有「導航」類 App 能畫地圖，而且必須提供逐向導航；一個 App 只能屬於一個類別。
 Live Activity 在 iOS 26 會出現在 CarPlay 儀表板，**不需要 entitlement**；尺寸由系統固定（240×78、240×100、170×78 pt），
 所以用 `.supplementalActivityFamilies([.small])` 和 `@Environment(\.activityFamily)` 自訂大字版面。
+卡片的**位置也由系統決定**，查不到 App 或使用者可以調整的方式（評測文章看到在 Dashboard 右下角，Apple 文件沒有明講）。
+要自己決定位置，只能等 Phase 2 的導航 App。
 
 ## 已確認的規格（改之前先問使用者）
 
@@ -37,10 +39,13 @@ Live Activity 在 iOS 26 會出現在 CarPlay 儀表板，**不需要 entitlemen
   可以在「個別區間設定」頁**多選**區間另外設定；同一段的兩個方向共用設定（`SpeedSection.groupID` 會去掉 `-f`／`-r`）。
   倒數、區間內超速嗶聲、區間照相機前的超速嗶聲，都用同一個門檻。
 - **區間建議時速**：剩餘距離 ÷ 剩餘最短秒數（以速限＋容許值、含安全餘裕），上限為速限＋容許值，無條件捨去。
-  手機橫幅大字顯示（超過時變橘色）、每分鐘語音倒數一起念、Live Activity 顯示「建議≤N・均速 M」。
+  手機橫幅大字顯示（超過時變橘色）、每分鐘語音倒數一起念、Live Activity 顯示「建議≤N・均速 M」（最窄的 170 pt 放不下，改顯示「≤N・均 M」）。
 - **北宜公路（台9線）**4 段雙向區間，表定 40：19–23.1K、26.2–32.2K、33.3–37.2K、**56.6**–68.6K（第 4 段經使用者確認是 56.6K）。
 - **車種**：汽車／重機；重機路線避開國道與收費道路（`MKDirections` 的 `highwayPreference = .avoid`）。
 - **Live Activity**：要大字（使用者覺得神盾的太小）。
+- **Live Activity 提醒**（`ActivityAlertPolicy`）：預告、近距、超速、進入區間、區間歸零時用 `alertConfiguration` 更新，
+  一次定位只發一則；每分鐘倒數和持續嗶聲只靠聲音，不跳提醒。Apple 文件說 CarPlay 不在 Dashboard 頁面時會顯示成畫面底部的通知。
+  聲音是系統預設音（文件沒有靜音選項），設定頁可以關（`liveActivityAlertsEnabled`，預設開啟）。
 - **開啟 App 就自動開始巡航**（預設開啟，設定頁可以關；`AppPreferences.autoStartCruise`）。
 - **搜尋目的地**：要像 Google 地圖那樣邊打字邊出現候選（`MKLocalSearchCompleter`），另有快速搜尋（加油站、停車場…）和最近的目的地（最多 15 筆）。
 - **區間在地圖上順著路形畫**：資料處理用里程牌座標產生 `path`（[[緯度, 經度], ...]，Douglas–Peucker 簡化到 6 m），
@@ -92,7 +97,7 @@ scripts/ci/                  CI 用的腳本（選 Xcode、截圖、檢查 App �
 App 的啟動參數（CI 截圖用）：
 - `-demo`：展示模式
 - `-demoIfEmpty`：沒有資料時改用展示資料
-- `-gallery`：Live Activity 預覽頁
+- `-gallery`：Live Activity 預覽頁（加 `-galleryBottom` 從頁面底部開始顯示）
 - `-search 文字`：打開搜尋並輸入
 - `-mapCenter 緯度,經度 -mapSpan 度數`：指定地圖範圍
 - `-settings`：打開設定頁

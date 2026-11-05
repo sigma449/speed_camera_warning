@@ -56,13 +56,16 @@ struct SmallActivityView: View {
                     .monospacedDigit()
                     .minimumScaleFactor(0.55)
                     .lineLimit(1)
-                Text(secondary)
-                    .font(.system(size: 15, weight: .semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .foregroundStyle(secondaryColor)
+                // 放得下就顯示完整文字；最窄的尺寸（170 pt）改用短文字，字不用縮太小，也不會被截斷。
+                ViewThatFits(in: .horizontal) {
+                    secondaryLabel(secondary)
+                    secondaryLabel(secondaryCompact)
+                        .minimumScaleFactor(0.7)
+                }
+                .foregroundStyle(secondaryColor)
             }
-            Spacer(minLength: 0)
+            // 不用 Spacer：HStack 的間距也會算在 Spacer 前面，文字會少 10 pt 的寬度。
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
@@ -122,6 +125,27 @@ struct SmallActivityView: View {
         case .idle:
             return "km/h・巡航中・\(state.vehicleModeName)"
         }
+    }
+
+    /// 最窄尺寸用的短文字。沒有另外定義的模式就沿用完整文字，放不下時再縮小。
+    private var secondaryCompact: String {
+        switch state.mode {
+        case .section:
+            let avg = state.sectionAverageKmh.map { "均 \($0)" }
+            if state.sectionZero { return avg.map { "可依速限・\($0)" } ?? "可依速限行駛" }
+            if let kmh = state.sectionSuggestedKmh { return avg.map { "≤\(kmh)・\($0)" } ?? "建議≤\(kmh)" }
+            return avg.map { "區間・\($0)" } ?? "區間倒數"
+        case .idle:
+            return "km/h・\(state.vehicleModeName)"
+        case .camera, .navigation:
+            return secondary
+        }
+    }
+
+    private func secondaryLabel(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 15, weight: .semibold))
+            .lineLimit(1)
     }
 
     private var secondaryColor: Color {

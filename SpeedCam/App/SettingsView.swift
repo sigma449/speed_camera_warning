@@ -109,10 +109,12 @@ struct SettingsView: View {
 
                 Section {
                     Toggle("Live Activity（鎖定畫面／CarPlay）", isOn: $model.settings.liveActivityEnabled)
+                    Toggle("重要時刻跳出提醒", isOn: $model.settings.liveActivityAlertsEnabled)
+                        .disabled(!model.settings.liveActivityEnabled)
                 } header: {
                     Text("Live Activity")
                 } footer: {
-                    Text("iOS 26 起，Live Activity 會出現在 CarPlay 儀表板（Dashboard）。CarPlay 上的大小由系統決定；想看得更清楚，可以到 iPhone「設定 → 一般 → CarPlay → 選擇車輛 → 顯示」開啟 Smart Display Zoom。")
+                    Text("iOS 26 起，Live Activity 會出現在 CarPlay 儀表板（Dashboard）。CarPlay 上的位置和大小由系統決定；想看得更清楚，可以到 iPhone「設定 → 一般 → CarPlay → 選擇車輛 → 顯示」開啟 Smart Display Zoom。「重要時刻跳出提醒」會在接近照相點、超速、區間開始和歸零時提醒；不在 Dashboard 頁面時，CarPlay 會顯示成畫面底部的通知。提醒會有系統提示音，覺得和語音重疊可以關掉。")
                 }
 
                 Section {
