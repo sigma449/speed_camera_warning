@@ -102,10 +102,10 @@ App 的啟動參數（CI 截圖用）：
 
 ## 建置與測試
 
-- **Swift 核心邏輯**（58 個測試）：
+- **Swift 核心邏輯**（72 個測試）：
   `docker run --rm -v "$PWD/Packages/SpeedCamCore":/pkg -w /pkg swift:6.2-noble swift test`
   （雲端 session 裡 Docker 沒在跑的話先執行 `dockerd &`。）
-- **Python 資料處理**（152 個測試）：`python3 -m pytest -q data-pipeline`
+- **Python 資料處理**（162 個測試）：`python3 -m pytest -q data-pipeline`
 - **iOS App** 只能在 GitHub Actions 編譯：
   - `CI`（每次 push）：Swift 測試、pytest、iOS 模擬器建置和截圖。截圖會以 base64 印在 log 裡（`scripts/ci/print-screenshots.sh`），因為雲端 session 下載不了 artifact。
   - `Build IPA`（手動）：`gh workflow run build-ipa.yml --repo sigma449/speed_camera_warning --ref main`。會下載最新資料、編譯未簽署的 IPA（artifact `SpeedCam-ipa`，保留 30 天）。
@@ -154,22 +154,30 @@ App 的啟動參數（CI 截圖用）：
 - 單人專案，直接 commit 到 `main` 再 push。`Build IPA` 是手動觸發的 workflow，要在預設分支上才會出現在 Actions 頁面。
 - commit 訊息用繁體中文：第一行寫做了什麼，內文寫原因。
 
-## 目前進度和下一步（2026-11-04）
+## 目前進度和下一步（2026-11-05）
 
-1. 使用者已經用 iloader 裝好 SideStore，也裝好 App（appIdName 錯誤已修正，App 名稱改成英文 SpeedCam）。
-2. 使用者在室內試用後的回饋（2026-11-04）：
-   - 希望打開就開始偵測
-   - 搜尋要有自動完成
-   - 地圖與搜尋的語言要能調整
-   這三項已經實作。之後又依使用者要求加了：
-   - 區間順著路形畫
+1. **最新 IPA**：Build IPA run 41809928606（`main` 5afbe8e）。包含：
+   - 中文搜尋閃退修正
+   - 區間建議時速
+   - 區間貼齊道路
+   - 導航前預覽（預覽時隱藏照相點）
+   - 搜尋與導航語言切換
+   - 回到目前位置／自動回到中心
    - 高架／平面標示
-   - 回到目前位置按鈕
-   - 自動回到中心
-3. 遠端還有臨時分支 `tools/inspect-shimin`（檢查市民高架資料用）。雲端 session 的代理擋下刪除，要請使用者在 GitHub 網頁上刪除。
-4. 請使用者實際上路測試，回報這些情況：
-   - 提醒的時機
-   - 方向誤報
-   - 北宜區間開始和結束的時機
-   - CarPlay 儀表板上 Live Activity 的顯示
-5. 之後再依使用者的決定進行 Phase 2（付費帳號、CarPlay 導航）或 Phase 3（重機停車）。
+2. **等使用者實機回報**：
+   - 上述功能
+   - 提醒時機、方向誤報
+   - 北宜區間開始／結束的時機
+   - CarPlay 儀表板上的 Live Activity
+3. **已知問題／待辦**：
+   - 部分快速道路區間貼齊失敗，保留里程牌路形：台61 157.8–151.6、41.5–46.9；台64 1.6–5.4；台9 110.96–108.224。
+   - 大眾運輸偵測（TDX 軌道線型）、氣壓計判斷高架／平面：未做。
+   - App 被 iOS 背景重新叫起（巡航中被系統結束）時不會自動恢復巡航，可考慮實作。
+   - 臨時分支 `tools/inspect-shimin` 待使用者在 GitHub 網頁刪除（雲端 session 的代理擋下刪除）。
+   - repo 的「Allow GitHub Actions to create and approve pull requests」是否開啟：未確認。
+   - 之後依使用者決定進行 Phase 2（付費帳號、CarPlay 導航）或 Phase 3（重機停車）。
+4. **新 session 接手**：
+   - 先讀本檔和 `docs/SETUP.md`。
+   - 改了搜尋就跑 `search-stress.yml`。
+   - 改了 UI 就看 CI 截圖：base64 在 log 裡，用 `=====BEGIN-SCREENSHOT` 區塊解碼。
+   - 確認沒問題再跑 Build IPA，把 artifact 連結給使用者。
