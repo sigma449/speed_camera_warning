@@ -48,6 +48,8 @@ struct SmallActivityView: View {
     let state: ActivityState
     /// 動態島展開時，上面已經有速限標誌或圖示，這裡就不再顯示一次。
     var showsLeading = true
+    /// 超速時自己加一層紅色。鎖定畫面整張卡片已經是紅底，再加會多出一塊方框。
+    var tintsOverspeed = true
 
     var body: some View {
         HStack(spacing: 10) {
@@ -74,7 +76,7 @@ struct SmallActivityView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .background(state.isOverspeed ? Color.red.opacity(0.35) : Color.clear)
+        .background(state.isOverspeed && tintsOverspeed ? Color.red.opacity(0.35) : Color.clear)
         .foregroundStyle(.white)
     }
 
@@ -162,7 +164,7 @@ struct LockScreenActivityView: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            SmallActivityView(state: state)
+            SmallActivityView(state: state, tintsOverspeed: false)
                 .frame(height: 70)
             // 巡航時大字已經是車速，不再顯示一次
             if state.mode != .idle {
@@ -170,9 +172,10 @@ struct LockScreenActivityView: View {
                     Text("\(state.currentSpeedKmh)")
                         .font(.system(size: 34, weight: .heavy, design: .rounded))
                         .monospacedDigit()
+                    // 不用 .secondary：在紅底上會變成看不清楚的粉紅色
                     Text("km/h")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.white.opacity(0.88))
                 }
                 .foregroundStyle(.white)
             }
