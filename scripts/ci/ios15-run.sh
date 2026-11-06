@@ -33,9 +33,15 @@ shot() {
 
 # App 還在不在。一開就閃退的話，launch 本身不會失敗，要這樣才看得出來。
 assert_running() {
-  if ! xcrun simctl spawn "${UDID}" launchctl list | grep -q "UIKitApplication:${BUNDLE_ID}"; then
+  # 先存成變數再比對：grep -q 比對到就結束，配上 pipefail 會因為 SIGPIPE 被誤判成失敗。
+  local list
+  list=$(xcrun simctl spawn "${UDID}" launchctl list)
+  if ! grep -q "UIKitApplication:${BUNDLE_ID}" <<<"${list}"; then
     echo "::error::App 在「$1」已經不在執行了（閃退）"
-    report_crashes
+    # 閃退報告要幾秒才會寫好
+    sleep 8
+    report_crashes || true
+    xcrun simctl spawn "${UDID}" log show --last 2m --style compact --predicate 'process == "SpeedCam"' 2>/dev/null | tail -40 || true
     exit 1
   fi
   echo "「$1」App 正常執行中"

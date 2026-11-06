@@ -43,6 +43,8 @@ struct LegacyMapView: UIViewRepresentable {
         map.showsScale = true
         map.showsTraffic = true
         map.pointOfInterestFilter = .excludingAll
+        // 目前位置的圓點跟著 tintColor，不設定的話會變成 App 的強調色（黃色），和照相點的黃色混淆
+        map.tintColor = .systemBlue
         context.coordinator.attachGestures(to: map)
         return map
     }
@@ -261,8 +263,8 @@ struct LegacyMapView: UIViewRepresentable {
                     ?? MKAnnotationView(annotation: annotation, reuseIdentifier: "demo")
                 view.annotation = annotation
                 let configuration = UIImage.SymbolConfiguration(pointSize: 34)
-                view.image = UIImage(systemName: "location.north.circle.fill", withConfiguration: configuration)?
-                    .withTintColor(.systemBlue, renderingMode: .alwaysOriginal)
+                    .applying(UIImage.SymbolConfiguration(paletteColors: [.white, .systemBlue]))
+                view.image = UIImage(systemName: "location.north.circle.fill", withConfiguration: configuration)
                 view.displayPriority = .required
                 return view
             default:
