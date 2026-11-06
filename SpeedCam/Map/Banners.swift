@@ -60,13 +60,19 @@ struct SectionBanner: View {
                 SpeedLimitSign(limit: status.section.speedLimit, size: 64)
                 VStack(alignment: .leading, spacing: 0) {
                     if status.remainingSeconds > 0 {
-                        Text("還要 \(status.remainingWholeSeconds) 秒")
-                            .font(.system(size: 40, weight: .heavy, design: .rounded))
-                            .monospacedDigit()
-                            .foregroundStyle(.orange)
-                        Text("才能到終點（區間倒數）")
-                            .font(.subheadline)
-                            .foregroundStyle(BannerStyle.secondaryText)
+                        // 秒數最大，看一眼就懂
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Text("區間倒數")
+                                .font(.system(size: 24, weight: .heavy, design: .rounded))
+                            Text(String(status.remainingWholeSeconds))
+                                .font(.system(size: 46, weight: .heavy, design: .rounded))
+                                .monospacedDigit()
+                            Text("秒")
+                                .font(.system(size: 24, weight: .heavy, design: .rounded))
+                        }
+                        .foregroundStyle(.orange)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
                     } else {
                         Text("可依速限行駛")
                             .font(.system(size: 34, weight: .heavy, design: .rounded))
@@ -78,22 +84,19 @@ struct SectionBanner: View {
             if status.remainingSeconds > 0 {
                 suggestion
             }
-            HStack {
-                stat("均速", "\(Int(status.averageKmh.rounded()))")
-                stat("剩餘", AnnouncementFormatter.displayDistance(status.remainingMeters))
-            }
-            HStack(spacing: 6) {
-                Image(systemName: "timer")
-                Text(status.section.name)
-                if Int(status.effectiveLimitKmh.rounded()) > status.section.speedLimit {
-                    Text("・以 \(Int(status.effectiveLimitKmh.rounded())) 計算")
-                }
+            // 區間名稱很長（真實資料 27～32 字）又用不到；「以 N 計算」進入區間時語音會念。都不放在這裡。
+            HStack(spacing: 8) {
+                Text("均速 \(Int(status.averageKmh.rounded()))・剩 \(AnnouncementFormatter.displayDistance(status.remainingMeters))")
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
                 if status.section.lengthEstimated {
-                    Text("・長度為估算").foregroundStyle(.yellow)
+                    Text("長度為估算")
+                        .font(.footnote)
+                        .foregroundStyle(.yellow)
                 }
             }
-            .font(.footnote)
-            .foregroundStyle(BannerStyle.secondaryText)
         }
         .padding(14)
         .background(BannerStyle.dark, in: RoundedRectangle(cornerRadius: 20))
@@ -107,29 +110,17 @@ struct SectionBanner: View {
         return HStack(spacing: 10) {
             Image(systemName: tooFast ? "tortoise.fill" : "checkmark.circle.fill")
                 .font(.title2)
-            VStack(alignment: .leading, spacing: 0) {
-                Text("建議時速 \(kmh) 以下")
-                    .font(.system(size: 26, weight: .heavy, design: .rounded))
-                    .monospacedDigit()
-                Text(tooFast ? "目前 \(currentSpeed)，請放慢" : "依剩餘 \(AnnouncementFormatter.displayDistance(status.remainingMeters)) 計算")
-                    .font(.caption.weight(.semibold))
-            }
+            Text(tooFast ? "請放慢：建議 \(kmh) 以下" : "建議時速 \(kmh) 以下")
+                .font(.system(size: 26, weight: .heavy, design: .rounded))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(tooFast ? BannerStyle.caution : BannerStyle.good, in: RoundedRectangle(cornerRadius: 14))
         .foregroundStyle(.white)
-    }
-
-    private func stat(_ title: String, _ value: String) -> some View {
-        VStack(spacing: 0) {
-            Text(value)
-                .font(.system(size: 24, weight: .bold, design: .rounded))
-                .monospacedDigit()
-            Text(title).font(.caption).foregroundStyle(BannerStyle.secondaryText)
-        }
-        .frame(maxWidth: .infinity)
     }
 }
 

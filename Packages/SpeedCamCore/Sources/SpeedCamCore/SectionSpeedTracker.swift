@@ -40,6 +40,22 @@ public struct SectionStatus: Equatable, Sendable {
     /// 計算用的時速（速限＋區間容許值）。
     public var effectiveLimitKmh: Double
 
+    public init(section: SpeedSection, startTime: Date, elapsed: TimeInterval, minimumSeconds: Double,
+                remainingSeconds: Double, earliestExit: Date, traveledMeters: Double, remainingMeters: Double,
+                averageKmh: Double, suggestedMaxKmh: Double, effectiveLimitKmh: Double) {
+        self.section = section
+        self.startTime = startTime
+        self.elapsed = elapsed
+        self.minimumSeconds = minimumSeconds
+        self.remainingSeconds = remainingSeconds
+        self.earliestExit = earliestExit
+        self.traveledMeters = traveledMeters
+        self.remainingMeters = remainingMeters
+        self.averageKmh = averageKmh
+        self.suggestedMaxKmh = suggestedMaxKmh
+        self.effectiveLimitKmh = effectiveLimitKmh
+    }
+
     /// 倒數秒數（無條件進位成整數，畫面顯示用）。
     public var remainingWholeSeconds: Int { Int(remainingSeconds.rounded(.up)) }
 

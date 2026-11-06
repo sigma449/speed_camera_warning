@@ -30,6 +30,15 @@ public struct RouteProgress: Equatable, Sendable {
     public var distanceToNextManeuver: Double
     public var distanceRemaining: Double
     public var distanceFromRoute: Double
+
+    public init(nextStepIndex: Int, nextInstruction: String, distanceToNextManeuver: Double,
+                distanceRemaining: Double, distanceFromRoute: Double) {
+        self.nextStepIndex = nextStepIndex
+        self.nextInstruction = nextInstruction
+        self.distanceToNextManeuver = distanceToNextManeuver
+        self.distanceRemaining = distanceRemaining
+        self.distanceFromRoute = distanceFromRoute
+    }
 }
 
 public struct RouteProgressResult: Equatable, Sendable {

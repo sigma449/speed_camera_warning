@@ -9,7 +9,11 @@ struct SpeedCamApp: App {
         WindowGroup {
             Group {
                 if model.showGallery {
-                    ActivityGalleryView()
+                    if ProcessInfo.processInfo.arguments.contains("-galleryBanners") {
+                        BannerGalleryView()
+                    } else {
+                        ActivityGalleryView()
+                    }
                 } else {
                     RootView()
                 }
