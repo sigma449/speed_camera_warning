@@ -2,7 +2,7 @@ import SpeedCamCore
 import SwiftUI
 
 struct SettingsView: View {
-    @Environment(AppModel.self) private var model
+    @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @AppStorage(AppPreferences.autoStartCruiseKey) private var autoStartCruise = true
     @State private var mapLanguage = MapLanguage.selected
@@ -12,8 +12,7 @@ struct SettingsView: View {
     private var languagePending: Bool { mapLanguage != MapLanguage.atLaunch }
 
     var body: some View {
-        @Bindable var model = model
-        NavigationStack {
+        AdaptiveNavigationStack {
             Form {
                 Section {
                     Picker("搜尋與導航語言", selection: $mapLanguage) {
@@ -45,7 +44,12 @@ struct SettingsView: View {
                 } header: {
                     Text("車種")
                 } footer: {
-                    Text("紅黃牌機車：避開國道和收費道路，可以走快速道路和市區高架。白牌機車：只走平面道路。機車路線仍是用汽車的路網規劃，不知道哪些路段禁行機車，請依現場標誌行駛。")
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("紅黃牌機車：避開國道和收費道路，可以走快速道路和市區高架。白牌機車：只走平面道路。機車路線仍是用汽車的路網規劃，不知道哪些路段禁行機車，請依現場標誌行駛。")
+                        if !LegacySupport.supportsRoutePreferences {
+                            Text("這支 iPhone 的 iOS 太舊，不能要求 Apple 避開高速或收費，機車路線常常會跳提醒，和 iOS 16 以上的手機不一樣。")
+                        }
+                    }
                 }
 
                 Section {
@@ -70,10 +74,10 @@ struct SettingsView: View {
 
                 Section {
                     Stepper(value: $model.settings.overspeedToleranceKmh, in: 0...20, step: 1) {
-                        LabeledContent("超速容許值", value: "+\(Int(model.settings.overspeedToleranceKmh)) km/h")
+                        LabeledValue("超速容許值", value: "+\(Int(model.settings.overspeedToleranceKmh)) km/h")
                     }
                     Stepper(value: $model.settings.overspeedBeepInterval, in: 1...10, step: 1) {
-                        LabeledContent("嗶聲間隔", value: "\(Int(model.settings.overspeedBeepInterval)) 秒")
+                        LabeledValue("嗶聲間隔", value: "\(Int(model.settings.overspeedBeepInterval)) 秒")
                     }
                 } header: {
                     Text("超速警示")
@@ -83,17 +87,17 @@ struct SettingsView: View {
 
                 Section {
                     Stepper(value: $model.settings.sectionToleranceKmh, in: AlertSettings.sectionToleranceRange, step: 5) {
-                        LabeledContent("區間容許值（預設）", value: "+\(Int(model.settings.sectionToleranceKmh)) km/h")
+                        LabeledValue("區間容許值（預設）", value: "+\(Int(model.settings.sectionToleranceKmh)) km/h")
                     }
                     NavigationLink {
                         SectionToleranceView()
                     } label: {
-                        LabeledContent("個別區間設定",
-                                       value: model.settings.sectionToleranceOverrides.isEmpty
-                                           ? "未設定" : "\(model.settings.sectionToleranceOverrides.count) 段")
+                        LabeledValue("個別區間設定",
+                                     value: model.settings.sectionToleranceOverrides.isEmpty
+                                         ? "未設定" : "\(model.settings.sectionToleranceOverrides.count) 段")
                     }
                     Stepper(value: $model.settings.sectionSafetyMargin, in: 0...0.10, step: 0.01) {
-                        LabeledContent("安全餘裕", value: "\(Int((model.settings.sectionSafetyMargin * 100).rounded()))%")
+                        LabeledValue("安全餘裕", value: "\(Int((model.settings.sectionSafetyMargin * 100).rounded()))%")
                     }
                     Toggle("最後 30 秒、10 秒額外提醒", isOn: $model.settings.sectionFinalCountdown)
                 } header: {
@@ -109,20 +113,23 @@ struct SettingsView: View {
                     Button("試聽嗶聲") { model.testBeep() }
                 }
 
-                Section {
-                    Toggle("Live Activity（鎖定畫面／CarPlay）", isOn: $model.settings.liveActivityEnabled)
-                    Toggle("重要時刻跳出提醒", isOn: $model.settings.liveActivityAlertsEnabled)
-                        .disabled(!model.settings.liveActivityEnabled)
-                } header: {
-                    Text("Live Activity")
-                } footer: {
-                    Text("iOS 26 起，Live Activity 會出現在 CarPlay 儀表板（Dashboard）。CarPlay 上的位置和大小由系統決定；想看得更清楚，可以到 iPhone「設定 → 一般 → CarPlay → 選擇車輛 → 顯示」開啟 Smart Display Zoom。「重要時刻跳出提醒」會在接近照相點、超速、區間開始和歸零時提醒；不在 Dashboard 頁面時，CarPlay 會顯示成畫面底部的通知。提醒會有系統提示音，覺得和語音重疊可以關掉。")
+                // 舊系統沒有 Live Activity，不顯示這一段
+                if LegacySupport.supportsLiveActivity {
+                    Section {
+                        Toggle("Live Activity（鎖定畫面／CarPlay）", isOn: $model.settings.liveActivityEnabled)
+                        Toggle("重要時刻跳出提醒", isOn: $model.settings.liveActivityAlertsEnabled)
+                            .disabled(!model.settings.liveActivityEnabled)
+                    } header: {
+                        Text("Live Activity")
+                    } footer: {
+                        Text("iOS 26 起，Live Activity 會出現在 CarPlay 儀表板（Dashboard）。CarPlay 上的位置和大小由系統決定；想看得更清楚，可以到 iPhone「設定 → 一般 → CarPlay → 選擇車輛 → 顯示」開啟 Smart Display Zoom。「重要時刻跳出提醒」會在接近照相點、超速、區間開始和歸零時提醒；不在 Dashboard 頁面時，CarPlay 會顯示成畫面底部的通知。提醒會有系統提示音，覺得和語音重疊可以關掉。")
+                    }
                 }
 
                 Section {
-                    LabeledContent("資料版本", value: model.database.version)
-                    LabeledContent("照相點", value: "\(model.database.cameras.count) 處")
-                    LabeledContent("區間測速", value: "\(model.database.sections.count) 段")
+                    LabeledValue("資料版本", value: model.database.version)
+                    LabeledValue("照相點", value: "\(model.database.cameras.count) 處")
+                    LabeledValue("區間測速", value: "\(model.database.sections.count) 段")
                     ForEach(model.database.sources, id: \.self) { source in
                         Text(source).font(.footnote).foregroundStyle(.secondary)
                     }
@@ -139,7 +146,7 @@ struct SettingsView: View {
             }
             .navigationTitle("設定")
             .navigationBarTitleDisplayMode(.inline)
-            .onChange(of: mapLanguage) { _, newValue in
+            .onChange(of: mapLanguage) { newValue in
                 MapLanguage.select(newValue)
                 showRestartNotice = languagePending
             }
@@ -164,7 +171,7 @@ struct SettingsView: View {
 
     private func distanceStepper(_ title: String, value: Binding<Double>, range: ClosedRange<Double>) -> some View {
         Stepper(value: value, in: range, step: 50) {
-            LabeledContent(title, value: "\(Int(value.wrappedValue)) m")
+            LabeledValue(title, value: "\(Int(value.wrappedValue)) m")
         }
     }
 }

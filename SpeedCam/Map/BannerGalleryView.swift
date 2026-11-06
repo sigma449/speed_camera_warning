@@ -4,6 +4,7 @@ import SwiftUI
 /// 手機橫幅預覽頁（以 `-gallery -galleryBanners` 啟動）。
 /// 展示模式不一定碰得到每個狀態，而且展示資料的文字很短，所以這裡固定列出各種狀態，並用真實資料裡最長的區間名稱。
 /// 加上 `-galleryBottom` 從頁面底部開始顯示，CI 才拍得到整頁。
+@available(iOS 17, *)
 struct BannerGalleryView: View {
     private let startAnchor: UnitPoint =
         ProcessInfo.processInfo.arguments.contains("-galleryBottom") ? .bottom : .top

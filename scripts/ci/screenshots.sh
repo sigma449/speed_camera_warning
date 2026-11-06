@@ -197,6 +197,28 @@ launch_app -autoStartCruise NO -vehicleMode motorcycleWhite -previewTo "24.8016,
 sleep 9
 shot "20-preview-white"
 
+# 9) 舊系統的做法（-legacyUI：MKMapView、CLLocationManager、NavigationView、不要求避開高速）。
+# 在這裡看外觀和流程，真正的舊系統要靠實機。
+launch_app -legacyUI -demo
+sleep 25
+shot "21-legacy-demo-camera"
+launch_app -legacyUI -autoStartCruise NO -mapCenter "24.905,121.695" -mapSpan 0.16
+sleep 20
+shot "22-legacy-sections"
+launch_app -legacyUI -autoStartCruise NO -settings
+sleep 8
+shot "23-legacy-settings"
+launch_app -legacyUI -autoStartCruise NO -search "台北車站" -AppleLanguages "(zh-Hant-TW)" -AppleLocale zh_TW
+sleep 14
+shot "24-legacy-search"
+launch_app -legacyUI -autoStartCruise NO -vehicleMode motorcycleWhite -previewTo "24.8016,120.9717,新竹車站"
+sleep 9
+shot "25-legacy-preview-white"
+# 最後一張會開始巡航（用 CLLocationManager 定位），確認畫面跟著定位
+launch_app -legacyUI
+sleep 12
+shot "26-legacy-cruise"
+
 # App 的紀錄（確認啟動參數、sheet、地圖範圍、區間貼齊、路線選擇有沒有生效）
 xcrun simctl spawn "${UDID}" log show --last 20m --style compact \
   --predicate 'subsystem == "tw.speedcammap.app"' 2>/dev/null | grep -E "arguments|appeared|applied|opened|preview|typing|beiyi|一次規劃|分段|route plan|road_lines" | tail -120 || true

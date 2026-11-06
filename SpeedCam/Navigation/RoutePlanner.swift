@@ -14,8 +14,11 @@ enum RoutePlanner {
             request.destination = destination
             request.transportType = .automobile
             request.requestsAlternateRoutes = option.alternates
-            request.highwayPreference = option.avoidHighways ? .avoid : .any
-            request.tollPreference = option.avoidTolls ? .avoid : .any
+            // iOS 15 不能要求避開高速或收費，只能從回傳的路線裡挑，常常會挑不到而跳提醒。
+            if #available(iOS 16, *), LegacySupport.supportsRoutePreferences {
+                request.highwayPreference = option.avoidHighways ? .avoid : .any
+                request.tollPreference = option.avoidTolls ? .avoid : .any
+            }
             let response = try await MKDirections(request: request).calculate()
             return response.routes.map { route in
                 (route: route, facts: RouteFacts(hasHighways: route.hasHighways, hasTolls: route.hasTolls,

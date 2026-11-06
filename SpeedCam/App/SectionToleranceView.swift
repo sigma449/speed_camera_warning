@@ -4,7 +4,7 @@ import SwiftUI
 /// 個別區間容許值：可搜尋、多選，再一次套用同一個容許值。
 /// 同一段的兩個方向共用設定（依 SpeedSection.groupID 合併）。
 struct SectionToleranceView: View {
-    @Environment(AppModel.self) private var model
+    @EnvironmentObject private var model: AppModel
     @State private var selected: Set<String> = []
     @State private var query = ""
 
@@ -40,7 +40,7 @@ struct SectionToleranceView: View {
         .navigationTitle("個別區間設定")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .navigationBarTrailing) {
                 Button(selected.count == filteredGroups.count && !filteredGroups.isEmpty ? "取消全選" : "全選") {
                     if selected.count == filteredGroups.count {
                         selected.removeAll()

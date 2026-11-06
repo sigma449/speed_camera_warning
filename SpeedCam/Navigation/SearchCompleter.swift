@@ -1,6 +1,6 @@
+import Combine
 import Foundation
 import MapKit
-import Observation
 import SwiftUI
 
 /// 一筆候選。畫面需要的文字在收到結果時就先算好，清單用自己的 id，不用陣列索引。
@@ -17,10 +17,9 @@ struct SearchSuggestion: Identifiable {
 
 /// 邊打字邊顯示候選地點（像 Google 地圖的自動完成），用 MapKit 的 MKLocalSearchCompleter。
 @MainActor
-@Observable
-final class SearchCompleter: NSObject, MKLocalSearchCompleterDelegate {
-    private(set) var suggestions: [SearchSuggestion] = []
-    private(set) var failed = false
+final class SearchCompleter: NSObject, ObservableObject, MKLocalSearchCompleterDelegate {
+    @Published private(set) var suggestions: [SearchSuggestion] = []
+    @Published private(set) var failed = false
 
     private let completer = MKLocalSearchCompleter()
 

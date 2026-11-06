@@ -3,6 +3,7 @@ import SwiftUI
 /// 鎖定畫面和動態島展開的預覽頁（以 `-gallery -galleryLock` 啟動）。
 /// 用和 Live Activity 相同的畫面元件排出各種狀態。動態島的外框是示意，實際由系統畫。
 /// 加上 `-galleryBottom` 從頁面底部開始顯示，CI 才拍得到整頁。
+@available(iOS 17, *)
 struct LockScreenGalleryView: View {
     private let startAnchor: UnitPoint =
         ProcessInfo.processInfo.arguments.contains("-galleryBottom") ? .bottom : .top

@@ -3,6 +3,7 @@ import SwiftUI
 /// Live Activity 預覽頁（以 -gallery 參數啟動）。
 /// 依 Apple 文件列出的 CarPlay 尺寸（240×78、240×100、170×78 pt）排出各種狀態，
 /// 讓 CI 可以截圖檢查版面，不需要真的接上 CarPlay。
+@available(iOS 17, *)
 struct ActivityGalleryView: View {
     private let states: [(String, ActivityState)] = [
         ("接近測速", .previewCamera),

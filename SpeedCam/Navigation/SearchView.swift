@@ -10,10 +10,10 @@ private let searchLog = Logger(subsystem: "tw.speedcammap.app", category: "searc
 /// - 輸入中：邊打字邊顯示候選地點（MKLocalSearchCompleter）。
 /// - 按下搜尋或點了一類地點：顯示搜尋結果，附距離。
 struct SearchView: View {
-    @Environment(AppModel.self) private var model
+    @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
-    @State private var completer = SearchCompleter()
+    @StateObject private var completer = SearchCompleter()
     @State private var results: [SearchResultRow] = []
     /// 目前的搜尋結果是用哪段文字查的；輸入改變時用來判斷要不要清掉結果。
     @State private var resultsQuery: String?
@@ -23,7 +23,7 @@ struct SearchView: View {
     @FocusState private var searchFocused: Bool
 
     var body: some View {
-        NavigationStack {
+        AdaptiveNavigationStack {
             List {
                 if isSearching {
                     HStack(spacing: 10) { ProgressView(); Text("搜尋中…") }
@@ -41,9 +41,9 @@ struct SearchView: View {
                 }
             }
             .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: "搜尋地點或地址")
-            .searchFocused($searchFocused)
+            .searchFocusedIfAvailable($searchFocused)
             .onSubmit(of: .search) { runSearch(query) }
-            .onChange(of: query) { _, newValue in
+            .onChange(of: query) { newValue in
                 if newValue != resultsQuery {
                     results = []
                     resultsQuery = nil

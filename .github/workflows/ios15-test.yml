@@ -1,0 +1,50 @@
+name: iOS 15 實際執行
+
+# 手動執行（約 20 分鐘）：在 iPhone 7、iOS 15.5 模擬器上開啟 App，確認裝得上、開得起來、沒有閃退。
+# 改了舊系統的程式（LegacySupport、LegacyMapView…）或新增了新版 iOS 才有的 API 就跑一次。
+on:
+  workflow_dispatch:
+
+jobs:
+  ios15:
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - name: 下載測速資料（讓畫面顯示真實照相點；失敗不影響建置）
+        run: python3 data-pipeline/build_cameras.py --min-count 500 || echo "::warning::測速資料下載失敗，畫面會沒有照相點"
+      - name: 選擇 Xcode
+        run: bash scripts/ci/select-xcode.sh
+      - name: 安裝 XcodeGen 並產生專案
+        run: |
+          brew install xcodegen
+          xcodegen generate
+      - name: 建置（模擬器、Release，和 IPA 相同的設定）
+        run: |
+          set -o pipefail
+          xcodebuild -project SpeedCam.xcodeproj -scheme SpeedCam -configuration Release \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO build 2>&1 | tee build.log | grep -E "error:|BUILD (SUCCEEDED|FAILED)" || true
+          grep -q "BUILD SUCCEEDED" build.log
+      - name: 檢查最低版本和連結
+        run: bash scripts/ci/check-min-os.sh build/Build/Products/Release-iphonesimulator/SpeedCam.app
+      - name: 安裝 iOS 15.5 模擬器
+        run: bash scripts/ci/install-ios15-runtime.sh
+      - name: 在 iOS 15.5 上執行
+        run: bash scripts/ci/ios15-run.sh build/Build/Products/Release-iphonesimulator/SpeedCam.app
+      - name: 截圖縮圖輸出到 log
+        if: always()
+        run: bash scripts/ci/print-screenshots.sh screenshots
+      - name: 上傳截圖
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios15-screenshots
+          path: screenshots/
+          if-no-files-found: ignore
+      - name: 上傳建置紀錄
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios15-build-log
+          path: build.log

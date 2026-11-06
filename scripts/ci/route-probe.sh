@@ -38,7 +38,7 @@ swiftc -swift-version 5 -emit-library -static -emit-module -module-name SpeedCam
 # 多個檔案時，頂層程式碼一定要放在 main.swift
 cp scripts/ci/route-probe.swift "${BUILD}/main.swift"
 swiftc -swift-version 5 -I "${BUILD}" -L "${BUILD}" -lSpeedCamCore \
-  "${BUILD}/main.swift" SpeedCam/Navigation/RoutePlanner.swift SpeedCam/Data/MapItems.swift \
+  "${BUILD}/main.swift" SpeedCam/Navigation/RoutePlanner.swift SpeedCam/Data/MapItems.swift SpeedCam/Data/LegacySupport.swift \
   -o "${APP}/Contents/MacOS/RouteProbe"
 codesign --force --sign - "${APP}"
 

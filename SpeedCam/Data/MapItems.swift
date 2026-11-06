@@ -5,7 +5,7 @@ import SpeedCamCore
 /// MapKit 相關的小工具。把可能被標為「已棄用」的 API 集中在這裡，之後要換新 API 只改一處。
 enum MapItems {
     static func item(at p: GeoPoint) -> MKMapItem {
-        MKMapItem(location: CLLocation(latitude: p.lat, longitude: p.lon), address: nil)
+        make(CLLocationCoordinate2D(latitude: p.lat, longitude: p.lon))
     }
 
     static func subtitle(of item: MKMapItem) -> String {
@@ -13,14 +13,24 @@ enum MapItems {
     }
 
     static func coordinate(of item: MKMapItem) -> CLLocationCoordinate2D {
-        item.location.coordinate
+        if #available(iOS 26, *), !LegacySupport.forced {
+            return item.location.coordinate
+        }
+        return item.placemark.coordinate
     }
 
     /// 最近目的地用：用座標和名稱建立地點。
     static func item(name: String, coordinate: CLLocationCoordinate2D) -> MKMapItem {
-        let item = MKMapItem(location: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude), address: nil)
+        let item = make(coordinate)
         item.name = name
         return item
+    }
+
+    private static func make(_ coordinate: CLLocationCoordinate2D) -> MKMapItem {
+        if #available(iOS 26, *), !LegacySupport.forced {
+            return MKMapItem(location: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude), address: nil)
+        }
+        return MKMapItem(placemark: MKPlacemark(coordinate: coordinate))
     }
 
     /// 「850 公尺」「3.2 公里」「25 公里」

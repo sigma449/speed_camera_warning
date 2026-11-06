@@ -4,7 +4,7 @@ import WidgetKit
 // Live Activity 的畫面。Widget Extension 用它顯示在鎖定畫面、動態島與 CarPlay；
 // App 內的「Live Activity 預覽」頁也用同一份程式碼，方便在 CI 截圖檢查。
 
-typealias ActivityState = SpeedCamActivityAttributes.ContentState
+typealias ActivityState = SpeedCamActivityState
 
 enum ActivityFormat {
     static func distance(_ meters: Double?) -> String {
@@ -44,6 +44,7 @@ struct SpeedLimitSign: View {
 // MARK: - CarPlay／Apple Watch 用的 .small 版面（約 240×78 ～ 240×100 pt）
 
 /// 重點：字要大。只放「距離或倒數」與「速限」兩個大元素，其他資訊用小字。
+@available(iOS 16.1, *)
 struct SmallActivityView: View {
     let state: ActivityState
     /// 動態島展開時，上面已經有速限標誌或圖示，這裡就不再顯示一次。
@@ -159,6 +160,7 @@ struct SmallActivityView: View {
 
 // MARK: - 鎖定畫面版面
 
+@available(iOS 16.1, *)
 struct LockScreenActivityView: View {
     let state: ActivityState
 
@@ -241,6 +243,7 @@ struct CompactLeadingView: View {
     }
 }
 
+@available(iOS 16.1, *)
 struct CompactTrailingView: View {
     let state: ActivityState
     var body: some View {

@@ -224,7 +224,7 @@ struct CameraDetailCard: View {
 }
 
 struct BottomBar: View {
-    @Environment(AppModel.self) private var model
+    @EnvironmentObject private var model: AppModel
     @Binding var showSearch: Bool
     @Binding var showSettings: Bool
 
@@ -313,5 +313,11 @@ enum Symbols {
     /// 機車圖示；舊系統沒有 motorcycle 符號時改用 scooter。
     static var motorcycle: String {
         UIImage(systemName: "motorcycle") != nil ? "motorcycle" : "scooter"
+    }
+
+    /// 路線預覽的圖示；舊系統沒有這個符號時改用路線指示的圖示。
+    static var routePreview: String {
+        let name = "point.topleft.down.to.point.bottomright.curvepath"
+        return UIImage(systemName: name) != nil ? name : "arrow.triangle.turn.up.right.diamond.fill"
     }
 }

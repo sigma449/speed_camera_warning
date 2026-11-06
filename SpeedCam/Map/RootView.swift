@@ -8,8 +8,8 @@ private let uiLog = Logger(subsystem: "tw.speedcammap.app", category: "ui")
 
 /// 主畫面：全螢幕地圖，上方顯示提醒／導航資訊，下方是速度與操作按鈕。
 struct RootView: View {
-    @Environment(AppModel.self) private var model
-    @State private var follow = MapFollowController()
+    @EnvironmentObject private var model: AppModel
+    @StateObject private var follow = MapFollowController()
     @State private var visibleRegion: MKCoordinateRegion?
     @State private var selectedCameraID: String?
     @State private var showSearch = false
@@ -56,10 +56,11 @@ struct RootView: View {
         }
         .sheet(isPresented: $showSearch) {
             SearchView()
-                .presentationDetents([.large])
+                .environmentObject(model)
         }
         .sheet(isPresented: $showSettings) {
             SettingsView()
+                .environmentObject(model)
         }
         .alert("需要定位權限", isPresented: Binding(get: { model.authorizationDenied },
                                               set: { if !$0 { model.acknowledgeAuthorizationAlert() } })) {
@@ -101,10 +102,10 @@ struct RootView: View {
                 uiLog.notice("opened search sheet")
             }
         }
-        .onChange(of: model.lastFix) { _, fix in
+        .onChange(of: model.lastFix) { fix in
             if let fix { follow.handle(fix) }
         }
-        .onChange(of: model.preview?.key) { _, _ in
+        .onChange(of: model.preview?.key) { _ in
             movePreviewCamera()
         }
         .task(id: model.preview?.key) {
@@ -212,7 +213,57 @@ struct RootView: View {
         return []
     }
 
+    @ViewBuilder
     private var map: some View {
+        if #available(iOS 17, *), !LegacySupport.forced {
+            modernMap
+        } else {
+            legacyMap
+        }
+    }
+
+    /// iOS 15、16 的地圖，內容和 `modernMap` 一樣。
+    private var legacyMap: some View {
+        LegacyMapView(cameras: visibleCameras,
+                      highlightedCameraID: model.cameraTarget?.camera.id,
+                      selectedCameraID: $selectedCameraID,
+                      routeLine: legacyRouteLine,
+                      pin: legacyPin,
+                      sections: model.sectionOverlays,
+                      demoPosition: model.demoMode ? model.lastFix?.point.coordinate : nil,
+                      request: follow.legacyRequest,
+                      onRegionChange: { region in
+                          visibleRegion = region
+                          model.requestRoadSnapping(near: GeoPoint(lat: region.center.latitude,
+                                                                   lon: region.center.longitude))
+                      },
+                      onUserInteraction: {
+                          follow.userMovedMap()
+                          if model.preview != nil { previewPaused = true }
+                      })
+    }
+
+    private var legacyRouteLine: LegacyMapView.RouteLine? {
+        if let p = model.preview {
+            guard p.stage == .route, let route = p.route else { return nil }
+            return LegacyMapView.RouteLine(polyline: route.polyline, isPreview: true)
+        }
+        guard let route = model.route else { return nil }
+        return LegacyMapView.RouteLine(polyline: route.polyline, isPreview: false)
+    }
+
+    private var legacyPin: LegacyMapView.Pin? {
+        if let p = model.preview {
+            return LegacyMapView.Pin(title: p.name, latitude: p.coordinate.latitude,
+                                     longitude: p.coordinate.longitude, usesFlag: false)
+        }
+        guard let destination = model.destinationCoordinate else { return nil }
+        return LegacyMapView.Pin(title: model.destinationName ?? "目的地", latitude: destination.latitude,
+                                 longitude: destination.longitude, usesFlag: true)
+    }
+
+    @available(iOS 17, *)
+    private var modernMap: some View {
         Map(position: $follow.position, selection: $selectedCameraID) {
             UserAnnotation()
 
@@ -313,8 +364,10 @@ struct CameraMarker: View {
         }
     }
 
-    private var color: Color {
-        switch camera.type {
+    private var color: Color { Self.color(for: camera.type) }
+
+    static func color(for type: CameraType) -> Color {
+        switch type {
         case .fixed: return .red
         case .redLight: return .orange
         case .redLightSpeed: return .pink

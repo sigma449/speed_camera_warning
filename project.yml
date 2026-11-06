@@ -3,8 +3,10 @@
 name: SpeedCam
 options:
   bundleIdPrefix: tw.speedcammap
+  # 最低 iOS 15，只為了用舊手機（iPhone 7 最高 15.8）測 App 內的功能。
+  # iOS 17 以上走原本的程式；舊系統的替代做法見 SpeedCam/Data/LegacySupport.swift。
   deploymentTarget:
-    iOS: "26.0"
+    iOS: "15.0"
   createIntermediateGroups: true
   developmentLanguage: zh-Hant
   groupSortPosition: top
@@ -62,10 +64,14 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: tw.speedcammap.app
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        # iOS 15 沒有 ActivityKit。一定要弱連結，否則 App 一開就閃退。
+        OTHER_LDFLAGS: "$(inherited) -weak_framework ActivityKit"
 
   SpeedCamWidgets:
     type: app-extension
     platform: iOS
+    # Live Activity 的畫面用到 iOS 18 的 API，所以維持 iOS 26。舊系統會裝 App，但不會載入這個 extension。
+    deploymentTarget: "26.0"
     sources:
       - path: SpeedCamWidgets
       - path: Shared

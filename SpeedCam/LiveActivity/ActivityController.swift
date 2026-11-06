@@ -2,11 +2,42 @@ import ActivityKit
 import Foundation
 import SpeedCamCore
 
+/// AppModel 用的介面。需要的 API 是 iOS 16.2 才有的，舊系統用 `NoLiveActivity`。
+@MainActor
+protocol LiveActivityControlling: AnyObject {
+    var enabled: Bool { get set }
+    var needsRestart: Bool { get }
+    func start(initial: SpeedCamActivityState)
+    func update(_ state: SpeedCamActivityState, alert: ActivityAlertContent?)
+    func end()
+}
+
+enum LiveActivityFactory {
+    @MainActor
+    static func make() -> any LiveActivityControlling {
+        if #available(iOS 16.2, *), LegacySupport.supportsLiveActivity {
+            return ActivityController()
+        }
+        return NoLiveActivity()
+    }
+}
+
+/// 舊系統沒有 Live Activity，什麼都不做。
+@MainActor
+final class NoLiveActivity: LiveActivityControlling {
+    var enabled = false
+    var needsRestart: Bool { false }
+    func start(initial: SpeedCamActivityState) {}
+    func update(_ state: SpeedCamActivityState, alert: ActivityAlertContent?) {}
+    func end() {}
+}
+
 /// 管理 Live Activity：開始、節流更新、結束。
 /// 只在本機更新（不使用推播），所以免費的開發者帳號也能用。
+@available(iOS 16.2, *)
 @MainActor
-final class ActivityController {
-    typealias State = SpeedCamActivityAttributes.ContentState
+final class ActivityController: LiveActivityControlling {
+    typealias State = SpeedCamActivityState
 
     private var activity: Activity<SpeedCamActivityAttributes>?
     private var lastState: State?
@@ -47,7 +78,7 @@ final class ActivityController {
     /// 模式或速限改變、超速狀態改變、距離變化超過一定幅度（近距離時 20 m，遠距離 50 m）、車速變化 5 km/h 以上。
     /// 有 alert 時一定會更新，並讓系統跳出提醒（CarPlay 不在 Dashboard 頁面時顯示為畫面底部的通知）。
     /// 本機更新就能發提醒，不需要推播。聲音目前用系統預設音（Apple 文件只有預設音和自訂檔案兩種，沒有靜音選項）。
-    func update(_ state: State, force: Bool = false, alert: ActivityAlertContent? = nil) {
+    func update(_ state: State, alert: ActivityAlertContent?) {
         guard let activity else { return }
         if activity.activityState == .ended || activity.activityState == .dismissed {
             self.activity = nil
@@ -55,7 +86,7 @@ final class ActivityController {
         }
         let now = Date()
         let interval = now.timeIntervalSince(lastUpdate)
-        if !force, alert == nil, let last = lastState {
+        if alert == nil, let last = lastState {
             let significant = state.mode != last.mode
                 || state.speedLimit != last.speedLimit
                 || state.isOverspeed != last.isOverspeed

@@ -17,7 +17,7 @@ struct NavigationPreviewCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 10) {
-                Image(systemName: preview.stage == .place ? "mappin.circle.fill" : "point.topleft.down.to.point.bottomright.curvepath")
+                Image(systemName: preview.stage == .place ? "mappin.circle.fill" : Symbols.routePreview)
                     .font(.title)
                     .foregroundStyle(preview.stage == .place ? Color.red : Color.blue)
                 VStack(alignment: .leading, spacing: 2) {

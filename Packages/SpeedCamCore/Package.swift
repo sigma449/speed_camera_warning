@@ -6,7 +6,7 @@ import PackageDescription
 let package = Package(
     name: "SpeedCamCore",
     platforms: [
-        .iOS(.v17),
+        .iOS(.v15),
         .macOS(.v14),
     ],
     products: [

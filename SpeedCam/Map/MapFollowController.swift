@@ -1,29 +1,47 @@
+import Combine
 import MapKit
-import Observation
 import SpeedCamCore
 import SwiftUI
+
+/// 地圖鏡頭要移到哪裡。iOS 17 以上換成 MapCameraPosition，iOS 15、16 由 LegacyMapView 套用到 MKMapView。
+enum MapTarget {
+    case userLocation(followsHeading: Bool)
+    case region(MKCoordinateRegion)
+    case rect(MKMapRect)
+    case camera(center: CLLocationCoordinate2D, distance: Double, heading: Double, pitch: Double)
+}
+
+/// 給 LegacyMapView 的一次鏡頭移動。id 每次都不同，同一個要求只會執行一次。
+struct LegacyMapRequest {
+    let id: Int
+    let target: MapTarget
+    let animated: Bool
+}
 
 /// 地圖鏡頭：跟隨目前位置（依車速縮放、行進方向朝上）、「回到目前位置」按鈕、自動回到中心。
 ///
 /// 巡航中每次收到定位就自己算鏡頭位置（MapCamera），這樣才能依車速調整縮放；
 /// 還沒有定位時改用系統的跟隨（.userLocation）。
 @MainActor
-@Observable
-final class MapFollowController {
-    var position: MapCameraPosition
-    private(set) var isFollowing = true
-    private(set) var mode: MapFollowMode
+final class MapFollowController: ObservableObject {
+    @Published private(set) var isFollowing = true
+    @Published private(set) var mode: MapFollowMode
     /// 切換顯示方式時短暫顯示的文字（例如「北方朝上」）。
-    private(set) var toast: String?
+    @Published private(set) var toast: String?
+    /// iOS 15、16 的地圖要執行的鏡頭移動。iOS 17 以上用 `position`，這個一直是 nil。
+    @Published private(set) var legacyRequest: LegacyMapRequest?
 
-    @ObservationIgnored private var lastInteraction: Date?
-    @ObservationIgnored private var policy = AutoRecenterPolicy()
-    @ObservationIgnored private var smoothedSpeed = 0.0
-    @ObservationIgnored private var lastCourse = 0.0
-    @ObservationIgnored private var lastFix: VehicleFix?
-    @ObservationIgnored private var toastTask: Task<Void, Never>?
+    /// MapCameraPosition（iOS 17 以上）。存成 Any，舊系統才不會碰到這個型別。
+    private var storedPosition: Any?
+    private var lastRequestID = 0
+    private var lastInteraction: Date?
+    private var policy = AutoRecenterPolicy()
+    private var smoothedSpeed = 0.0
+    private var lastCourse = 0.0
+    private var lastFix: VehicleFix?
+    private var toastTask: Task<Void, Never>?
     /// 導航預覽中不自動回到目前位置。
-    @ObservationIgnored private var autoRecenterSuspended = false
+    private var autoRecenterSuspended = false
 
     private static let modeKey = "mapFollowMode"
 
@@ -31,7 +49,16 @@ final class MapFollowController {
         let saved = UserDefaults.standard.string(forKey: Self.modeKey).flatMap(MapFollowMode.init(rawValue:))
         let mode = saved ?? .headingUp
         self.mode = mode
-        position = .userLocation(followsHeading: mode.rotatesWithHeading, fallback: .automatic)
+        move(to: .userLocation(followsHeading: mode.rotatesWithHeading), animated: false)
+    }
+
+    @available(iOS 17, *)
+    var position: MapCameraPosition {
+        get { storedPosition as? MapCameraPosition ?? .automatic }
+        set {
+            objectWillChange.send()
+            storedPosition = newValue
+        }
     }
 
     /// 按鈕圖示：沒在跟隨時是空心箭頭；跟隨中依顯示方式不同。
@@ -64,31 +91,31 @@ final class MapFollowController {
         if let fix = lastFix {
             apply(fix, animated: animated)
         } else {
-            setPosition(.userLocation(followsHeading: mode.rotatesWithHeading, fallback: .automatic), animated: animated)
+            move(to: .userLocation(followsHeading: mode.rotatesWithHeading), animated: animated)
         }
     }
 
     /// 一開始先顯示某個範圍，但仍然跟隨（收到第一筆定位就移過去）。展示模式用。
     func setInitial(region: MKCoordinateRegion) {
-        position = .region(region)
+        move(to: .region(region), animated: false)
     }
 
     /// 顯示指定範圍並停止跟隨（CI 截圖用）。
     func show(region: MKCoordinateRegion) {
         isFollowing = false
         lastInteraction = Date()
-        position = .region(region)
+        move(to: .region(region), animated: false)
     }
 
     /// 導航預覽：鏡頭移到指定範圍，預覽期間不自動回到目前位置。
     func preview(region: MKCoordinateRegion) {
         beginPreview()
-        setPosition(.region(region), animated: true)
+        move(to: .region(region), animated: true)
     }
 
     func preview(rect: MKMapRect) {
         beginPreview()
-        setPosition(.rect(rect), animated: true)
+        move(to: .rect(rect), animated: true)
     }
 
     /// 預覽結束（開始導航或取消）：回到目前位置並恢復跟隨。
@@ -129,15 +156,35 @@ final class MapFollowController {
         let heading = mode.rotatesWithHeading ? lastCourse : 0
         let ahead = MapFollowCamera.lookAhead(distance: distance, speedKmh: smoothedSpeed, mode: mode)
         let center = ahead > 0 ? GeoMath.destination(from: fix.point, bearing: heading, distance: ahead) : fix.point
-        let camera = MapCamera(centerCoordinate: center.coordinate, distance: distance, heading: heading, pitch: mode.pitch)
-        setPosition(.camera(camera), animated: animated)
+        move(to: .camera(center: center.coordinate, distance: distance, heading: heading, pitch: mode.pitch),
+             animated: animated)
     }
 
-    private func setPosition(_ newPosition: MapCameraPosition, animated: Bool) {
-        if animated {
-            withAnimation(.linear(duration: 0.9)) { position = newPosition }
+    private func move(to target: MapTarget, animated: Bool) {
+        if #available(iOS 17, *), !LegacySupport.forced {
+            let newPosition = Self.position(for: target)
+            if animated {
+                withAnimation(.linear(duration: 0.9)) { position = newPosition }
+            } else {
+                position = newPosition
+            }
         } else {
-            position = newPosition
+            lastRequestID += 1
+            legacyRequest = LegacyMapRequest(id: lastRequestID, target: target, animated: animated)
+        }
+    }
+
+    @available(iOS 17, *)
+    private static func position(for target: MapTarget) -> MapCameraPosition {
+        switch target {
+        case let .userLocation(followsHeading):
+            return .userLocation(followsHeading: followsHeading, fallback: .automatic)
+        case let .region(region):
+            return .region(region)
+        case let .rect(rect):
+            return .rect(rect)
+        case let .camera(center, distance, heading, pitch):
+            return .camera(MapCamera(centerCoordinate: center, distance: distance, heading: heading, pitch: pitch))
         }
     }
 

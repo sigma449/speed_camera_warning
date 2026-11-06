@@ -1,22 +1,22 @@
+import Combine
 import CoreLocation
 import Foundation
 import MapKit
-import Observation
 import os
 import SpeedCamCore
 import UIKit
 
 /// App 的中心狀態：串起定位 → 測速提醒引擎 → 區間測速 → 導航 → 語音 → Live Activity。
+/// 用 ObservableObject 而不是 @Observable：App 最低支援 iOS 15，@Observable 要 iOS 17。
 @MainActor
-@Observable
-final class AppModel {
+final class AppModel: ObservableObject {
 
     // MARK: 對外狀態（畫面會觀察這些值）
 
-    private(set) var database: CameraDatabase = .empty
-    private(set) var index = SpatialIndex(cameras: [])
+    @Published private(set) var database: CameraDatabase = .empty
+    @Published private(set) var index = SpatialIndex(cameras: [])
     /// 使用者設定。透過計算屬性包裝，寫入時自動存檔並套用到各元件。
-    private var storedSettings: AlertSettings
+    @Published private var storedSettings: AlertSettings
     var settings: AlertSettings {
         get { storedSettings }
         set {
@@ -26,20 +26,20 @@ final class AppModel {
         }
     }
 
-    private(set) var isCruising = false
-    private(set) var lastFix: VehicleFix?
-    private(set) var cameraTarget: CameraTarget?
-    private(set) var sectionStatus: SectionStatus?
-    private(set) var routeProgress: RouteProgress?
-    private(set) var route: MKRoute?
-    private(set) var destinationName: String?
-    private(set) var destinationCoordinate: CLLocationCoordinate2D?
-    private(set) var isCalculatingRoute = false
+    @Published private(set) var isCruising = false
+    @Published private(set) var lastFix: VehicleFix?
+    @Published private(set) var cameraTarget: CameraTarget?
+    @Published private(set) var sectionStatus: SectionStatus?
+    @Published private(set) var routeProgress: RouteProgress?
+    @Published private(set) var route: MKRoute?
+    @Published private(set) var destinationName: String?
+    @Published private(set) var destinationCoordinate: CLLocationCoordinate2D?
+    @Published private(set) var isCalculatingRoute = false
     /// 開始導航前的預覽（先看地點，再看路線，最後開始導航）。
-    private(set) var preview: NavigationPreview?
-    private(set) var authorizationDenied = false
-    private(set) var recentDestinations: [RecentDestination] = RecentDestinationStore.load()
-    var statusMessage: String?
+    @Published private(set) var preview: NavigationPreview?
+    @Published private(set) var authorizationDenied = false
+    @Published private(set) var recentDestinations: [RecentDestination] = RecentDestinationStore.load()
+    @Published var statusMessage: String?
 
     /// 展示模式：用假資料與假軌跡跑一遍（CI 截圖、沒有真實資料時使用）。
     let demoMode: Bool
@@ -79,15 +79,15 @@ final class AppModel {
 
     // MARK: 內部元件
 
-    @ObservationIgnored private let location = LocationProvider()
-    @ObservationIgnored private let announcer = VoiceAnnouncer()
-    @ObservationIgnored private let activity = ActivityController()
-    @ObservationIgnored private let navigation = NavigationController()
-    @ObservationIgnored private let pathSnapper = SectionPathSnapper()
-    @ObservationIgnored private var alertEngine: CameraAlertEngine
-    @ObservationIgnored private var sectionTracker: SectionSpeedTracker
-    @ObservationIgnored private var demoTask: Task<Void, Never>?
-    @ObservationIgnored private var didAppear = false
+    private let location = LocationProvider()
+    private let announcer = VoiceAnnouncer()
+    private let activity = LiveActivityFactory.make()
+    private let navigation = NavigationController()
+    private let pathSnapper = SectionPathSnapper()
+    private var alertEngine: CameraAlertEngine
+    private var sectionTracker: SectionSpeedTracker
+    private var demoTask: Task<Void, Never>?
+    private var didAppear = false
 
     private static let settingsKey = "alertSettings.v2"
     private static let legacySettingsKey = "alertSettings.v1"
@@ -261,7 +261,7 @@ final class AppModel {
         var key: String { "\(ObjectIdentifier(item).hashValue)-\(stage == .place ? "place" : "route")" }
     }
 
-    @ObservationIgnored private var previewTask: Task<Void, Never>?
+    private var previewTask: Task<Void, Never>?
 
     /// 選好目的地：先預覽地點，同時在背景規劃路線。
     func beginPreview(to item: MKMapItem, subtitle: String? = nil) {
@@ -472,8 +472,8 @@ final class AppModel {
 
     // MARK: Live Activity 內容
 
-    func activityState() -> SpeedCamActivityAttributes.ContentState {
-        var s = SpeedCamActivityAttributes.ContentState()
+    func activityState() -> SpeedCamActivityState {
+        var s = SpeedCamActivityState()
         s.currentSpeedKmh = currentSpeedKmh
         s.vehicleModeName = settings.vehicleMode.shortName
         if let sec = sectionStatus {
