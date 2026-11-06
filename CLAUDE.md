@@ -194,9 +194,10 @@ App 的啟動參數（CI 截圖用）：
 - 單人專案，直接 commit 到 `main` 再 push。`Build IPA` 是手動觸發的 workflow，要在預設分支上才會出現在 Actions 頁面。
 - commit 訊息用繁體中文：第一行寫做了什麼，內文寫原因。
 
-## 目前進度和下一步（2026-11-05）
+## 目前進度和下一步（2026-11-06）
 
-1. **最新 IPA**：Build IPA run 42004848284（`main` 83f8884，artifact 2026-12-05 到期）。包含：
+1. **最新 IPA**：Build IPA run 42156267144（`main` 56fa421，artifact 2026-12-06 到期）。包含：
+   - 區間橫幅精簡成三行（「區間倒數 N 秒」）
    - Live Activity 重要時刻跳出提醒（設定頁可以關）
    - Live Activity 最窄尺寸的文字不再被截斷
    - 主畫面橫幅不透明、提高對比
