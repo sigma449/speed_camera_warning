@@ -111,7 +111,11 @@ final class AppModel {
         _ = MapLanguage.atLaunch   // 記下啟動時的語言設定
         Logger(subsystem: "tw.speedcammap.app", category: "launch")
             .notice("arguments: \(arguments.dropFirst().joined(separator: " "), privacy: .public); languages: \(Locale.preferredLanguages.joined(separator: ","), privacy: .public)")
-        let loaded = Self.loadSettings()
+        var loaded = Self.loadSettings()
+        if let i = arguments.firstIndex(of: "-vehicleMode"), i + 1 < arguments.count,
+           let mode = VehicleMode(rawValue: arguments[i + 1]) {
+            loaded.vehicleMode = mode
+        }
         storedSettings = loaded
         alertEngine = CameraAlertEngine(index: SpatialIndex(cameras: []), settings: loaded)
         sectionTracker = SectionSpeedTracker(sections: [], settings: loaded)
@@ -247,6 +251,8 @@ final class AppModel {
         let subtitle: String
         let coordinate: CLLocationCoordinate2D
         var route: MKRoute?
+        /// 找不到符合車種規則的路線時，給使用者看的提醒。
+        var routeWarning: String?
         var stage: Stage = .place
         /// 使用者已經要看路線（或時間到了），路線算好就切換過去。
         var wantsRoute = false
@@ -269,9 +275,10 @@ final class AppModel {
             guard let self else { return }
             defer { self.isCalculatingRoute = false }
             do {
-                let route = try await self.navigation.calculateRoute(to: item, mode: self.settings.vehicleMode)
+                let plan = try await self.navigation.calculateRoute(to: item, mode: self.settings.vehicleMode)
                 guard !Task.isCancelled, self.preview?.item === item else { return }
-                self.preview?.route = route
+                self.preview?.route = plan.route
+                self.preview?.routeWarning = plan.warning?.text
                 if self.preview?.wantsRoute == true { self.preview?.stage = .route }
             } catch {
                 guard !Task.isCancelled, self.preview?.item === item else { return }
@@ -360,9 +367,10 @@ final class AppModel {
         announcer.speak(AnnouncementFormatter.rerouting)
         Task {
             do {
-                let newRoute = try await navigation.calculateRoute(to: destination, mode: settings.vehicleMode)
-                navigation.start(route: newRoute, destination: destination)
-                route = newRoute
+                let plan = try await navigation.calculateRoute(to: destination, mode: settings.vehicleMode)
+                navigation.start(route: plan.route, destination: destination)
+                route = plan.route
+                if let warning = plan.warning { statusMessage = warning.text }
             } catch {
                 statusMessage = "重新規劃失敗：\(error.localizedDescription)"
             }
@@ -467,7 +475,7 @@ final class AppModel {
     func activityState() -> SpeedCamActivityAttributes.ContentState {
         var s = SpeedCamActivityAttributes.ContentState()
         s.currentSpeedKmh = currentSpeedKmh
-        s.vehicleModeName = settings.vehicleMode.displayName
+        s.vehicleModeName = settings.vehicleMode.shortName
         if let sec = sectionStatus {
             s.mode = .section
             s.sectionEarliestExit = sec.earliestExit

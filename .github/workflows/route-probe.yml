@@ -1,10 +1,14 @@
 name: 路線實測
 
-# 用真正的 MapKit 規劃台灣的路線，比較不同避開設定實際走的路（機車路線要用哪種設定）。
-# 不需要建置 App，幾分鐘就跑完。結果在 log 和 artifact route-probe。
+# 用真正的 MapKit 規劃台灣的路線。不需要建置 App，幾分鐘就跑完。結果在 log 和 artifact route-probe。
+# - plan：用 App 的選路程式，看汽車、紅黃牌、白牌實際選到哪條路
+# - compare：比較不同避開設定 Apple 回傳的路線（要知道 Apple 怎麼分類道路時用）
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: plan 或 compare
+        default: plan
       cases:
         description: 路線清單
         default: scripts/ci/route-probe-cases.json
@@ -18,17 +22,12 @@ jobs:
       - name: 選擇 Xcode
         run: bash scripts/ci/select-xcode.sh
       - name: 路線實測
-        run: bash scripts/ci/route-probe.sh "${{ github.event.inputs.cases }}" route-probe-results.jsonl
-      - name: 下載高公局路段線型（用來交叉比對國道線形，失敗不影響實測）
-        continue-on-error: true
-        run: curl -sS --fail --max-time 120 -o SectionShape.xml https://tisvcloud.freeway.gov.tw/history/motc20/SectionShape.xml
+        run: bash scripts/ci/route-probe.sh "${{ github.event.inputs.mode }}" "${{ github.event.inputs.cases }}" route-probe-results.jsonl
       - name: 保留結果
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: route-probe
-          path: |
-            route-probe-results.jsonl
-            SectionShape.xml
+          path: route-probe-results.jsonl
           retention-days: 30
           if-no-files-found: ignore

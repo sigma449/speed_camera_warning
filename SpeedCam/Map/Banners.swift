@@ -240,10 +240,7 @@ struct BottomBar: View {
                 circleButton("magnifyingglass", tint: .blue) { showSearch = true }
                     .accessibilityLabel("搜尋目的地")
             }
-            circleButton(model.vehicleMode == .car ? "car.fill" : Symbols.motorcycle, tint: .indigo) {
-                model.vehicleMode = model.vehicleMode == .car ? .motorcycle : .car
-            }
-            .accessibilityLabel("切換車種：目前\(model.vehicleMode.displayName)")
+            vehicleMenu
             circleButton(model.isCruising ? "stop.fill" : "play.fill",
                          tint: model.isCruising ? .gray : .green) { model.toggleCruise() }
                 .accessibilityLabel(model.isCruising ? "停止巡航" : "開始巡航")
@@ -274,6 +271,32 @@ struct BottomBar: View {
         .foregroundStyle(.white)
     }
 
+    /// 車種有三種，切換前要看得到選項，所以用選單。機車兩種圖示一樣，所以加上小字。
+    private var vehicleMenu: some View {
+        Menu {
+            Picker("車種", selection: Binding(get: { model.vehicleMode }, set: { model.vehicleMode = $0 })) {
+                ForEach(VehicleMode.allCases, id: \.self) { mode in
+                    Text(mode.routeTitle).tag(mode)
+                }
+            }
+        } label: {
+            VStack(spacing: 0) {
+                Image(systemName: model.vehicleMode == .car ? "car.fill" : Symbols.motorcycle)
+                    .font(.system(size: model.vehicleMode == .car ? 20 : 17, weight: .bold))
+                if model.vehicleMode.isMotorcycle {
+                    Text(model.vehicleMode.shortName)
+                        .font(.system(size: 11, weight: .bold))
+                        .lineLimit(1)
+                }
+            }
+            .frame(width: 48, height: 48)
+            .background(Color.indigo.opacity(0.9), in: Circle())
+            .foregroundStyle(.white)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("選擇車種：目前\(model.vehicleMode.displayName)")
+    }
+
     private func circleButton(_ symbol: String, tint: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
@@ -287,7 +310,7 @@ struct BottomBar: View {
 }
 
 enum Symbols {
-    /// 重機圖示；舊系統沒有 motorcycle 符號時改用 scooter。
+    /// 機車圖示；舊系統沒有 motorcycle 符號時改用 scooter。
     static var motorcycle: String {
         UIImage(systemName: "motorcycle") != nil ? "motorcycle" : "scooter"
     }

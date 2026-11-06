@@ -72,7 +72,7 @@ struct SearchView: View {
                     Button("關閉") { dismiss() }
                 }
                 ToolbarItem(placement: .principal) {
-                    Label(model.vehicleMode == .motorcycle ? "重機：避開國道與收費道路" : "汽車",
+                    Label(model.vehicleMode.routeTitle,
                           systemImage: model.vehicleMode == .car ? "car.fill" : Symbols.motorcycle)
                         .labelStyle(.titleAndIcon)
                         .font(.footnote)

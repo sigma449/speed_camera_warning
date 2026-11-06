@@ -1,13 +1,15 @@
-// 路線實測：用真正的 MapKit 規劃台灣的路線，比較不同避開設定實際走的路。
-// 重機路線要不要走快速道路和市區高架，Apple 文件沒有寫，只能實測。
+// 路線實測：用真正的 MapKit 規劃台灣的路線。Apple 怎麼走、文件沒有寫，只能實測。
 // 只在 CI 的 macOS runner 上跑（scripts/ci/route-probe.sh），不會編進 App。
 //
-// 用法：RouteProbe <路線清單.json> <結果檔.jsonl>
-// 結果一行一個請求，包含每條路線的距離、時間、步驟文字和路線座標。
+// 用法：RouteProbe <compare|plan> <路線清單.json> <結果檔.jsonl> [road_lines.json]
+// - compare：比較不同避開設定實際走的路，每種設定回傳的路線都記下來。
+// - plan：用 App 的 RoutePlanner 和 RouteRules，看三種車種實際選到哪條路。
+// 結果一行一筆，包含路線的距離、時間、步驟文字和路線座標。
 
 import CoreLocation
 import Foundation
 import MapKit
+import SpeedCamCore
 
 setvbuf(stdout, nil, _IOLBF, 0)
 
@@ -117,20 +119,86 @@ func log(route: MKRoute, index: Int) {
                  route.hasHighways ? "有" : "無", route.hasTolls ? "有" : "無"))
 }
 
+func write(_ record: [String: Any], to output: FileHandle) {
+    if let data = try? JSONSerialization.data(withJSONObject: record, options: [.withoutEscapingSlashes]) {
+        output.write(data)
+        output.write(Data([0x0A]))
+    }
+}
+
+func mapItem(_ place: Place) -> MKMapItem {
+    MKMapItem(location: CLLocation(latitude: place.lat, longitude: place.lon), address: nil)
+}
+
+/// 用 App 的程式選路線，再把選到的路線和線形比對的結果記下來。
+func runPlans(cases: [ProbeCase], rules: RouteRules, output: FileHandle) async -> Int32 {
+    var succeeded = 0
+    var failed = 0
+    var warned = 0
+    for testCase in cases {
+        print("")
+        print("=== [\(testCase.group)] \(testCase.from.name) → \(testCase.to.name)（預期：\(testCase.expected)）")
+        for mode in VehicleMode.allCases {
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            var record: [String: Any] = [
+                "group": testCase.group,
+                "expected": testCase.expected,
+                "from": testCase.from.name,
+                "to": testCase.to.name,
+                "mode": mode.rawValue,
+            ]
+            do {
+                let plan = try await RoutePlanner.plan(from: mapItem(testCase.from), to: mapItem(testCase.to),
+                                                       mode: mode, rules: rules)
+                let points = MapItems.coordinates(of: plan.route.polyline)
+                let freeway = rules.freeways.overlap(with: points)
+                let restricted = rules.whitePlateRestricted.overlap(with: points)
+                succeeded += 1
+                if plan.warning != nil { warned += 1 }
+                record["route"] = summary(of: plan.route)
+                record["requestIndex"] = plan.requestIndex
+                record["routeIndex"] = plan.routeIndex
+                record["warning"] = plan.warning?.text ?? ""
+                record["issues"] = plan.issues.map { String(describing: $0) }
+                record["freewayRun"] = freeway.longestRun
+                record["freewayCloseRun"] = freeway.longestCloseRun
+                record["restrictedCloseRun"] = restricted.longestCloseRun
+                print(String(format: "--- %@：第 %d 次請求第 %d 條，國道貼著 %.0f m（附近 %.0f m），白牌路 %.0f m%@",
+                             mode.displayName, plan.requestIndex + 1, plan.routeIndex + 1,
+                             freeway.longestCloseRun, freeway.longestRun, restricted.longestCloseRun,
+                             plan.warning.map { "，提醒：\($0.text)" } ?? ""))
+                log(route: plan.route, index: plan.routeIndex)
+            } catch {
+                failed += 1
+                record["error"] = String(describing: error)
+                print("--- \(mode.displayName)：失敗 \(error)")
+                if let mk = error as? MKError, mk.code == .loadingThrottled {
+                    print("  被限流，等 60 秒")
+                    try? await Task.sleep(nanoseconds: 60_000_000_000)
+                }
+            }
+            write(record, to: output)
+        }
+    }
+    print("")
+    print("完成：成功 \(succeeded) 次，失敗 \(failed) 次，有提醒 \(warned) 次")
+    return succeeded > 0 ? 0 : 1
+}
+
 func run() async -> Int32 {
-    guard CommandLine.arguments.count >= 3 else {
-        print("用法：RouteProbe <路線清單.json> <結果檔.jsonl>")
+    guard CommandLine.arguments.count >= 4 else {
+        print("用法：RouteProbe <compare|plan> <路線清單.json> <結果檔.jsonl> [road_lines.json]")
         return 64
     }
     let cases: [ProbeCase]
     do {
-        let data = try Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1]))
+        let data = try Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[2]))
         cases = try JSONDecoder().decode([ProbeCase].self, from: data)
     } catch {
         print("讀不了路線清單：\(error)")
         return 66
     }
-    let outputPath = CommandLine.arguments[2]
+    let outputPath = CommandLine.arguments[3]
     FileManager.default.createFile(atPath: outputPath, contents: nil)
     guard let output = FileHandle(forWritingAtPath: outputPath) else {
         print("寫不了結果檔：\(outputPath)")
@@ -138,6 +206,17 @@ func run() async -> Int32 {
     }
 
     print("語言：\(Locale.preferredLanguages)，地區：\(Locale.current.identifier)，共 \(cases.count) 條路線")
+
+    if CommandLine.arguments[1] == "plan" {
+        guard CommandLine.arguments.count >= 5,
+              let data = try? Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[4])),
+              let lines = try? RoadLineData.decode(from: data) else {
+            print("讀不了 road_lines.json")
+            return 66
+        }
+        return await runPlans(cases: cases, rules: RouteRules(data: lines), output: output)
+    }
+
     var succeeded = 0
     var failed = 0
 
@@ -147,10 +226,8 @@ func run() async -> Int32 {
         for config in configs where testCase.configs?.contains(config.key) ?? true {
             print("--- \(config.key)")
             let request = MKDirections.Request()
-            request.source = MKMapItem(location: CLLocation(latitude: testCase.from.lat, longitude: testCase.from.lon),
-                                       address: nil)
-            request.destination = MKMapItem(location: CLLocation(latitude: testCase.to.lat, longitude: testCase.to.lon),
-                                            address: nil)
+            request.source = mapItem(testCase.from)
+            request.destination = mapItem(testCase.to)
             request.transportType = .automobile
             request.requestsAlternateRoutes = true
             request.highwayPreference = config.highway
@@ -184,10 +261,7 @@ func run() async -> Int32 {
                 print("  失敗：\(error)")
             }
 
-            if let data = try? JSONSerialization.data(withJSONObject: record, options: [.withoutEscapingSlashes]) {
-                output.write(data)
-                output.write(Data([0x0A]))
-            }
+            write(record, to: output)
         }
     }
 

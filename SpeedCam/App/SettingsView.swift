@@ -35,15 +35,17 @@ struct SettingsView: View {
                     Text("地圖上的地名、搜尋結果、導航的轉彎指示都會用這個語言，不必改整支手機的語言。App 本身的文字一律是中文。iOS 規定要重新開啟 App 才會生效。目前使用：\(MapLanguage.active)")
                 }
 
-                Section("車種") {
+                Section {
                     Picker("車種", selection: $model.settings.vehicleMode) {
                         ForEach(VehicleMode.allCases, id: \.self) { mode in
                             Text(mode.displayName).tag(mode)
                         }
                     }
                     .pickerStyle(.segmented)
-                    Text("重機模式規劃路線時會避開國道（高速公路）與收費道路。")
-                        .font(.footnote).foregroundStyle(.secondary)
+                } header: {
+                    Text("車種")
+                } footer: {
+                    Text("紅黃牌機車：避開國道和收費道路，可以走快速道路和市區高架。白牌機車：只走平面道路。機車路線仍是用汽車的路網規劃，不知道哪些路段禁行機車，請依現場標誌行駛。")
                 }
 
                 Section {
@@ -124,6 +126,7 @@ struct SettingsView: View {
                     ForEach(model.database.sources, id: \.self) { source in
                         Text(source).font(.footnote).foregroundStyle(.secondary)
                     }
+                    Text(RoadLineStore.attribution).font(.footnote).foregroundStyle(.secondary)
                 } header: {
                     Text("資料")
                 } footer: {

@@ -263,16 +263,51 @@ public struct CameraDatabase: Codable, Sendable {
                                              sources: [], cameras: [], sections: [])
 }
 
-/// 車種模式。
+/// 車種模式。機車分兩種，規劃路線的方式不同（見 `RouteRules`）。
 public enum VehicleMode: String, Codable, CaseIterable, Sendable {
     case car
-    case motorcycle
+    /// 紅黃牌：避開國道和收費道路，可以走快速道路和市區高架。
+    case motorcycleRedYellow
+    /// 白牌：只走平面道路。
+    case motorcycleWhite
 
     public var displayName: String {
         switch self {
         case .car: return "汽車"
-        case .motorcycle: return "重機"
+        case .motorcycleRedYellow: return "紅黃牌機車"
+        case .motorcycleWhite: return "白牌機車"
         }
+    }
+
+    /// 放不下完整名稱時用（Live Activity 的小字、地圖上的按鈕）。
+    public var shortName: String {
+        switch self {
+        case .car: return "汽車"
+        case .motorcycleRedYellow: return "紅黃牌"
+        case .motorcycleWhite: return "白牌"
+        }
+    }
+
+    public var isMotorcycle: Bool { self != .car }
+
+    /// 這個車種規劃路線的方式；汽車沒有限制，不需要說明。
+    public var routeNote: String? {
+        switch self {
+        case .car: return nil
+        case .motorcycleRedYellow: return "避開國道"
+        case .motorcycleWhite: return "只走平面道路"
+        }
+    }
+
+    /// 車種名稱加上規劃路線的方式，例如「白牌機車：只走平面道路」。
+    public var routeTitle: String {
+        routeNote.map { "\(displayName)：\($0)" } ?? displayName
+    }
+
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        // 舊版只有一種機車模式（"motorcycle"），規劃的路線只走平面道路，所以對應到白牌。
+        self = raw == "motorcycle" ? .motorcycleWhite : (VehicleMode(rawValue: raw) ?? .car)
     }
 }
 

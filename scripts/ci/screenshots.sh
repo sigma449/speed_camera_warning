@@ -186,8 +186,19 @@ shot "16-preview-route"
 sleep 14
 shot "17-navigation-started"
 
-# App 的紀錄（確認啟動參數、sheet、地圖範圍、區間貼齊有沒有生效）
+# 8) 車種：設定頁、底部按鈕的小字、兩種機車的路線預覽（從台北到新竹，紅黃牌應該走快速道路，白牌走平面道路）
+launch_app -autoStartCruise NO -settings -vehicleMode motorcycleRedYellow
+sleep 8
+shot "18-settings-red-yellow"
+launch_app -autoStartCruise NO -vehicleMode motorcycleRedYellow -previewTo "24.8016,120.9717,新竹車站"
+sleep 9
+shot "19-preview-red-yellow"
+launch_app -autoStartCruise NO -vehicleMode motorcycleWhite -previewTo "24.8016,120.9717,新竹車站"
+sleep 9
+shot "20-preview-white"
+
+# App 的紀錄（確認啟動參數、sheet、地圖範圍、區間貼齊、路線選擇有沒有生效）
 xcrun simctl spawn "${UDID}" log show --last 20m --style compact \
-  --predicate 'subsystem == "tw.speedcammap.app"' 2>/dev/null | grep -E "arguments|appeared|applied|opened|preview|typing|beiyi|一次規劃|分段" | tail -120 || true
+  --predicate 'subsystem == "tw.speedcammap.app"' 2>/dev/null | grep -E "arguments|appeared|applied|opened|preview|typing|beiyi|一次規劃|分段|route plan|road_lines" | tail -120 || true
 
 ls -la "${OUT}"

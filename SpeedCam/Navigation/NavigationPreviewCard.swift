@@ -80,15 +80,21 @@ struct NavigationPreviewCard: View {
                 .font(.subheadline)
                 .foregroundStyle(.red)
         } else if let route = preview.route {
-            HStack(spacing: 6) {
-                Text(Self.distanceText(route.distance))
-                Text("・")
-                Text(Self.durationText(route.expectedTravelTime))
-                if vehicleMode == .motorcycle {
-                    Text("・避開國道")
+            VStack(alignment: .leading, spacing: 8) {
+                // 接成一段文字，放不下時才會整段換行，不會每一項各自斷行
+                Text([Self.distanceText(route.distance), Self.durationText(route.expectedTravelTime), vehicleMode.routeNote]
+                    .compactMap { $0 }
+                    .joined(separator: "・"))
+                    .font(.headline)
+                if let warning = preview.routeWarning {
+                    Label(warning, systemImage: "exclamationmark.triangle.fill")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                        .background(BannerStyle.caution, in: RoundedRectangle(cornerRadius: 10))
                 }
             }
-            .font(.headline)
         } else {
             HStack(spacing: 8) {
                 ProgressView()

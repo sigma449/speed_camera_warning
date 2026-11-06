@@ -34,22 +34,12 @@ final class NavigationController {
 
     // MARK: 路線
 
-    /// 規劃路線。重機模式會避開高速公路（國道），也避開收費道路。
-    func calculateRoute(to destination: MKMapItem, mode: VehicleMode) async throws -> MKRoute {
-        let request = MKDirections.Request()
-        request.source = MKMapItem.forCurrentLocation()
-        request.destination = destination
-        request.transportType = .automobile
-        request.requestsAlternateRoutes = false
-        if mode == .motorcycle {
-            request.highwayPreference = .avoid
-            request.tollPreference = .avoid
-        }
-        let response = try await MKDirections(request: request).calculate()
-        guard let route = response.routes.first else {
-            throw NavigationError.noRoute
-        }
-        return route
+    /// 依車種規劃路線。汽車用不到線形資料，就不載入。
+    func calculateRoute(to destination: MKMapItem, mode: VehicleMode) async throws -> RoutePlan<MKRoute> {
+        var rules = RouteRules.noData
+        if mode != .car { rules = await RoadLineStore.loadRules() }
+        return try await RoutePlanner.plan(from: MKMapItem.forCurrentLocation(), to: destination,
+                                           mode: mode, rules: rules)
     }
 
     func start(route: MKRoute, destination: MKMapItem) {
@@ -94,15 +84,5 @@ final class NavigationController {
         if instruction.lowercased().contains("left") { return "arrow.turn.up.left" }
         if instruction.lowercased().contains("right") { return "arrow.turn.up.right" }
         return "arrow.up"
-    }
-}
-
-enum NavigationError: LocalizedError {
-    case noRoute
-
-    var errorDescription: String? {
-        switch self {
-        case .noRoute: return "找不到可行的路線"
-        }
     }
 }

@@ -130,7 +130,7 @@ final class DatabaseTests: XCTestCase {
         let json = #"{"generalPreDistance": 350, "vehicleMode": "motorcycle"}"#
         let s = try JSONDecoder().decode(AlertSettings.self, from: Data(json.utf8))
         XCTAssertEqual(s.generalPreDistance, 350)
-        XCTAssertEqual(s.vehicleMode, .motorcycle)
+        XCTAssertEqual(s.vehicleMode, .motorcycleWhite)
         XCTAssertEqual(s.fastPreDistance, 600)
         XCTAssertEqual(s.overspeedBeepInterval, 3)
         XCTAssertEqual(s.sectionToleranceKmh, 10)

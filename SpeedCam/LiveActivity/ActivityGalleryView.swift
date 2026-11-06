@@ -11,6 +11,7 @@ struct ActivityGalleryView: View {
         ("區間歸零", .previewSectionZero),
         ("導航", .previewNavigation),
         ("巡航", .previewIdle),
+        ("巡航・紅黃牌", .previewIdleRedYellow),
         ("最長類型", .previewLongestCamera),
         ("最長指示", .previewLongestNavigation),
     ]

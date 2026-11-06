@@ -42,6 +42,20 @@ python3 -m pytest -q                     # 測試
   目前收錄：北宜公路（台9線）19K–23.1K、26.2K–32.2K、33.3K–37.2K、56.6K–68.6K，表定速限 40，雙向。
 - `manual/cameras_extra.csv`：補充的照相點，欄位同縣市版原始資料。
 
+## 國道和白牌限制道路的線形
+
+`build_road_lines.py` 從 OpenStreetMap（Overpass API）下載道路線形，產生 `SpeedCam/Resources/road_lines.json`，App 用來判斷路線有沒有走國道。
+國道很少變動，所以結果直接放進 repo，不會在建置時下載；有新路段通車時再手動重跑：
+
+```bash
+python3 build_road_lines.py
+```
+
+- **國道**：OSM 的 `highway=motorway` 而且編號（`ref`）是 1、2、2甲、3、3甲、4、5、6、8、10。只取主線，不取匝道：快速道路常和國道共用交流道，算進去會誤判。
+- **白牌限制道路**：`manual/white_plate_restricted.csv` 列的道路。只放 Apple 不算 highway、但不是平面道路的高架和快速道路（Apple 算 highway 的，避開高速時就不會走）。
+  要確認某條路 Apple 算不算 highway，用「路線實測」的 compare 模式沿著那條路規劃（`scripts/ci/route-probe-elevated.json`）。
+
 ## 授權
 
-內政部警政署「測速執法設置點」，依[政府資料開放授權條款－第1版](https://data.gov.tw/license)使用，App 設定頁會顯示出處。
+- 內政部警政署「測速執法設置點」，依[政府資料開放授權條款－第1版](https://data.gov.tw/license)使用，App 設定頁會顯示出處。
+- 道路線形：© OpenStreetMap 貢獻者，依 [ODbL](https://www.openstreetmap.org/copyright) 使用。`road_lines.json` 是衍生資料，同樣適用 ODbL，App 設定頁會顯示出處。
