@@ -15,7 +15,7 @@ iPhone 上的 SideStore 安裝 SpeedCam.ipa
 為什麼不用 AltStore？AltServer 需要 Apple 官網版的 iCloud 才能登入 Apple ID，但現在 Windows 上 Apple 官網都會導到 Microsoft Store，而 Store 版的 iCloud 會讓 AltServer 卡在登入。iloader 只需要 iTunes 的驅動程式，**完全不需要 iCloud**。
 
 需要準備：
-- iPhone，**iOS 26 以上**（CarPlay 上的 Live Activity 需要 iOS 26）
+- iPhone，**建議 iOS 26 以上**（CarPlay 上的 Live Activity 需要 iOS 26）。舊手機最低 iOS 15，差別見下方常見問題
 - Windows 10／11 電腦（只有第一次安裝、或配對檔失效時才需要）
 - USB 傳輸線
 - 一個**新的** Apple ID（只拿來簽署 App，下面會說明原因）
@@ -226,7 +226,14 @@ iloader 只需要這個元件，就算 iTunes 本身還在跳錯誤，也可以�
 - 配對檔可能失效了（例如 iPhone 重設過、或更新了 iOS）：把 iPhone 接回電腦，用 iloader 的配對檔管理功能重新放一次。
 
 **Q：安裝時出現「無法驗證 App」或打不開？**
-到「設定 → 一般 → VPN 與裝置管理」信任該 Apple ID，並確認已開啟開發者模式。
+到「設定 → 一般 → VPN 與裝置管理」信任該 Apple ID，並確認已開啟開發者模式（iOS 16 以上才有這個設定）。
+
+**Q：舊手機（例如 iPhone 7、iOS 15）可以裝嗎？**
+可以，適合拿來測 App 內的功能：照相點提醒、語音、區間倒數、搜尋、設定。下面這些和新手機不一樣：
+- 地圖和定位是另一套做法，鏡頭跟隨和手勢的結果不能代表新手機。
+- 沒有 Live Activity（iOS 16.2 以上才有），也就沒有鎖定畫面的卡片和 CarPlay。
+- iOS 15 不能要求 Apple 避開高速或收費，機車路線幾乎都會跳提醒，也可能走到快速道路或高架。**機車路線要用 iOS 16 以上的手機判斷。**
+- iOS 18 以前，打開搜尋不會自動跳出鍵盤，要點一下搜尋框。
 
 **Q：CarPlay 上沒看到 Live Activity？**
 - iPhone 需要 iOS 26 以上。
