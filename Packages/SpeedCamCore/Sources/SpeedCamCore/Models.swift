@@ -103,6 +103,36 @@ public struct Camera: Codable, Hashable, Identifiable, Sendable {
     public var displayTypeName: String {
         (levelName ?? "") + type.displayName
     }
+
+    /// 橫幅放得下的字數（約略值，中英數混合）。
+    private static let shortAddressLimit = 18
+
+    /// 橫幅用的短地址（開車時瞄一眼用，詳細資訊卡仍顯示完整地址）。
+    /// 放得下就用原文；太長才拿掉括號裡的補充說明，多段的只留第一段。
+    /// 括號可能在中間（例如「員林市(埔心鄉)中山路1段」），所以是拿掉括號，不是切在括號前面。
+    public var shortAddress: String {
+        guard address.count > Self.shortAddressLimit else { return address }
+        var result = ""
+        var depth = 0
+        for character in address {
+            switch character {
+            case "(", "（": depth += 1
+            case ")", "）": depth = max(0, depth - 1)
+            default:
+                if depth == 0 { result.append(character) }
+            }
+        }
+        if let i = result.firstIndex(where: { $0 == ";" || $0 == "；" }) {
+            result = String(result[..<i])
+        }
+        // 「/」可能只是路口（國軒路/鵬程東二路口），前面夠長才當成分段
+        if let i = result.firstIndex(where: { $0 == "/" || $0 == "／" }),
+           result.distance(from: result.startIndex, to: i) >= 8 {
+            result = String(result[..<i])
+        }
+        let trimmed = result.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? address : trimmed
+    }
 }
 
 /// 一段區間測速。

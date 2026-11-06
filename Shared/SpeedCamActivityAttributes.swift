@@ -61,4 +61,10 @@ extension SpeedCamActivityAttributes.ContentState {
                                         maneuverSymbol: "arrow.turn.up.right", maneuverDistance: 350,
                                         currentSpeedKmh: 42)
     static let previewIdle = Self(mode: .idle, currentSpeedKmh: 37)
+    /// 最長的文字，用來檢查最窄的尺寸放不放得下。
+    static let previewLongestCamera = Self(mode: .camera, cameraTypeName: "高架測速及闖紅燈照相", cameraSymbol: "camera.fill",
+                                           distanceMeters: 1_250, speedLimit: 110, currentSpeedKmh: 96)
+    static let previewLongestNavigation = Self(mode: .navigation, maneuverText: "靠右走匝道前往國道三號南下方向",
+                                               maneuverSymbol: "arrow.up.right", maneuverDistance: 1_250,
+                                               currentSpeedKmh: 96)
 }

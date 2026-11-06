@@ -77,6 +77,13 @@ shot "01d-banners-top"
 launch_app -gallery -galleryBanners -galleryBottom
 sleep 8
 shot "01e-banners-bottom"
+# 鎖定畫面和動態島展開的各種狀態
+launch_app -gallery -galleryLock
+sleep 8
+shot "01f-lock-top"
+launch_app -gallery -galleryLock -galleryBottom
+sleep 8
+shot "01g-lock-bottom"
 
 # 2) 展示模式：假軌跡以 62 km/h 往北開，600 m 處有速限 50 的測速照相，1.2 km 處進入區間
 launch_app -demo

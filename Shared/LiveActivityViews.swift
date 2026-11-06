@@ -46,10 +46,14 @@ struct SpeedLimitSign: View {
 /// 重點：字要大。只放「距離或倒數」與「速限」兩個大元素，其他資訊用小字。
 struct SmallActivityView: View {
     let state: ActivityState
+    /// 動態島展開時，上面已經有速限標誌或圖示，這裡就不再顯示一次。
+    var showsLeading = true
 
     var body: some View {
         HStack(spacing: 10) {
-            leading
+            if showsLeading {
+                leading
+            }
             VStack(alignment: .leading, spacing: 0) {
                 primary
                     .font(.system(size: 40, weight: .heavy, design: .rounded))
@@ -113,8 +117,8 @@ struct SmallActivityView: View {
     private var secondary: String {
         switch state.mode {
         case .camera:
-            let name = state.cameraTypeName ?? "測速照相"
-            return state.isOverspeed ? "超速！\(name)" : name
+            // 超速時只要知道超速，距離和速限都在旁邊
+            return state.isOverspeed ? "超速！" : (state.cameraTypeName ?? "測速照相")
         case .section:
             let avg = state.sectionAverageKmh.map { "均速 \($0)" } ?? "區間測速"
             if state.sectionZero { return "可依速限行駛・\(avg)" }
@@ -123,7 +127,7 @@ struct SmallActivityView: View {
         case .navigation:
             return state.maneuverText ?? "導航中"
         case .idle:
-            return "km/h・巡航中・\(state.vehicleModeName)"
+            return "km/h・\(state.vehicleModeName)"
         }
     }
 
@@ -135,9 +139,7 @@ struct SmallActivityView: View {
             if state.sectionZero { return avg.map { "可依速限・\($0)" } ?? "可依速限行駛" }
             if let kmh = state.sectionSuggestedKmh { return avg.map { "≤\(kmh)・\($0)" } ?? "建議≤\(kmh)" }
             return avg.map { "區間・\($0)" } ?? "區間倒數"
-        case .idle:
-            return "km/h・\(state.vehicleModeName)"
-        case .camera, .navigation:
+        case .idle, .camera, .navigation:
             return secondary
         }
     }
@@ -162,15 +164,18 @@ struct LockScreenActivityView: View {
         HStack(spacing: 14) {
             SmallActivityView(state: state)
                 .frame(height: 70)
-            VStack(alignment: .trailing, spacing: 2) {
-                Text("\(state.currentSpeedKmh)")
-                    .font(.system(size: 34, weight: .heavy, design: .rounded))
-                    .monospacedDigit()
-                Text("km/h")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
+            // 巡航時大字已經是車速，不再顯示一次
+            if state.mode != .idle {
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("\(state.currentSpeedKmh)")
+                        .font(.system(size: 34, weight: .heavy, design: .rounded))
+                        .monospacedDigit()
+                    Text("km/h")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                .foregroundStyle(.white)
             }
-            .foregroundStyle(.white)
         }
         .padding(14)
         .activityBackgroundTint(state.isOverspeed ? Color.red.opacity(0.8) : Color.black.opacity(0.75))
@@ -179,6 +184,42 @@ struct LockScreenActivityView: View {
 }
 
 // MARK: - 動態島
+
+/// 展開時左上角：速限標誌或圖示（下方的 SmallActivityView 就不再顯示）。
+struct ExpandedLeadingView: View {
+    let state: ActivityState
+
+    var body: some View {
+        switch state.mode {
+        case .camera:
+            SpeedLimitSign(limit: state.speedLimit, size: 40)
+        case .section:
+            SpeedLimitSign(limit: state.sectionLimit, size: 40)
+        case .navigation:
+            Image(systemName: state.maneuverSymbol ?? "arrow.up")
+                .font(.system(size: 26, weight: .bold))
+        case .idle:
+            Image(systemName: "gauge.with.dots.needle.33percent")
+                .font(.system(size: 26, weight: .bold))
+        }
+    }
+}
+
+/// 展開時右上角：目前車速。巡航時下方的大字已經是車速，這裡不顯示。
+struct ExpandedTrailingView: View {
+    let state: ActivityState
+
+    var body: some View {
+        if state.mode != .idle {
+            VStack(alignment: .trailing, spacing: 0) {
+                Text("\(state.currentSpeedKmh)")
+                    .font(.system(size: 30, weight: .heavy, design: .rounded))
+                    .monospacedDigit()
+                Text("km/h").font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+    }
+}
 
 struct CompactLeadingView: View {
     let state: ActivityState

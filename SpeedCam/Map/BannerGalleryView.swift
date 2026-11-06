@@ -12,6 +12,10 @@ struct BannerGalleryView: View {
                                        start: GeoPoint(lat: 24.5, lon: 121.8), end: GeoPoint(lat: 24.46, lon: 121.8),
                                        lengthMeters: 4_163, speedLimit: 60)
 
+    private let longAddressCamera = Camera(id: "gallery", type: .fixed, lat: 24.1, lon: 120.4, speedLimit: 80,
+                                           address: "線西鄉台61線170.11公里(快速道路)(20公噸以上大貨車速限80公里/小時)",
+                                           level: .elevated)
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
@@ -27,6 +31,9 @@ struct BannerGalleryView: View {
 
                 label("區間歸零")
                 SectionBanner(status: status(remaining: 0, meters: 320, average: 55, suggested: 70), currentSpeed: 60)
+
+                label("照相點（真實資料裡很長的地址）")
+                CameraBanner(target: CameraTarget(camera: longAddressCamera, distance: 280, phase: .pre, isOverspeed: false))
             }
             .padding()
         }

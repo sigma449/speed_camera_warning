@@ -11,6 +11,8 @@ struct ActivityGalleryView: View {
         ("區間歸零", .previewSectionZero),
         ("導航", .previewNavigation),
         ("巡航", .previewIdle),
+        ("最長類型", .previewLongestCamera),
+        ("最長指示", .previewLongestNavigation),
     ]
 
     /// 預覽頁比一個畫面長。`-galleryMiddle`、`-galleryBottom` 指定從哪裡開始顯示，CI 才拍得到整頁。

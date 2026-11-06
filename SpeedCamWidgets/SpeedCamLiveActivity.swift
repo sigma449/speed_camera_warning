@@ -13,18 +13,13 @@ struct SpeedCamLiveActivity: Widget {
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    expandedLeading(context.state)
+                    ExpandedLeadingView(state: context.state)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    VStack(alignment: .trailing, spacing: 0) {
-                        Text("\(context.state.currentSpeedKmh)")
-                            .font(.system(size: 30, weight: .heavy, design: .rounded))
-                            .monospacedDigit()
-                        Text("km/h").font(.caption2).foregroundStyle(.secondary)
-                    }
+                    ExpandedTrailingView(state: context.state)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    SmallActivityView(state: context.state)
+                    SmallActivityView(state: context.state, showsLeading: false)
                         .frame(height: 64)
                 }
             } compactLeading: {
@@ -37,19 +32,6 @@ struct SpeedCamLiveActivity: Widget {
             .keylineTint(context.state.isOverspeed ? Color.red : Color.yellow)
         }
         .supplementalActivityFamilies([.small])
-    }
-
-    @ViewBuilder
-    private func expandedLeading(_ state: ActivityState) -> some View {
-        switch state.mode {
-        case .camera:
-            SpeedLimitSign(limit: state.speedLimit, size: 40)
-        case .section:
-            SpeedLimitSign(limit: state.sectionLimit, size: 40)
-        case .navigation, .idle:
-            Image(systemName: state.maneuverSymbol ?? "location.north.line.fill")
-                .font(.system(size: 26, weight: .bold))
-        }
     }
 }
 

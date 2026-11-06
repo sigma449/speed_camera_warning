@@ -11,6 +11,8 @@ struct SpeedCamApp: App {
                 if model.showGallery {
                     if ProcessInfo.processInfo.arguments.contains("-galleryBanners") {
                         BannerGalleryView()
+                    } else if ProcessInfo.processInfo.arguments.contains("-galleryLock") {
+                        LockScreenGalleryView()
                     } else {
                         ActivityGalleryView()
                     }

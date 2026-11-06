@@ -34,6 +34,13 @@ public struct CameraTarget: Equatable, Sendable {
     public var distance: Double
     public var phase: AlertPhase
     public var isOverspeed: Bool
+
+    public init(camera: Camera, distance: Double, phase: AlertPhase, isOverspeed: Bool) {
+        self.camera = camera
+        self.distance = distance
+        self.phase = phase
+        self.isOverspeed = isOverspeed
+    }
 }
 
 public struct CameraAlertResult: Equatable, Sendable {

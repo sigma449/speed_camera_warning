@@ -35,7 +35,7 @@ struct CameraBanner: View {
                         LevelTag(text: level)
                     }
                 }
-                Text(target.camera.address)
+                Text(target.camera.shortAddress)
                     .font(.subheadline)
                     .foregroundStyle(BannerStyle.secondaryText)
                     .lineLimit(1)
