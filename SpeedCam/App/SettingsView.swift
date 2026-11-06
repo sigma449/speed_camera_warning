@@ -47,7 +47,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("紅黃牌機車：避開國道和收費道路，可以走快速道路和市區高架。白牌機車：只走平面道路。機車路線仍是用汽車的路網規劃，不知道哪些路段禁行機車，請依現場標誌行駛。")
                         if !LegacySupport.supportsRoutePreferences {
-                            Text("這支 iPhone 的 iOS 太舊，不能要求 Apple 避開高速或收費，機車路線常常會跳提醒，和 iOS 16 以上的手機不一樣。")
+                            Text("這支 iPhone 的 iOS 太舊，不能要求 Apple 避開高速或收費，機車路線幾乎都會跳提醒，也可能走到快速道路或高架，和 iOS 16 以上的手機不一樣。")
                         }
                     }
                 }

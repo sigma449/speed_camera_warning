@@ -20,13 +20,23 @@ enum RoutePlanner {
                 request.tollPreference = option.avoidTolls ? .avoid : .any
             }
             let response = try await MKDirections(request: request).calculate()
-            return response.routes.map { route in
-                (route: route, facts: RouteFacts(hasHighways: route.hasHighways, hasTolls: route.hasTolls,
-                                                 points: MapItems.coordinates(of: route.polyline)))
-            }
+            return response.routes.map { route in (route: route, facts: facts(of: route)) }
         }
         Logger(subsystem: "tw.speedcammap.app", category: "route")
             .notice("route plan \(mode.rawValue, privacy: .public): request \(plan.requestIndex) route \(plan.routeIndex) issues \(String(describing: plan.issues), privacy: .public)")
         return plan
+    }
+
+    /// iOS 15 看不到路線有沒有高速路段或收費。高速路段當作有，才一定會比對國道線形；
+    /// 收費當作沒有，因為台灣的收費道路主要是國道，比對線形大致涵蓋得到。
+    private static func facts(of route: MKRoute) -> RouteFacts {
+        var hasHighways = true
+        var hasTolls = false
+        if #available(iOS 16, *), LegacySupport.supportsRoutePreferences {
+            hasHighways = route.hasHighways
+            hasTolls = route.hasTolls
+        }
+        return RouteFacts(hasHighways: hasHighways, hasTolls: hasTolls,
+                          points: MapItems.coordinates(of: route.polyline))
     }
 }
