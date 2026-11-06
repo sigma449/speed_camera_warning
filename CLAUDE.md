@@ -15,7 +15,7 @@
 
 ## 專案是什麼
 
-以地圖為主的**台灣測速照相提醒 App**（iPhone），汽車和重機都能用。跟神盾那類「只有提醒畫面」的 App 不同，主畫面是地圖。
+以地圖為主的**台灣測速照相提醒 App**（iPhone），汽車和機車都能用。跟神盾那類「只有提醒畫面」的 App 不同，主畫面是地圖。
 
 | 階段 | 內容 | 狀態 |
 |---|---|---|
@@ -41,7 +41,13 @@ Live Activity 在 iOS 26 會出現在 CarPlay 儀表板，**不需要 entitlemen
 - **區間建議時速**：剩餘距離 ÷ 剩餘最短秒數（以速限＋容許值、含安全餘裕），上限為速限＋容許值，無條件捨去。
   手機橫幅大字顯示（超過時變橘色）、每分鐘語音倒數一起念、Live Activity 顯示「建議≤N・均速 M」（最窄的 170 pt 放不下，改顯示「≤N・均 M」）。
 - **北宜公路（台9線）**4 段雙向區間，表定 40：19–23.1K、26.2–32.2K、33.3–37.2K、**56.6**–68.6K（第 4 段經使用者確認是 56.6K）。
-- **車種**：汽車／重機；重機路線避開國道與收費道路（`MKDirections` 的 `highwayPreference = .avoid`）。實測發現這個設定連大部分快速道路和市區高架也會避開，見「已知問題／待辦」。
+- **車種**：汽車／紅黃牌機車／白牌機車（`VehicleMode`，2026-11-06 使用者決定）。舊設定的 `motorcycle` 對應到白牌，行為不變。規則在 `RouteRules`：
+  - **紅黃牌**：避開國道和收費道路，可以走快速道路和市區高架。做法：只避開收費並要多條路線，排除有收費或走國道的路線，都不行才退回避開高速。
+    不能用 `highwayPreference = .avoid`（Apple 的 highway 連快速道路和市區高架都算）；只避開收費又會走免費國道（實測國 2、4、6、8、10 都會），所以要比對線形。
+  - **白牌**：只走平面道路。避開高速和收費，再排除 Apple 不算 highway 的高架和快速道路（`data-pipeline/manual/white_plate_restricted.csv`，例如新生高架、洲美快速道路）。
+  - **比對國道**（`RoadMatcher`、`Resources/road_lines.json`，資料來自 OSM）：連續 ≥ 800 m 而且距離中位數 ≤ 10 m 才算走在上面。平行的側道會連續幾公里都在 30 m 內（宜蘭的縣道 191 和國 5），所以要看中位數。
+    只比平面座標，分不出高架和正下方的平面道路，所以只有 Apple 標示有高速路段的路線才比對國道。線形載入失敗時，紅黃牌退回只走平面道路。
+  - 找不到符合規則的路線時，用問題最小的一條，預覽卡片和重新規劃時會提醒。路線仍是用汽車的路網規劃，不知道哪些路段禁行機車，設定頁有說明。
 - **Live Activity**：要大字（使用者覺得神盾的太小）。
 - **區間橫幅只放三行**（使用者看實機覺得字太多，2026-11-06 同意精簡）：
   「區間倒數 N 秒」（使用者指定的寫法，秒數最大，不要「還要」「才能到終點」）、
@@ -120,6 +126,7 @@ SpeedCam/                    iPhone App（SwiftUI、@Observable AppModel）
   App/                       AppModel（中心狀態）、SettingsView、SectionToleranceView（個別區間設定）
   Map/ Navigation/ Location/ Alerts/ LiveActivity/ Data/
   Resources/cameras.json     內建資料。repo 裡是空的佔位檔，Build IPA 時才下載真實資料
+  Resources/road_lines.json  國道和白牌限制道路的線形（OSM）。直接放在 repo，有新路段時手動跑 build_road_lines.py
   Resources/zh-Hant.lproj/   InfoPlist.strings：主畫面的中文名稱「測速地圖」
 SpeedCamWidgets/             Widget Extension（Live Activity 畫面）
 Shared/                      App 與 Widget 共用的 ActivityAttributes 和畫面
@@ -128,7 +135,8 @@ Packages/SpeedCamCore/       核心邏輯（純 Swift，可以在 Linux 測試�
   SectionSpeedTracker        區間倒數；在最接近起點時才開始計時，避免提早觸發
   AlertSettings              所有可調設定和預設值（App 儲存在 UserDefaults 的 alertSettings.v2）
   AnnouncementFormatter      中文語音文字
-data-pipeline/               Python（只用標準函式庫）：開放資料 → cameras.json
+  RouteRules、RoadMatcher    各車種怎麼選路線、路線有沒有走在某組道路上（App 的 RoutePlanner 只負責和 MapKit 溝通）
+data-pipeline/               Python（只用標準函式庫）：開放資料 → cameras.json；OSM → road_lines.json
 docs/SETUP.md                安裝教學（iloader＋SideStore）和 Windows 疑難排解
 scripts/ci/                  CI 用的腳本（選 Xcode、截圖、檢查 App 名稱）
 ```
@@ -142,21 +150,23 @@ App 的啟動參數（CI 截圖用）：
 - `-search 文字`：打開搜尋並輸入
 - `-mapCenter 緯度,經度 -mapSpan 度數`：指定地圖範圍
 - `-settings`：打開設定頁
+- `-vehicleMode car|motorcycleRedYellow|motorcycleWhite`：指定車種（不會存進設定）
 - `-previewTo 緯度,經度,名稱`：導航預覽
 - `-typeSearch 文字`：搜尋壓力測試（反覆輸入、刪除約 45 秒）
 - `-autoStartCruise NO`：不自動巡航
 
 ## 建置與測試
 
-- **Swift 核心邏輯**（87 個測試）：
+- **Swift 核心邏輯**（121 個測試）：
   `docker run --rm -v "$PWD/Packages/SpeedCamCore":/pkg -w /pkg swift:6.2-noble swift test`
   （雲端 session 裡 Docker 沒在跑的話先執行 `dockerd &`。）
-- **Python 資料處理**（162 個測試）：`python3 -m pytest -q data-pipeline`
+- **Python 資料處理**（173 個測試）：`python3 -m pytest -q data-pipeline`。Windows 上 repo 和暫存資料夾不在同一個磁碟機時，`test_cli_with_local_input_and_min_count` 會失敗（`os.path.relpath` 不能跨磁碟機），CI 不受影響。
 - **iOS App** 只能在 GitHub Actions 編譯：
   - `CI`（每次 push）：Swift 測試、pytest、iOS 模擬器建置和截圖。截圖會以 base64 印在 log 裡（`scripts/ci/print-screenshots.sh`），因為雲端 session 下載不了 artifact。
   - `Build IPA`（手動）：`gh workflow run build-ipa.yml --repo sigma449/speed_camera_warning --ref main`。會下載最新資料、編譯未簽署的 IPA（artifact `SpeedCam-ipa`，保留 30 天）。
   - `Refresh camera data`（每週一）：資料有變動就開 PR。需要 repo 設定開啟「Allow GitHub Actions to create and approve pull requests」（2026-11-05 用 GitHub API 確認已開啟）。
-  - `路線實測`（手動，約 4 分鐘）：`gh workflow run route-probe.yml --repo sigma449/speed_camera_warning --ref main`。不用建置 App，用 macOS 上的 MapKit 規劃台灣路線（`scripts/ci/route-probe.swift`），比較不同避開設定。結果在 log 和 artifact `route-probe`（含步驟文字和路線座標）。
+  - `路線實測`（手動，約 5 分鐘）：`gh workflow run route-probe.yml --repo sigma449/speed_camera_warning --ref main -f mode=plan -f cases=scripts/ci/route-probe-cases.json`。不用建置 App，在 macOS 上直接編譯 App 的 `RoutePlanner` 和 `SpeedCamCore`，用真正的 MapKit 規劃台灣路線。改了選路規則或 `road_lines.json` 就跑一次。
+    `mode=plan` 看三種車種實際選到哪條路；`mode=compare` 比較不同避開設定 Apple 回傳的路線。`route-probe-elevated.json` 沿著各條快速道路和高架規劃，用來確認 Apple 算不算 highway。結果在 log 和 artifact `route-probe`（含步驟文字和路線座標）。
 - 用 `gh run watch <id> --exit-status` 等結果，`gh run view <id> --log` 讀 log。
 - 環境：runner `macos-26`、Xcode 26.6、iOS 26.0 deployment target、`SWIFT_VERSION 5.0`、`SWIFT_STRICT_CONCURRENCY minimal`。
 
@@ -203,7 +213,8 @@ App 的啟動參數（CI 截圖用）：
 
 ## 目前進度和下一步（2026-11-06）
 
-1. **最新 IPA**：Build IPA run 42161644006（`main` 7abf27e，artifact 2026-12-06 到期）。包含：
+1. **最新 IPA**：Build IPA run 42186478053（`main` cde76d9，artifact 2026-12-06 到期）。包含：
+   - 機車分成紅黃牌和白牌兩種模式，紅黃牌可走快速道路和高架
    - 提醒畫面文字精簡：拿掉「巡航中」、重複的車速和速限標誌，照相點橫幅用短地址
    - 區間橫幅精簡成三行（「區間倒數 N 秒」）
    - Live Activity 重要時刻跳出提醒（設定頁可以關）
@@ -218,6 +229,7 @@ App 的啟動參數（CI 截圖用）：
    - 高架／平面標示
 2. **等使用者實機回報**（使用者只有週末能上車測）：
    - 上述功能
+   - 地圖上的車種選單（CI 點不了選單，沒拍到打開的樣子）；紅黃牌和白牌實際規劃的路線；偏離路線重新規劃時會不會換回同一種走法
    - 提醒時機、方向誤報
    - 北宜區間開始／結束的時機
    - CarPlay 儀表板上的 Live Activity：實際位置、有沒有持續更新、車機用哪個尺寸
@@ -229,13 +241,13 @@ App 的啟動參數（CI 截圖用）：
    - App 被 iOS 背景重新叫起（巡航中被系統結束）時不會自動恢復巡航，可考慮實作。
    - UI 收斂（文字精簡已做，其餘由使用者決定）：
      導航預覽時隱藏底部按鈕，「取消」改中性色；底部按鈕統一樣式，停止鍵不要像停用。
-   - 重機路線（使用者想避開國道、但可走快速道路和市區高架，尚未決定要不要改）。2026-11-06 用「路線實測」實測 17 條路線、4 種設定（run 42173311711），再用 OSM 線形比對座標：
-     - **`highwayPreference = .avoid`（目前的重機設定）**：17 條的第一條路線都沒有高速路段（`hasHighways` 為 false）。台64、台65、台62、台74、台88、建國高架、市民高架、水源、環河快速道路在 Apple 都算 highway，所以都被避開；台北車站→新竹車站要 133 分。新生高架、洲美快速道路、竹南到新竹的台61 不算 highway，仍然會走。
-     - **只留 `tollPreference = .avoid`**：快速道路和高架都保留，台北車站→新竹車站走台64＋台61＋台68，88 分、沒有走國道。但**不收費的國道還是會走**：霧峰→埔里走國6（32 km）、桃園機場→鶯歌走國2（16 km）。
-     - **可行做法**：只避開收費並要多條路線，排除有收費或有走國道的路線，都不行再退回 `.avoid`。用 17 條的結果模擬，都沒有走到國道主線（最多 1.5 km 疊在交流道，未逐一確認）。
-     - **判斷有沒有走國道**：只看步驟文字不夠，桃園機場→鶯歌有條路線完全沒寫上國2：「繼續往航站北路前進」之後就是 19.9 km 的「從18號出口下交流道」，路線名稱是「德昌街」（這條有收費，碰巧會被排除）。比對國道線形比較可靠（這次 196 條路線裡，走國道的 ≥ 8.4 km、其他 ≤ 1.5 km，分得開；`hasHighways` 為 false 的都沒有走國道）；快速道路不能這樣比，平行的側車道和高架下的平面道路會被算進去。
-     - **沒有驗證**：路線仍是用汽車規劃，不會考慮機車禁行；實測在 Mac 上跑、要求多條路線，App 目前只要一條；只有 17 條路線、平日下午的時間。
-     - 法規各來源說法不一（紅牌／黃牌、市區高架），開放前要向官方確認。
+   - 機車路線的實測紀錄（2026-11-06，`路線實測` plan 模式 run 42184382128，28 條路線，週五下午）：
+     - **結果**：紅黃牌和白牌都沒有收費、沒有走國道（另外用未簡化的 OSM 線形和導航文字各檢查一次）。台北車站→新竹車站：汽車 84 分（國道）、紅黃牌 96 分（台64＋台61＋台68）、白牌 142 分。
+     - **白牌有 4 條跳提醒**：台北→新竹（一小段環河南路快速道路的匝道）、台北→花蓮和深坑→辛亥路（信義快速道路），這 3 條是真的走到；板橋→永和（環河西路貼著新北環河快速道路）很可能是誤判。
+     - **怎麼判斷的**：真的走國道時，每一段和線形的距離中位數最多 6.1 m；平行的道路大多超過 10 m，只有一段 7.7 m。有條路線上了國 2 卻完全沒寫（「繼續往航站北路前進」之後就是 19.9 km 的「從18號出口下交流道」），所以不能只看導航文字。
+     - **誤判的方向**：平面道路貼著白牌限制道路會被排除或提醒；紅黃牌偶爾會多排除一條路線（台北→花蓮的縣道 191 那段距離 7.7 m）。結果只是路線變慢或多一則提醒，不會走到國道。
+     - **沒有驗證**：哪些路段禁行機車、各種牌照實際能走哪些路（法規各來源說法不一，使用者決定紅黃牌可走快速道路和高架，要依現場標誌）；iPhone 實機；白牌限制道路清單只涵蓋實測過的路；竹南到新竹的台61 平面段 Apple 不算 highway，白牌會走。
+     - **線形來源**：高公局的路段線型（資料集 166264，`tisvcloud.freeway.gov.tw`）從使用者電腦和 GitHub runner 都連不上（2026-11-06），所以用 OSM，沒有和官方資料交叉比對。OSM 是 ODbL 授權，設定頁有出處。
    - 之後依使用者決定進行 Phase 2（付費帳號、CarPlay 導航）或 Phase 3（重機停車）。
 4. **新 session 接手**：
    - 先讀本檔和 `docs/SETUP.md`。
