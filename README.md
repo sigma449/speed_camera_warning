@@ -5,6 +5,14 @@ CarPlay 先用 iOS 26 的 Live Activity 顯示大字提醒；之後申請 CarPla
 
 > ⚠️ 照相點資料僅供參考，請依現場標誌與速限行駛。
 
+## 系統需求
+
+| iOS | 差別 |
+|---|---|
+| 26 以上 | 全部功能，包括 CarPlay 儀表板上的 Live Activity |
+| 17～25 | 沒有 CarPlay 儀表板的 Live Activity |
+| 15、16 | 只適合用舊手機測 App 內的功能：地圖和定位是另一套做法；iOS 16.2 以前沒有 Live Activity；iOS 15 不能要求 Apple 避開高速或收費，機車路線和新手機不一樣 |
+
 ## 功能（Phase 1）
 
 | 功能 | 說明 |
@@ -58,6 +66,7 @@ data-pipeline/              Python：下載政府開放資料 → cameras.json
 | **CI** | 每次 push | 核心邏輯測試（Swift）、資料處理測試（Python）、iOS 模擬器建置與截圖（Artifacts → `screenshots`） |
 | **Build IPA** | 手動 | 下載最新測速資料 → 編譯未簽署的 IPA，給 SideStore／AltStore 側載（Artifacts → `SpeedCam-ipa`） |
 | **Refresh camera data** | 每週一 | 下載政府開放資料，有變動就開 PR |
+| **iOS 15 實際執行** | 手動 | 在 iPhone 7、iOS 15.5 模擬器上開啟 App，確認裝得上、開得起來、沒有閃退 |
 
 本機測試：
 

@@ -264,7 +264,10 @@ struct LegacyMapView: UIViewRepresentable {
                 view.annotation = annotation
                 let configuration = UIImage.SymbolConfiguration(pointSize: 34)
                     .applying(UIImage.SymbolConfiguration(paletteColors: [.white, .systemBlue]))
-                view.image = UIImage(systemName: "location.north.circle.fill", withConfiguration: configuration)
+                if let symbol = UIImage(systemName: "location.north.circle.fill", withConfiguration: configuration) {
+                    // MKAnnotationView 直接用符號圖的黑色底圖，要先畫成點陣圖才有顏色
+                    view.image = UIGraphicsImageRenderer(size: symbol.size).image { _ in symbol.draw(at: .zero) }
+                }
                 view.displayPriority = .required
                 return view
             default:

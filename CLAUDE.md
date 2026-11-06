@@ -48,6 +48,12 @@ Live Activity 在 iOS 26 會出現在 CarPlay 儀表板，**不需要 entitlemen
   - **比對國道**（`RoadMatcher`、`Resources/road_lines.json`，資料來自 OSM）：連續 ≥ 800 m 而且距離中位數 ≤ 10 m 才算走在上面。平行的側道會連續幾公里都在 30 m 內（宜蘭的縣道 191 和國 5），所以要看中位數。
     只比平面座標，分不出高架和正下方的平面道路，所以只有 Apple 標示有高速路段的路線才比對國道。線形載入失敗時，紅黃牌退回只走平面道路。
   - 找不到符合規則的路線時，用問題最小的一條，預覽卡片和重新規劃時會提醒。路線仍是用汽車的路網規劃，不知道哪些路段禁行機車，設定頁有說明。
+- **舊手機支援**（2026-11-07 使用者要求）：使用者想用 iPhone 7（iOS 15.8.8）測 App 內的功能，所以 App 最低 iOS 15。
+  **iOS 17 以上走原本的程式**，舊系統的替代做法集中在 `LegacySupport`：地圖用 `LegacyMapView`（MKMapView）、定位用 CLLocationManager、
+  iOS 16.2 以前沒有 Live Activity（設定頁也不顯示）、iOS 18 以前打開搜尋不會自動跳鍵盤。
+  iOS 15 不能要求 Apple 避開高速或收費（`highwayPreference`、`tollPreference`），也看不到路線有沒有這些路段（`hasHighways`、`hasTolls`），
+  所以高速路段當作有、一定比對國道線形，白牌一定跳提醒，也可能走到快速道路或高架。設定頁有寫。**機車路線要用 iOS 16 以上的手機判斷。**
+  Widget Extension 維持 iOS 26，舊系統會裝 App 但不會載入它（iOS 15.5 模擬器確認裝得上）。
 - **Live Activity**：要大字（使用者覺得神盾的太小）。
 - **區間橫幅只放三行**（使用者看實機覺得字太多，2026-11-06 同意精簡）：
   「區間倒數 N 秒」（使用者指定的寫法，秒數最大，不要「還要」「才能到終點」）、
@@ -123,8 +129,10 @@ Live Activity 在 iOS 26 會出現在 CarPlay 儀表板，**不需要 entitlemen
 ```
 project.yml                  XcodeGen 設定（.xcodeproj 不進 repo，CI 會產生）
 SpeedCam/                    iPhone App（SwiftUI、@Observable AppModel）
-  App/                       AppModel（中心狀態）、SettingsView、SectionToleranceView（個別區間設定）
+  App/                       AppModel（中心狀態）、SettingsView、SectionToleranceView（個別區間設定）、AdaptiveViews（新舊系統 API 不同的元件）
   Map/ Navigation/ Location/ Alerts/ LiveActivity/ Data/
+  Map/LegacyMapView          iOS 15、16 的地圖（MKMapView）。改了 RootView 的地圖內容，這裡也要改
+  Data/LegacySupport         舊系統的做法和 -legacyUI 開關
   Resources/cameras.json     內建資料。repo 裡是空的佔位檔，Build IPA 時才下載真實資料
   Resources/road_lines.json  國道和白牌限制道路的線形（OSM）。直接放在 repo，有新路段時手動跑 build_road_lines.py
   Resources/zh-Hant.lproj/   InfoPlist.strings：主畫面的中文名稱「測速地圖」
@@ -154,6 +162,7 @@ App 的啟動參數（CI 截圖用）：
 - `-previewTo 緯度,經度,名稱`：導航預覽
 - `-typeSearch 文字`：搜尋壓力測試（反覆輸入、刪除約 45 秒）
 - `-autoStartCruise NO`：不自動巡航
+- `-legacyUI`：在新系統上也走舊系統的做法（地圖、定位、NavigationView、不要求避開高速），CI 截圖用
 
 ## 建置與測試
 
@@ -167,8 +176,10 @@ App 的啟動參數（CI 截圖用）：
   - `Refresh camera data`（每週一）：資料有變動就開 PR。需要 repo 設定開啟「Allow GitHub Actions to create and approve pull requests」（2026-11-05 用 GitHub API 確認已開啟）。
   - `路線實測`（手動，約 5 分鐘）：`gh workflow run route-probe.yml --repo sigma449/speed_camera_warning --ref main -f mode=plan -f cases=scripts/ci/route-probe-cases.json`。不用建置 App，在 macOS 上直接編譯 App 的 `RoutePlanner` 和 `SpeedCamCore`，用真正的 MapKit 規劃台灣路線。改了選路規則或 `road_lines.json` 就跑一次。
     `mode=plan` 看三種車種實際選到哪條路；`mode=compare` 比較不同避開設定 Apple 回傳的路線。`route-probe-elevated.json` 沿著各條快速道路和高架規劃，用來確認 Apple 算不算 highway。結果在 log 和 artifact `route-probe`（含步驟文字和路線座標）。
+  - `iOS 15 實際執行`（手動，約 20 分鐘）：`gh workflow run ios15-test.yml --repo sigma449/speed_camera_warning --ref main`。從 Apple 官方 CDN 安裝 iOS 15.5 模擬器（不用登入），在 iPhone 7 模擬器上實際開啟 App 並截圖。改了舊系統的程式就跑一次。截圖一樣在 log 裡。
 - 用 `gh run watch <id> --exit-status` 等結果，`gh run view <id> --log` 讀 log。
-- 環境：runner `macos-26`、Xcode 26.6、iOS 26.0 deployment target、`SWIFT_VERSION 5.0`、`SWIFT_STRICT_CONCURRENCY minimal`。
+- 環境：runner `macos-26`、Xcode 26.6、App 最低 iOS 15.0、Widget 最低 iOS 26.0、`SWIFT_VERSION 5.0`、`SWIFT_STRICT_CONCURRENCY minimal`。
+  `Build IPA` 會執行 `scripts/ci/check-min-os.sh`，檢查最低版本，也檢查沒有強連結到 iOS 15 沒有的函式庫（否則一開就閃退，編譯時看不出來）。
 
 ## 資料來源
 
@@ -205,6 +216,13 @@ App 的啟動參數（CI 截圖用）：
 - **CI 截圖的啟動參數會被吃掉**：巡航中的 App 被結束後，iOS 會在背景重新叫起它（背景定位），
   下一次 launch 只會把它帶到前景。`screenshots.sh` 的 `launch_app` 會先結束兩次，不需要巡航的截圖加 `-autoStartCruise NO`。
 - **剛啟動時太早開 sheet 或改地圖範圍會被系統忽略**：CI 截圖用的啟動參數改在 `.task` 裡等 1.2 秒再做。
+- **App 最低 iOS 15 帶來的限制**：
+  - 不能用 `@Observable`（要 iOS 17），狀態用 `ObservableObject`。新系統才有的 API 要包 `#available`，型別不能直接當儲存屬性（存成 `Any` 或 `AnyObject`）。
+  - `@ViewBuilder` 一層最多 10 個子項（超過要 iOS 17）。設定頁的 `Form` 已經剛好 10 個，再加要用 `Group` 包。
+  - `.onChange` 用一個參數的舊寫法（兩個參數的要 iOS 17）。
+  - 新的 SF Symbols 舊系統沒有，畫面會空白；編譯時看不出來，要有備用圖示（`Symbols`）。
+- **`MKAnnotationView.image` 不能直接放 SF Symbol**：它用符號圖的黑色底圖，上的顏色都會不見，要先畫成點陣圖。
+- **CI 腳本不要寫 `指令 | grep -q`**：`grep -q` 比對到就結束，配上 `pipefail` 會因為 SIGPIPE 判斷成失敗，曾經把正常的 App 誤判成閃退。先存成變數再比對。
 
 ## Git
 
@@ -228,6 +246,8 @@ App 的啟動參數（CI 截圖用）：
    - 回到目前位置／自動回到中心
    - 高架／平面標示
 2. **等使用者實機回報**（使用者只有週末能上車測）：
+   - iPhone 7（iOS 15.8.8）：裝不裝得上（iOS 15.5 模擬器沒問題，實機還沒確認）、背景定位、語音、實機的流暢度
+   - 主力手機：狀態管理改成 `ObservableObject` 之後，地圖跟隨順不順（CI 截圖看不出動畫）
    - 上述功能
    - 地圖上的車種選單（CI 點不了選單，沒拍到打開的樣子）；紅黃牌和白牌實際規劃的路線；偏離路線重新規劃時會不會換回同一種走法
    - 提醒時機、方向誤報
