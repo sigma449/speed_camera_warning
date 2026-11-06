@@ -3,7 +3,8 @@
 # 包成有 bundle ID 的 App 再執行，因為 MapKit 的路線規劃可能不接受沒有 bundle ID 的程式。
 set -euo pipefail
 
-OUTPUT="${1:-route-probe-results.jsonl}"
+CASES="${1:-scripts/ci/route-probe-cases.json}"
+OUTPUT="${2:-route-probe-results.jsonl}"
 APP="build/RouteProbe.app"
 
 mkdir -p "${APP}/Contents/MacOS"
@@ -36,4 +37,4 @@ defaults write -g AppleLanguages -array zh-Hant-TW en
 defaults write -g AppleLocale -string zh_TW
 killall geod 2>/dev/null || true
 
-"${APP}/Contents/MacOS/RouteProbe" "${OUTPUT}" -AppleLanguages '(zh-Hant-TW, en)' -AppleLocale zh_TW
+"${APP}/Contents/MacOS/RouteProbe" "${CASES}" "${OUTPUT}" -AppleLanguages '(zh-Hant-TW, en)' -AppleLocale zh_TW
