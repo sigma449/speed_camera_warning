@@ -185,10 +185,162 @@ func runPlans(cases: [ProbeCase], rules: RouteRules, output: FileHandle) async -
     return succeeded > 0 ? 0 : 1
 }
 
+// MARK: - 模擬開車（replay）
+
+struct ReplayLeg: Decodable {
+    let name: String
+    let from: Place
+    let to: Place
+    /// 模擬車速；沒寫就用 Apple 估的平均時速
+    let speedKmh: Double?
+}
+
+func describe(_ event: CameraAlertEvent) -> String? {
+    switch event {
+    case let .preAlert(c, d): return "【照相預告】\(Int(d)) m \(c.displayTypeName) 速限\(c.speedLimit ?? 0) \(c.address)"
+    case let .nearAlert(c, d): return "【照相近距】\(Int(d)) m \(c.displayTypeName) \(c.address)"
+    case let .passed(c): return "【通過照相】\(c.address)"
+    default: return nil
+    }
+}
+
+func describe(_ event: SectionEvent) -> String? {
+    switch event {
+    case let .entered(s, sec): return "【進入區間】\(s.name) 長 \(Int(s.lengthMeters)) m，至少 \(sec) 秒"
+    case let .remaining(sec): return "【區間倒數】還有 \(sec) 秒"
+    case .zeroReached: return "【區間歸零】"
+    case let .completed(s, avg, _): return "【通過區間終點】\(s.name) 均速 \(Int(avg))"
+    case let .aborted(s): return "【中途離開區間】\(s.name)"
+    default: return nil
+    }
+}
+
+/// 沿著 Apple 規劃的路線模擬開一次，把 App 的核心程式會發出的提醒，連同當時的位置印出來。
+/// 同時檢查每個轉彎：開到動作點之前，畫面顯示的是不是這個動作。
+func runReplay(legs: [ReplayLeg], databasePath: String, output: FileHandle) async -> Int32 {
+    guard let data = try? Data(contentsOf: URL(fileURLWithPath: databasePath)),
+          let db = try? CameraDatabase.decode(from: data) else {
+        print("讀不了 \(databasePath)")
+        return 66
+    }
+    print("資料：照相點 \(db.cameras.count) 處，區間 \(db.sections.count) 段")
+    var totalManeuvers = 0
+    var correctManeuvers = 0
+
+    for leg in legs {
+        print("")
+        print("=== \(leg.name)")
+        let request = MKDirections.Request()
+        request.source = mapItem(leg.from)
+        request.destination = mapItem(leg.to)
+        request.transportType = .automobile
+        try? await Task.sleep(nanoseconds: 1_500_000_000)
+        guard case .success(let response) = await calculate(request), let route = response.routes.first else {
+            print("規劃失敗")
+            continue
+        }
+        log(route: route, index: 0)
+
+        let polyline = MapItems.coordinates(of: route.polyline)
+        var cumulative: [Double] = [0]
+        for (a, b) in zip(polyline, polyline.dropFirst()) {
+            cumulative.append(cumulative.last! + GeoMath.distance(a, b))
+        }
+        let total = cumulative.last ?? 0
+
+        // 步驟：Apple 的距離、折線實際長度、終點座標
+        var maneuvers: [(position: Double, text: String)] = []
+        var acc = 0.0
+        for (i, step) in route.steps.enumerated() {
+            let points = MapItems.coordinates(of: step.polyline)
+            var length = 0.0
+            for (a, b) in zip(points, points.dropFirst()) { length += GeoMath.distance(a, b) }
+            acc += length
+            if !step.instructions.isEmpty { maneuvers.append((acc, step.instructions)) }
+            let end = points.last ?? GeoPoint(lat: 0, lon: 0)
+            print(String(format: "  步驟%2d Apple %6.0f m／折線 %6.0f m，累計 %7.0f m，終點 %.5f,%.5f  ", i, step.distance, length, acc, end.lat, end.lon)
+                  + step.instructions)
+        }
+        print(String(format: "  路線折線總長 %.0f m，步驟折線加總 %.0f m，Apple 距離 %.0f m", total, acc, route.distance))
+
+        let stepInfos = route.steps.map { RouteStepInfo(instruction: $0.instructions, distance: $0.distance) }
+        let nav = RouteProgressTracker(polyline: polyline, steps: stepInfos)
+        let engine = CameraAlertEngine(index: SpatialIndex(cameras: db.cameras), settings: AlertSettings())
+        engine.sections = db.sections
+        let sections = SectionSpeedTracker(sections: db.sections, settings: AlertSettings())
+
+        let speedKmh = leg.speedKmh ?? min(90, max(25, route.distance / max(1, route.expectedTravelTime) * 3.6))
+        let speed = speedKmh / 3.6
+        print(String(format: "  模擬車速 %.0f km/h", speedKmh))
+        let start = Date()
+        var traveled = 0.0
+        var second = 0.0
+        var segment = 0
+        var displayed = ""
+        var nextManeuver = 0
+        while traveled < total {
+            while segment < polyline.count - 2 && cumulative[segment + 1] <= traveled { segment += 1 }
+            let a = polyline[segment], b = polyline[segment + 1]
+            let span = max(0.01, cumulative[segment + 1] - cumulative[segment])
+            let ratio = min(1, max(0, (traveled - cumulative[segment]) / span))
+            let point = GeoPoint(lat: a.lat + (b.lat - a.lat) * ratio, lon: a.lon + (b.lon - a.lon) * ratio)
+            let fix = VehicleFix(point: point, speedMps: speed, course: GeoMath.bearing(from: a, to: b),
+                                 horizontalAccuracy: 5, timestamp: start.addingTimeInterval(second))
+            let stamp = String(format: "  %7.0f m %.5f,%.5f ", traveled, point.lat, point.lon)
+
+            let navResult = nav.process(fix)
+            if let progress = navResult.progress, progress.nextInstruction != displayed {
+                displayed = progress.nextInstruction
+                print(stamp + String(format: "畫面下一步（%.0f m 後）：", progress.distanceToNextManeuver) + displayed)
+            }
+            for event in navResult.events {
+                if case let .announce(_, text, distance) = event {
+                    print(stamp + "語音：" + AnnouncementFormatter.maneuver(instruction: text, distance: distance))
+                }
+            }
+            for event in engine.process(fix).events {
+                if let text = describe(event) { print(stamp + text) }
+            }
+            for event in sections.process(fix).events {
+                if let text = describe(event) { print(stamp + text) }
+            }
+
+            // 開到動作點之前，畫面應該正在顯示這個動作
+            while nextManeuver < maneuvers.count && maneuvers[nextManeuver].position <= traveled + speed {
+                let expected = maneuvers[nextManeuver].text
+                totalManeuvers += 1
+                if displayed == expected {
+                    correctManeuvers += 1
+                } else {
+                    print(stamp + "★ 動作點應顯示「\(expected)」，實際顯示「\(displayed)」")
+                }
+                nextManeuver += 1
+            }
+            traveled += speed
+            second += 1
+        }
+        write(["leg": leg.name, "route": summary(of: route)], to: output)
+    }
+    print("")
+    print("轉彎指示和實際動作點相符：\(correctManeuvers)／\(totalManeuvers)")
+    return 0
+}
+
 func run() async -> Int32 {
     guard CommandLine.arguments.count >= 4 else {
-        print("用法：RouteProbe <compare|plan> <路線清單.json> <結果檔.jsonl> [road_lines.json]")
+        print("用法：RouteProbe <compare|plan|replay> <路線清單.json> <結果檔.jsonl> [road_lines.json] [cameras.json]")
         return 64
+    }
+    if CommandLine.arguments[1] == "replay" {
+        guard CommandLine.arguments.count >= 6,
+              let data = try? Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[2])),
+              let legs = try? JSONDecoder().decode([ReplayLeg].self, from: data) else {
+            print("讀不了路線清單或沒有指定 cameras.json")
+            return 66
+        }
+        FileManager.default.createFile(atPath: CommandLine.arguments[3], contents: nil)
+        guard let output = FileHandle(forWritingAtPath: CommandLine.arguments[3]) else { return 73 }
+        return await runReplay(legs: legs, databasePath: CommandLine.arguments[5], output: output)
     }
     let cases: [ProbeCase]
     do {

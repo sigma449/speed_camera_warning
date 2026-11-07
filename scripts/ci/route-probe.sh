@@ -48,4 +48,4 @@ defaults write -g AppleLocale -string zh_TW
 killall geod 2>/dev/null || true
 
 "${APP}/Contents/MacOS/RouteProbe" "${MODE}" "${CASES}" "${OUTPUT}" SpeedCam/Resources/road_lines.json \
-  -AppleLanguages '(zh-Hant-TW, en)' -AppleLocale zh_TW
+  SpeedCam/Resources/cameras.json -AppleLanguages '(zh-Hant-TW, en)' -AppleLocale zh_TW

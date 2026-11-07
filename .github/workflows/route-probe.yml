@@ -3,11 +3,12 @@ name: 路線實測
 # 用真正的 MapKit 規劃台灣的路線。不需要建置 App，幾分鐘就跑完。結果在 log 和 artifact route-probe。
 # - plan：用 App 的選路程式，看汽車、紅黃牌、白牌實際選到哪條路
 # - compare：比較不同避開設定 Apple 回傳的路線（要知道 Apple 怎麼分類道路時用）
+# - replay：沿著 Apple 的路線模擬開車，用真實的照相點和區間資料，印出每個提醒的位置（cases 用 scripts/ci/route-replay-1107.json）
 on:
   workflow_dispatch:
     inputs:
       mode:
-        description: plan 或 compare
+        description: plan、compare 或 replay
         default: plan
       cases:
         description: 路線清單
@@ -21,6 +22,9 @@ jobs:
       - uses: actions/checkout@v5
       - name: 選擇 Xcode
         run: bash scripts/ci/select-xcode.sh
+      - name: 下載測速資料（只有 replay 需要）
+        if: github.event.inputs.mode == 'replay'
+        run: python3 data-pipeline/build_cameras.py --min-count 500
       - name: 路線實測
         run: bash scripts/ci/route-probe.sh "${{ github.event.inputs.mode }}" "${{ github.event.inputs.cases }}" route-probe-results.jsonl
       - name: 保留結果
