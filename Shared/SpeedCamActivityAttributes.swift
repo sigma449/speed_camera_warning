@@ -46,10 +46,28 @@ struct SpeedCamActivityState: Codable, Hashable {
     /// 區間和照相模式下，快到轉彎時顯示的下一步（例如「300m 右轉 民生西路」）。
     /// 距離取到 50 公尺，避免 Live Activity 一直更新。超速時先顯示超速。
     var navHint: String? {
-        guard mode == .camera || mode == .section, !isOverspeed,
-              let maneuverText, let maneuverDistance, maneuverDistance <= 300 else { return nil }
-        let meters = max(50, Int((maneuverDistance / 50).rounded()) * 50)
+        guard let meters = navHintMeters, let maneuverText else { return nil }
         return "\(meters)m \(maneuverText)"
+    }
+
+    /// 最窄的尺寸放不下路名，只留距離和動作（例如「300m 右轉」）。
+    var navHintCompact: String? {
+        guard let meters = navHintMeters, let maneuverText else { return nil }
+        let action = maneuverText.split(separator: " ").first.map(String.init) ?? maneuverText
+        return "\(meters)m \(action)"
+    }
+
+    private var navHintMeters: Int? {
+        guard mode == .camera || mode == .section, !isOverspeed,
+              maneuverText != nil, let maneuverDistance, maneuverDistance <= 300 else { return nil }
+        return max(50, Int((maneuverDistance / 50).rounded()) * 50)
+    }
+
+    /// 導航模式最窄的尺寸只留路名：動作已經有箭頭（「靠右 上五股楊梅高架」→「上五股楊梅高架」）。
+    var maneuverTextCompact: String? {
+        guard let maneuverText else { return nil }
+        let parts = maneuverText.split(separator: " ", maxSplits: 1).map(String.init)
+        return parts.count == 2 ? parts[1] : maneuverText
     }
 }
 

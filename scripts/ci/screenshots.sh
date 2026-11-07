@@ -221,6 +221,6 @@ shot "26-legacy-cruise"
 
 # App 的紀錄（確認啟動參數、sheet、地圖範圍、區間貼齊、路線選擇有沒有生效）
 xcrun simctl spawn "${UDID}" log show --last 20m --style compact \
-  --predicate 'subsystem == "tw.speedcammap.app"' 2>/dev/null | grep -E "arguments|appeared|applied|opened|preview|typing|beiyi|一次規劃|分段|route plan|road_lines" | tail -120 || true
+  --predicate 'subsystem == "tw.speedcammap.app"' 2>/dev/null | grep -E "arguments|appeared|applied|opened|preview|typing|beiyi|一次規劃|分段|route plan|road_lines|live activity" | tail -120 || true
 
 ls -la "${OUT}"

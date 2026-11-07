@@ -22,8 +22,11 @@ enum RoutePlanner {
             let response = try await MKDirections(request: request).calculate()
             return response.routes.map { route in (route: route, facts: facts(of: route)) }
         }
-        Logger(subsystem: "tw.speedcammap.app", category: "route")
-            .notice("route plan \(mode.rawValue, privacy: .public): request \(plan.requestIndex) route \(plan.routeIndex) issues \(String(describing: plan.issues), privacy: .public)")
+        let logger = Logger(subsystem: "tw.speedcammap.app", category: "route")
+        logger.notice("route plan \(mode.rawValue, privacy: .public): request \(plan.requestIndex) route \(plan.routeIndex) issues \(String(describing: plan.issues), privacy: .public)")
+        // CI 用來比較 iOS 15 和 iOS 26 拿到的路線一不一樣
+        let steps = plan.route.steps.map { "\(Int($0.distance))m \($0.instructions)" }.joined(separator: " | ")
+        logger.notice("route plan steps: \(steps, privacy: .public)")
         return plan
     }
 

@@ -290,6 +290,7 @@ func runReplay(legs: [ReplayLeg], databasePath: String, output: FileHandle) asyn
         var second = 0.0
         var segment = 0
         var displayed = ""
+        var previousDisplayed = ""
         var nextManeuver = 0
         var inTunnel = false
         while traveled < total {
@@ -319,6 +320,7 @@ func runReplay(legs: [ReplayLeg], databasePath: String, output: FileHandle) asyn
             }
 
             let navResult = nav.process(fix)
+            previousDisplayed = displayed
             if let progress = navResult.progress, progress.nextInstruction != displayed {
                 displayed = progress.nextInstruction
                 print(stamp + String(format: "畫面下一步（%.0f m 後）：", progress.distanceToNextManeuver) + displayed)
@@ -335,11 +337,11 @@ func runReplay(legs: [ReplayLeg], databasePath: String, output: FileHandle) asyn
                 if let text = describe(event) { print(stamp + text) }
             }
 
-            // 開到動作點之前，畫面應該正在顯示這個動作
+            // 開到動作點之前，畫面應該正在顯示這個動作（這一秒剛好經過動作點時，看換之前顯示的）
             while nextManeuver < maneuvers.count && maneuvers[nextManeuver].position <= traveled + speed {
                 let expected = maneuvers[nextManeuver].text
                 totalManeuvers += 1
-                if displayed == expected {
+                if displayed == expected || previousDisplayed == expected {
                     correctManeuvers += 1
                 } else {
                     print(stamp + "★ 動作點應顯示「\(expected)」，實際顯示「\(displayed)」")

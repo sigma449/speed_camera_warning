@@ -143,14 +143,16 @@ struct SmallActivityView: View {
 
     /// 最窄尺寸用的短文字。沒有另外定義的模式就沿用完整文字，放不下時再縮小。
     private var secondaryCompact: String {
-        if state.navHint != nil { return secondary }
+        if let hint = state.navHintCompact { return hint }
         switch state.mode {
         case .section:
             let avg = state.sectionAverageKmh.map { "均 \($0)" }
             if state.sectionZero { return avg.map { "可依速限・\($0)" } ?? "可依速限行駛" }
             if let kmh = state.sectionSuggestedKmh { return avg.map { "≤\(kmh)・\($0)" } ?? "建議≤\(kmh)" }
             return avg.map { "區間・\($0)" } ?? "區間倒數"
-        case .idle, .camera, .navigation:
+        case .navigation:
+            return state.maneuverTextCompact ?? secondary
+        case .idle, .camera:
             return secondary
         }
     }

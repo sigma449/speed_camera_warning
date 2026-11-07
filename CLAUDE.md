@@ -32,8 +32,17 @@ Live Activity 在 iOS 26 會出現在 CarPlay 儀表板，**不需要 entitlemen
 ## 已確認的規格（改之前先問使用者）
 
 - **兩段提醒**（每段只提醒一次）：一般道路預告 300 m、近距 100 m；照相點速限 ≥ 80 時預告 600 m、近距 200 m。距離依法規標示的設置距離決定，使用者認為 1,000 m 太遠。
+- **近距語音只念距離**（2026-11-07 使用者要求）：預告過的照相點，近距只念「100公尺」。第一次提醒就已經在近距內時才念完整的句子。
 - **超速警示**：接近照相點時超速，每 3 秒嗶一聲，直到降速或通過。一般照相的超速容許值預設 0。
 - **方向判斷**：只提醒取締自己行車方向的照相點。開放資料的「雙向」照相點有軸向（南北／東西），兩個方向都提醒，橫向道路不提醒。
+- **區間預告**（2026-11-07 使用者要求，實測進去之後才提醒太晚）：接近起點時預告一次，距離和照相點相同（區間速限 ≥ 80 為 600 m，其他 300 m）。
+  語音「前方300公尺，進入區間測速，速限70」，橫幅和 Live Activity 沿用照相點的版面（`SectionApproach.asCameraTarget`）。
+  要從起點後方、順著進入方向接近才算（`isHeadingToStart`），反方向和橫向路過不提醒；分不出平行的平面道路。
+- **進入區間的判定**（`SectionSpeedTracker`）：通過起點 60 m 判定範圍時開始計時。GPS 跳過判定範圍、匝道在起點後才併入時，走在區間前 300 m 也算進入，開始時間依車速往回推。
+  起點 300 m 之後才上路（照相機沒拍到起點）不算進入。
+- **隧道裡沒有定位**：App 每秒呼叫 `SectionSpeedTracker.tick`，超過 2.5 秒沒有定位就依最後的車速和時間推算：經過起點、倒數、語音都繼續，定位回來再接上。
+- **區間照相機**：落在已知區間路線 300 m 內的區間照相機不再當固定照相提醒（`CameraAlertEngine.isCoveredBySection`），由預告和倒數處理；否則自強隧道中段那支會在隧道裡才跳出來。
+  資料沒有對應區間的（無法解析的那些）仍然照一般照相提醒。
 - **區間測速倒數**：顯示還要幾秒才能到終點；每分鐘語音一次，最後 30 秒、10 秒各一次，歸零時提醒。最短時間另加 3% 安全餘裕。
 - **區間容許值**：預設 **+10**（例如北宜表定 40 → 以 50 計算），可調 0～**+20**，間隔 5。
   可以在「個別區間設定」頁**多選**區間另外設定；同一段的兩個方向共用設定（`SpeedSection.groupID` 會去掉 `-f`／`-r`）。
@@ -66,6 +75,10 @@ Live Activity 在 iOS 26 會出現在 CarPlay 儀表板，**不需要 entitlemen
   - 照相點橫幅用 `Camera.shortAddress`：18 字以內用原文，太長才拿掉括號內容、多段只留第一段；詳細資訊卡仍顯示完整地址。
 - **主畫面橫幅不透明**（`BannerStyle`）：使用者同意的第一項 UI 收斂。底色不透明，地圖路名才不會透出來；
   有顏色的底色要夠深，白字對比至少 4.5:1，小字不要用 `.secondary`（紅底上會變成低對比的粉色）。
+- **導航文字縮短**（2026-11-07 使用者要求）：CarPlay、鎖定畫面和手機橫幅顯示「動作＋路名」（`ManeuverText.short`），例如「靠右 上五股楊梅高架」「下交流道 95A出口」；語音仍念 Apple 的完整句子。
+  區間和照相模式下，轉彎點 300 m 內小字改顯示下一步（`SpeedCamActivityState.navHint`，超速時先顯示超速）。
+- **偏離路線**：離路線 50 m 持續 5 秒，或方向差 50° 以上、離路線 30 m 持續 3 秒（路口轉錯比較快發現）。還沒回到路線上每 15 秒再規劃一次；重新規劃中畫面不顯示舊路線的下一步。
+- **Live Activity 開始和更新**：開始失敗會每 5 秒重試（只能在前景開始，剛開 App 太早會被拒絕）；App 重開時接著用已經在跑的，不結束再開；更新不排隊，只留最新一筆；距離和車速最多每 2 秒更新；接上 CarPlay（音訊路徑出現 carAudio）時主動更新一次；設定頁顯示目前狀態和失敗原因。
 - **Live Activity 提醒**（`ActivityAlertPolicy`）：預告、近距、超速、進入區間、區間歸零時用 `alertConfiguration` 更新，
   一次定位只發一則；每分鐘倒數和持續嗶聲只靠聲音，不跳提醒。Apple 文件說 CarPlay 不在 Dashboard 頁面時會顯示成畫面底部的通知。
   聲音是系統預設音（文件沒有靜音選項），設定頁可以關（`liveActivityAlertsEnabled`，預設開啟）。
@@ -166,16 +179,17 @@ App 的啟動參數（CI 截圖用）：
 
 ## 建置與測試
 
-- **Swift 核心邏輯**（121 個測試）：
+- **Swift 核心邏輯**（144 個測試）：
   `docker run --rm -v "$PWD/Packages/SpeedCamCore":/pkg -w /pkg swift:6.2-noble swift test`
   （雲端 session 裡 Docker 沒在跑的話先執行 `dockerd &`。）
-- **Python 資料處理**（173 個測試）：`python3 -m pytest -q data-pipeline`。Windows 上 repo 和暫存資料夾不在同一個磁碟機時，`test_cli_with_local_input_and_min_count` 會失敗（`os.path.relpath` 不能跨磁碟機），CI 不受影響。
+- **Python 資料處理**（174 個測試）：`python3 -m pytest -q data-pipeline`。
 - **iOS App** 只能在 GitHub Actions 編譯：
   - `CI`（每次 push）：Swift 測試、pytest、iOS 模擬器建置和截圖。截圖會以 base64 印在 log 裡（`scripts/ci/print-screenshots.sh`），因為雲端 session 下載不了 artifact。
   - `Build IPA`（手動）：`gh workflow run build-ipa.yml --repo sigma449/speed_camera_warning --ref main`。會下載最新資料、編譯未簽署的 IPA（artifact `SpeedCam-ipa`，保留 30 天）。
   - `Refresh camera data`（每週一）：資料有變動就開 PR。需要 repo 設定開啟「Allow GitHub Actions to create and approve pull requests」（2026-11-05 用 GitHub API 確認已開啟）。
   - `路線實測`（手動，約 5 分鐘）：`gh workflow run route-probe.yml --repo sigma449/speed_camera_warning --ref main -f mode=plan -f cases=scripts/ci/route-probe-cases.json`。不用建置 App，在 macOS 上直接編譯 App 的 `RoutePlanner` 和 `SpeedCamCore`，用真正的 MapKit 規劃台灣路線。改了選路規則或 `road_lines.json` 就跑一次。
     `mode=plan` 看三種車種實際選到哪條路；`mode=compare` 比較不同避開設定 Apple 回傳的路線。`route-probe-elevated.json` 沿著各條快速道路和高架規劃，用來確認 Apple 算不算 highway。結果在 log 和 artifact `route-probe`（含步驟文字和路線座標）。
+    **`mode=replay`（模擬開車）**：`-f mode=replay -f cases=scripts/ci/route-replay-1107.json`。沿著 Apple 的路線每秒給一筆定位，用真實的照相點和區間資料跑核心程式，印出每個語音和提醒的位置，並檢查每個動作點畫面顯示的對不對（log 最後有「相符 N／M」）。隧道裡不給定位，只呼叫 `tick`。改了提醒、區間或導航就跑一次；使用者回報實測問題時，把路線加進清單就能重現。
   - `iOS 15 實際執行`（手動，約 20 分鐘）：`gh workflow run ios15-test.yml --repo sigma449/speed_camera_warning --ref main`。從 Apple 官方 CDN 安裝 iOS 15.5 模擬器（不用登入），在 iPhone 7 模擬器上實際開啟 App 並截圖。改了舊系統的程式就跑一次。截圖一樣在 log 裡。
 - 用 `gh run watch <id> --exit-status` 等結果，`gh run view <id> --log` 讀 log。
 - 環境：runner `macos-26`、Xcode 26.6、App 最低 iOS 15.0、Widget 最低 iOS 26.0、`SWIFT_VERSION 5.0`、`SWIFT_STRICT_CONCURRENCY minimal`。
@@ -187,15 +201,20 @@ App 的啟動參數（CI 截圖用）：
   欄位：CityName、RegionName、Address、DeptNm、BranchNm、Longitude、Latitude、direct、limit。
 - **里程牌**：公路局「省道里程坐標」（資料集 **7040**，約 27,000 處），把「台9線 19K」這類里程換算成座標和進入方向。
   經緯度欄位是「坐標-E-WGS84」「坐標-N-WGS84」。
-- **區間測速**（目前 **71 段** = 人工 8 段＋自動 63 段）：
-  - `data-pipeline/manual/sections.csv`：人工維護（北宜），座標和進入方向已經寫回 CSV，不依賴里程牌下載。
+- **區間測速**（目前 **79 段** = 人工 18 段＋自動 61 段）：
+  - `data-pipeline/manual/sections.csv`：人工維護。北宜（座標寫回 CSV）；台64 中和段（兩個方向範圍不同，分成兩個群組）；自強、辛亥、中仁、仁水隧道（座標是 OSM 的隧道兩端，實際照相位置沒有公告；長度見 CSV 註解）。
+  - `manual/section_lengths.csv`：警方公告的偵測長度，依行駛方向（from_km → to_km）蓋過里程差。來源是新北市警局「區間平均速率執法設備設置地點一覽表」（1140919 修訂，`traffic.police.ntpc.gov.tw`）。**開放資料的範圍可能是錯的**：台64 寫「25.2k至28.2k（雙向）」，公告往西只有 28.2K→26.6K。其他縣市的公告還沒查。
   - `speedcam_data/section_text.py`：從開放資料「設置地點」的文字自動產生，例如「台9線68k+600m至56k+600m」。
     離照相點超過 3 km 視為解析錯誤；同一筆裡至少一段通過時，其他段放寬到 15 km。
   - `manual/sections_text.csv`：開放資料沒有、但立法院附件清單（2026-05）有的區間。
-  - **無法自動解析**：縣道、市道、只寫隧道或路名的（例如鳳鼻隧道、蘇花改仁水和中仁隧道、自強和辛亥隧道、金門大橋、市道 182）。
+  - **還沒有區間的**（只有一個當固定照相提醒的點）：縣道、市道、只寫路名的，例如鳳鼻隧道（OSM 查不到）、金門大橋、市道 182、新店環河路、新莊壽山路（新北市公告有長度，要找起訖座標）。
+- **其他清單**（查照相點有沒有漏時用）：臺北市警察局「固定式違規照相設備及區間測速裝置設置地點一覽表」（資料集 **130111**，約 143 處，有座標和方向）；立法院附件全國清單（`ppg.ly.gov.tw`，2026-05）。PDF 用 `pdftotext -enc UTF-8 -layout`。
 
 ## 容易踩到的坑
 
+- **`MKRoute.Step` 的指示描述的是這一步「走完時」的動作**，不是開始時。距離 982 m 的「右轉進入環河北路」是開 982 m 之後右轉。
+  84 條實測路線：指示裡的左右轉和步驟終點的實際轉向相符 96%，和起點只有 45%。以前寫反，所有提示都提早一步（使用者實測：右轉民生西路時顯示右轉吉林路），模擬實際路線修改前只有 7／55 正確。
+- **`MKRoute.Step.distance` 和折線長度差到 2.3%**：轉彎點要用每一步折線的實際長度（`MapItems.stepInfos`），否則開到後面會差幾百公尺。
 - **Info.plist 的 `CFBundleDisplayName`／`CFBundleName` 只能用英數字**：SideStore 會拿它向 Apple 註冊 App ID，
   有中文會出現「invalid value … for the parameter 'appIdName'」。中文名稱放 `zh-Hant.lproj/InfoPlist.strings`。
   `scripts/ci/check-bundle-names.sh` 會在 Build IPA 時檢查。
