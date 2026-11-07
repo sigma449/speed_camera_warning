@@ -25,6 +25,9 @@ final class SectionSpeedTrackerTests: XCTestCase {
         XCTAssertEqual(SectionSpeedTracker.milestones(forMinimumSeconds: 45, finalCountdown: true), [30, 10])
         XCTAssertEqual(SectionSpeedTracker.milestones(forMinimumSeconds: 150, finalCountdown: false), [120, 60])
         XCTAssertEqual(SectionSpeedTracker.milestones(forMinimumSeconds: 8, finalCountdown: true), [])
+        // 短的區間：進入的語音還沒念完，不要馬上接「還有 30 秒」
+        XCTAssertEqual(SectionSpeedTracker.milestones(forMinimumSeconds: 31, finalCountdown: true), [10])
+        XCTAssertEqual(SectionSpeedTracker.milestones(forMinimumSeconds: 15, finalCountdown: true), [])
     }
 
     func testCountdownAnnouncementsAndCompletionWithinLimit() {

@@ -184,7 +184,8 @@ public final class SectionSpeedTracker {
             m -= 60
         }
         if finalCountdown {
-            for extra in [30, 10] where Double(extra) < minSec {
+            // 短的區間（辛亥隧道只要 31 秒）進入時的語音還沒念完，不要馬上接「還有 30 秒」
+            for extra in [30, 10] where minSec - Double(extra) >= 10 {
                 result.append(extra)
             }
         }
