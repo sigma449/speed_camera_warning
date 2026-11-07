@@ -29,7 +29,7 @@ public enum ActivityAlertPolicy {
             switch event {
             case let .overspeedStarted(limit, _):
                 overspeed = ActivityAlertContent(title: "您已超速", body: "速限\(limit)")
-            case let .nearAlert(camera, distance):
+            case let .nearAlert(camera, distance, _):
                 near = cameraAlert(camera, distance: distance)
             case let .preAlert(camera, distance):
                 pre = cameraAlert(camera, distance: distance)
@@ -43,6 +43,9 @@ public enum ActivityAlertPolicy {
         var zero: ActivityAlertContent?
         for event in sectionEvents {
             switch event {
+            case let .approaching(section, distance):
+                pre = pre ?? ActivityAlertContent(title: "前方區間測速",
+                                                  body: "\(AnnouncementFormatter.spokenDistance(distance))後進入，速限\(section.speedLimit)")
             case let .overspeedStarted(threshold):
                 if !cameraOverspeedActive {
                     sectionOverspeed = ActivityAlertContent(title: "區間測速超速", body: "車速超過\(threshold)")

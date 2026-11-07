@@ -56,6 +56,19 @@ enum MapItems {
         polyline.getCoordinates(&coords, range: NSRange(location: 0, length: count))
         return coords.map { GeoPoint(lat: $0.latitude, lon: $0.longitude) }
     }
+
+    /// 導航用的步驟。長度用每一步折線的實際長度：整條路線的折線就是這些折線接起來，
+    /// 轉彎點才會落在正確的位置。Apple 回報的距離和折線差到 2.3%，開到後面會累積成幾百公尺。
+    static func stepInfos(of route: MKRoute) -> [RouteStepInfo] {
+        route.steps.map { step in
+            let points = coordinates(of: step.polyline)
+            var length = 0.0
+            for (a, b) in zip(points, points.dropFirst()) {
+                length += GeoMath.distance(a, b)
+            }
+            return RouteStepInfo(instruction: step.instructions, distance: length)
+        }
+    }
 }
 
 extension GeoPoint {

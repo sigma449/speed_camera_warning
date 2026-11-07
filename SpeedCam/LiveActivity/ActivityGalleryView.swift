@@ -15,6 +15,10 @@ struct ActivityGalleryView: View {
         ("巡航・紅黃牌", .previewIdleRedYellow),
         ("最長類型", .previewLongestCamera),
         ("最長指示", .previewLongestNavigation),
+        ("接近區間", .previewSectionApproach),
+        ("區間＋轉彎", .previewSectionWithTurn),
+        ("照相＋轉彎", .previewCameraWithTurn),
+        ("重新規劃", .previewRerouting),
     ]
 
     /// 預覽頁比一個畫面長。`-galleryMiddle`、`-galleryBottom` 指定從哪裡開始顯示，CI 才拍得到整頁。

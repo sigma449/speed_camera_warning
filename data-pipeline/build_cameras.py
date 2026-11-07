@@ -22,14 +22,19 @@ sys.path.insert(0, HERE)
 from speedcam_data import sources  # noqa: E402
 from speedcam_data.normalize import NormalizeReport, normalize_rows  # noqa: E402
 from speedcam_data import mileposts  # noqa: E402
-from speedcam_data.sections import attach_paths, load_sections, manual_range_keys, uses_mileposts  # noqa: E402
+from speedcam_data.sections import (  # noqa: E402
+    apply_official_lengths, attach_paths, load_sections, manual_range_keys, uses_mileposts,
+)
 from speedcam_data import section_text  # noqa: E402
 
 DEFAULT_OUTPUT = os.path.join(HERE, "..", "SpeedCam", "Resources", "cameras.json")
 DEFAULT_SECTIONS = os.path.join(HERE, "manual", "sections.csv")
 DEFAULT_EXTRA = os.path.join(HERE, "manual", "cameras_extra.csv")
 DEFAULT_SECTIONS_TEXT = os.path.join(HERE, "manual", "sections_text.csv")
+DEFAULT_SECTION_LENGTHS = os.path.join(HERE, "manual", "section_lengths.csv")
 TEXT_SOURCE_ATTRIBUTION = "立法院議事附件：全國測速取締設置點清單（2026-05），補充開放資料未收錄的區間測速"
+LENGTHS_ATTRIBUTION = "新北市政府警察局「區間平均速率執法設備設置地點一覽表」（1140919 修訂）：區間範圍與偵測長度"
+TUNNEL_ATTRIBUTION = "隧道區間的位置：© OpenStreetMap 貢獻者（ODbL）"
 
 
 class CachedMilepostIndex:
@@ -113,6 +118,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--extra", default=DEFAULT_EXTRA, help="人工補充的照相點 CSV（欄位同原始資料）")
     ap.add_argument("--sections-text", default=DEFAULT_SECTIONS_TEXT,
                     help="補充的區間測速文字清單（只用來產生區間，不當作照相點）")
+    ap.add_argument("--section-lengths", default=DEFAULT_SECTION_LENGTHS, help="警方公告的區間偵測長度")
     ap.add_argument("--no-auto-sections", action="store_true", help="不從文字自動產生區間")
     ap.add_argument("--min-count", type=int, default=0,
                     help="照相點少於這個數量就視為失敗（避免把空資料打包進 App）")
@@ -138,11 +144,16 @@ def main(argv: list[str] | None = None) -> int:
         auto = auto_sections(rows, text_rows, args.sections, fetch_index)
         sections = sections + auto
     add_paths(sections, fetch_index)
+    official = apply_official_lengths(sections, args.section_lengths)
     extra: tuple = ()
     if sections and (auto or uses_mileposts(args.sections)):
         extra += (mileposts.ATTRIBUTION,)
     if any(s["id"].startswith("auto-") for s in auto) and text_rows:
         extra += (TEXT_SOURCE_ATTRIBUTION,)
+    if official:
+        extra += (LENGTHS_ATTRIBUTION,)
+    if any("tunnel" in s["id"] for s in sections):
+        extra += (TUNNEL_ATTRIBUTION,)
     db, report = build(rows, sections, extra_sources=extra)
     print(report.summary())
     diag = report.diagnostics()
@@ -162,7 +173,7 @@ def main(argv: list[str] | None = None) -> int:
     with open(args.output, "w", encoding="utf-8") as f:
         json.dump(db, f, ensure_ascii=False, indent=1, sort_keys=False)
         f.write("\n")
-    print(f"已寫入 {os.path.relpath(args.output)}")
+    print(f"已寫入 {args.output}")
     return 0
 
 

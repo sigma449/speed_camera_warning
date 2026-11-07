@@ -42,6 +42,15 @@ struct SpeedCamActivityState: Codable, Hashable {
     // 共用
     var currentSpeedKmh: Int = 0
     var vehicleModeName: String = "汽車"
+
+    /// 區間和照相模式下，快到轉彎時顯示的下一步（例如「300m 右轉 民生西路」）。
+    /// 距離取到 50 公尺，避免 Live Activity 一直更新。超速時先顯示超速。
+    var navHint: String? {
+        guard mode == .camera || mode == .section, !isOverspeed,
+              let maneuverText, let maneuverDistance, maneuverDistance <= 300 else { return nil }
+        let meters = max(50, Int((maneuverDistance / 50).rounded()) * 50)
+        return "\(meters)m \(maneuverText)"
+    }
 }
 
 @available(iOS 16.1, *)
@@ -70,7 +79,23 @@ extension SpeedCamActivityState {
     /// 最長的文字，用來檢查最窄的尺寸放不放得下。
     static let previewLongestCamera = Self(mode: .camera, cameraTypeName: "高架測速及闖紅燈照相", cameraSymbol: "camera.fill",
                                            distanceMeters: 1_250, speedLimit: 110, currentSpeedKmh: 96)
-    static let previewLongestNavigation = Self(mode: .navigation, maneuverText: "靠右走匝道前往國道三號南下方向",
+    static let previewLongestNavigation = Self(mode: .navigation, maneuverText: "靠右 上五股楊梅高架",
                                                maneuverSymbol: "arrow.up.right", maneuverDistance: 1_250,
                                                currentSpeedKmh: 96)
+    /// 接近區間起點。
+    static let previewSectionApproach = Self(mode: .camera, cameraTypeName: "區間測速", cameraSymbol: "timer",
+                                             distanceMeters: 300, speedLimit: 70, currentSpeedKmh: 65)
+    /// 區間倒數中，快到要轉彎的地方。
+    static let previewSectionWithTurn = Self(mode: .section, sectionEarliestExit: Date().addingTimeInterval(125),
+                                             sectionAverageKmh: 58, sectionLimit: 60, sectionSuggestedKmh: 54,
+                                             maneuverText: "下交流道 95A出口", maneuverSymbol: "arrow.up.right",
+                                             maneuverDistance: 280, currentSpeedKmh: 57)
+    /// 接近照相點，快到要轉彎的地方。
+    static let previewCameraWithTurn = Self(mode: .camera, cameraTypeName: "測速照相", cameraSymbol: "camera.fill",
+                                            distanceMeters: 280, speedLimit: 50,
+                                            maneuverText: "右轉 環河北路一段", maneuverSymbol: "arrow.turn.up.right",
+                                            maneuverDistance: 150, currentSpeedKmh: 48)
+    /// 偏離路線，重新規劃中。
+    static let previewRerouting = Self(mode: .navigation, maneuverText: "重新規劃中",
+                                       maneuverSymbol: "arrow.triangle.2.circlepath", currentSpeedKmh: 42)
 }

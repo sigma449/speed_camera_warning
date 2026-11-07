@@ -111,13 +111,20 @@ struct SmallActivityView: View {
                     .foregroundStyle(.orange)
             }
         case .navigation:
-            Text(ActivityFormat.distance(state.maneuverDistance))
+            // 重新規劃時沒有距離，大字改顯示車速
+            if state.maneuverDistance == nil {
+                Text("\(state.currentSpeedKmh)")
+            } else {
+                Text(ActivityFormat.distance(state.maneuverDistance))
+            }
         case .idle:
             Text("\(state.currentSpeedKmh)")
         }
     }
 
     private var secondary: String {
+        // 快到轉彎了：這時下一步比照相類型或建議時速重要（語音也會念）
+        if let hint = state.navHint { return hint }
         switch state.mode {
         case .camera:
             // 超速時只要知道超速，距離和速限都在旁邊
@@ -136,6 +143,7 @@ struct SmallActivityView: View {
 
     /// 最窄尺寸用的短文字。沒有另外定義的模式就沿用完整文字，放不下時再縮小。
     private var secondaryCompact: String {
+        if state.navHint != nil { return secondary }
         switch state.mode {
         case .section:
             let avg = state.sectionAverageKmh.map { "均 \($0)" }

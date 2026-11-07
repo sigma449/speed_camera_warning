@@ -222,17 +222,46 @@ def test_sections_validation(row, msg):
 def test_bundled_manual_files_are_valid():
     from speedcam_data.sections import load_sections
     # 不連網：用假的里程牌索引（沿著東西向直線，每 100 m 一支）
+    index = mileposts.build_index(_milepost_rows() + _milepost_rows(0, 30, road="台64"), log=lambda *_: None)
     sections = load_sections(os.path.join(HERE, "..", "manual", "sections.csv"),
-                             log=lambda *_: None, fetch_index=lambda log=print: _fake_index())
-    assert len(sections) == 8          # 北宜 4 段 × 雙向
+                             log=lambda *_: None, fetch_index=lambda log=print: index)
+    assert len(sections) == 18         # 北宜 4 段 × 雙向、台64 中和段 2 段、隧道 4 條 × 雙向
     by_id = {s["id"]: s for s in sections}
     assert by_id["beiyi-1-f"]["lengthMeters"] == 4100
     assert by_id["beiyi-4-r"]["lengthMeters"] == 12000
-    assert all(s["speedLimit"] == 40 and not s["lengthEstimated"] for s in sections)
+    assert all(not s["lengthEstimated"] for s in sections)
+    assert by_id["beiyi-1-f"]["speedLimit"] == 40
     assert by_id["beiyi-1-f"]["name"].endswith("（往宜蘭）")
     assert by_id["beiyi-1-r"]["start"] == by_id["beiyi-1-f"]["end"]
     rows = sources.read_local_rows([os.path.join(HERE, "..", "manual", "cameras_extra.csv")])
     assert isinstance(normalize_rows(rows), list)
+
+    # 台64 往西只到 26.6K（開放資料只寫 25.2k 至 28.2k 雙向，是錯的）
+    west = by_id["tai64-zhonghe-west"]
+    assert (west["startKm"], west["endKm"]) == (28.2, 26.6)
+    assert by_id["tai64-zhonghe-east"]["startKm"] == 25.2
+
+    # 隧道的兩個方向是不同管道，但同一個群組（共用個別容許值），起點在各自行駛方向的入口
+    north, south = by_id["ziqiang-tunnel-f"], by_id["ziqiang-tunnel-r"]
+    assert north["start"]["lat"] < north["end"]["lat"] and south["start"]["lat"] > south["end"]["lat"]
+    assert north["speedLimit"] == 50 and north["lengthMeters"] == 900
+
+
+def test_official_lengths_override_mileage_by_direction():
+    from speedcam_data.sections import apply_official_lengths
+    index = mileposts.build_index(_milepost_rows() + _milepost_rows(0, 30, road="台64"), log=lambda *_: None)
+    sections = load_sections(os.path.join(HERE, "..", "manual", "sections.csv"),
+                             log=lambda *_: None, fetch_index=lambda log=print: index)
+    logs: list = []
+    applied = apply_official_lengths(sections, os.path.join(HERE, "..", "manual", "section_lengths.csv"), log=logs.append)
+    by_id = {s["id"]: s for s in sections}
+    assert by_id["beiyi-1-f"]["lengthMeters"] == 3938.1     # 往宜蘭
+    assert by_id["beiyi-1-r"]["lengthMeters"] == 3946.7     # 往新店
+    assert by_id["tai64-zhonghe-east"]["lengthMeters"] == 2955.4
+    assert by_id["tai64-zhonghe-west"]["lengthMeters"] == 1563.3
+    assert applied == 8      # 自動區間不在這份清單裡，其他列會警告
+    assert any("對不到" in str(m) and "台2" in str(m) for m in logs)
+    assert apply_official_lengths(sections, "不存在的檔案.csv", log=logs.append) == 0
 
 
 def test_collect_urls_from_dataset_metadata():

@@ -119,6 +119,7 @@ struct SettingsView: View {
                         Toggle("Live Activity（鎖定畫面／CarPlay）", isOn: $model.settings.liveActivityEnabled)
                         Toggle("重要時刻跳出提醒", isOn: $model.settings.liveActivityAlertsEnabled)
                             .disabled(!model.settings.liveActivityEnabled)
+                        LabeledValue("目前狀態", value: model.liveActivityStatusText)
                     } header: {
                         Text("Live Activity")
                     } footer: {

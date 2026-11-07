@@ -16,8 +16,8 @@ public enum AlertPhase: Int, Comparable, Sendable {
 public enum CameraAlertEvent: Equatable, Sendable {
     /// 預告（例如 300 m）
     case preAlert(camera: Camera, distance: Double)
-    /// 近距（例如 100 m）
-    case nearAlert(camera: Camera, distance: Double)
+    /// 近距（例如 100 m）。afterPre：這支已經預告過，語音只要念距離。
+    case nearAlert(camera: Camera, distance: Double, afterPre: Bool = true)
     /// 通過照相點
     case passed(camera: Camera)
     /// 開始超速（播一次「超速」語音加嗶聲）
@@ -57,7 +57,11 @@ public final class CameraAlertEngine {
     public var settings: AlertSettings
     public private(set) var index: SpatialIndex
     /// 區間清單：區間測速的照相機會套用附近區間（起點或終點 500 m 內）的個別容許值。
-    public var sections: [SpeedSection] = []
+    public var sections: [SpeedSection] = [] {
+        didSet { coveredBySection.removeAll() }
+    }
+    /// 區間照相機離區間路線多近，就算是那一段的一部分（公尺）。
+    public var sectionCameraCoverage: Double = 300
 
     private struct Tracked {
         var camera: Camera
@@ -76,6 +80,8 @@ public final class CameraAlertEngine {
     private var lastCourse: Double?
     private var isOverspeed = false
     private var lastBeep: Date?
+    /// 區間照相機是否已經算在某一段區間裡（結果留著，不用每秒重算）。
+    private var coveredBySection: [String: Bool] = [:]
 
     public init(index: SpatialIndex, settings: AlertSettings = AlertSettings()) {
         self.index = index
@@ -122,8 +128,9 @@ public final class CameraAlertEngine {
         if let key = targetKey, var t = tracked[key] {
             let th = settings.thresholds(speedLimit: t.camera.speedLimit, currentSpeedKmh: fix.speedKmh)
             if t.distance <= th.near && t.phase < .near {
+                let afterPre = t.phase == .pre
                 t.phase = .near
-                events.append(.nearAlert(camera: t.camera, distance: t.distance))
+                events.append(.nearAlert(camera: t.camera, distance: t.distance, afterPre: afterPre))
             } else if t.distance <= th.pre && t.phase < .pre {
                 t.phase = .pre
                 events.append(.preAlert(camera: t.camera, distance: t.distance))
@@ -181,6 +188,7 @@ public final class CameraAlertEngine {
     private func addNewCandidates(fix: VehicleFix, heading: Double) {
         for (cam, d) in index.cameras(near: fix.point, radius: settings.searchRadius) {
             guard tracked[cam.id] == nil, cooldown[cam.id] == nil else { continue }
+            guard !isCoveredBySection(cam) else { continue }
             guard isRelevant(cam, distance: d, from: fix.point, heading: heading, isTracked: false) else { continue }
             tracked[cam.id] = Tracked(camera: cam, phase: .approaching, minDistance: d, distance: d)
         }
@@ -203,6 +211,22 @@ public final class CameraAlertEngine {
                 && aheadDiff <= settings.aheadToleranceWithHeading
         }
         return aheadDiff <= settings.aheadToleranceWithoutHeading
+    }
+
+    /// 區間照相機落在已知的區間路線上：由 `SectionSpeedTracker` 提醒（預告、倒數），
+    /// 這裡不再當成一支固定照相提醒，否則隧道中段的那支會在隧道裡才跳出來，也會和倒數重複。
+    /// 資料裡沒有對應區間的區間照相機（無法解析的那些）仍然照一般照相提醒。
+    func isCoveredBySection(_ camera: Camera) -> Bool {
+        guard camera.type == .section else { return false }
+        if let known = coveredBySection[camera.id] { return known }
+        let covered = sections.contains { section in
+            let path = section.displayPath
+            return zip(path, path.dropFirst()).contains { a, b in
+                GeoMath.project(camera.point, ontoSegment: a, b).distance <= sectionCameraCoverage
+            }
+        }
+        coveredBySection[camera.id] = covered
+        return covered
     }
 
     /// 找出起點或終點離照相機 500 m 內、最近的區間群組。

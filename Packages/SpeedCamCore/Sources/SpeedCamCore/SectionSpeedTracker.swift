@@ -2,6 +2,8 @@ import Foundation
 
 /// 區間測速事件。
 public enum SectionEvent: Equatable, Sendable {
+    /// 接近區間起點（每段只提醒一次）。distance 為目前到起點的距離。
+    case approaching(section: SpeedSection, distance: Double)
     /// 進入區間。minimumSeconds 為含安全餘裕的最短秒數。
     case entered(section: SpeedSection, minimumSeconds: Int)
     /// 倒數提醒：還有幾秒（每分鐘一次，以及最後 30、10 秒）。
@@ -63,19 +65,52 @@ public struct SectionStatus: Equatable, Sendable {
     public var suggestedWholeKmh: Int { Int(suggestedMaxKmh.rounded(.down)) }
 }
 
+/// 正在接近的區間（畫面與 Live Activity 顯示用）。
+public struct SectionApproach: Equatable, Sendable {
+    public var section: SpeedSection
+    public var distance: Double
+
+    public init(section: SpeedSection, distance: Double) {
+        self.section = section
+        self.distance = distance
+    }
+
+    /// 橫幅沿用照相點的版面：同一種提醒長得一樣，不用多一種畫面。
+    public var asCameraTarget: CameraTarget {
+        let camera = Camera(id: "section-approach-\(section.id)", type: .section,
+                            lat: section.start.lat, lon: section.start.lon,
+                            speedLimit: section.speedLimit, address: section.shortName)
+        return CameraTarget(camera: camera, distance: distance, phase: .pre, isOverspeed: false)
+    }
+}
+
 public struct SectionResult: Equatable, Sendable {
     public var events: [SectionEvent]
     public var status: SectionStatus?
+    public var approach: SectionApproach?
+
+    public init(events: [SectionEvent], status: SectionStatus?, approach: SectionApproach? = nil) {
+        self.events = events
+        self.status = status
+        self.approach = approach
+    }
 }
 
 /// 區間測速追蹤器：
-/// - 經過起點時開始計時
+/// - 接近起點時預告一次（距離和一般照相相同：速限 ≥ 80 為 600 m，其他 300 m）
+/// - 經過起點時開始計時；沒有定位時（隧道）依最後的車速推算
 /// - 倒數 = 區間長度 ÷（速限＋區間容許值）×（1 + 安全餘裕）− 已經過秒數
 /// - 區間內車速超過「速限＋區間容許值」時，每隔固定秒數嗶一聲
 /// - 倒數每跨過一個整分鐘提醒一次，最後 30、10 秒再各提醒一次，歸零時提醒一次
 public final class SectionSpeedTracker {
     public var settings: AlertSettings
     public private(set) var sections: [SpeedSection]
+    /// 超過這個秒數沒有新定位，`tick` 才開始依時間推算。
+    public var gpsGapSeconds: TimeInterval = 2.5
+    /// 沒經過起點的判定範圍、但已經在區間前段時，這個距離內仍算剛進入區間（公尺）。
+    public var lateEntryDistance: Double = 300
+    /// 判斷「走在區間路線上」的橫向距離（公尺）。
+    public var onPathDistance: Double = 50
 
     private struct Active {
         var section: SpeedSection
@@ -101,10 +136,21 @@ public final class SectionSpeedTracker {
         var minPoint: GeoPoint
     }
 
+    /// 預告過、還沒進入的區間。
+    private struct Approaching {
+        var section: SpeedSection
+        var distance: Double
+        var minDistance: Double
+    }
+
     private var active: Active?
     private var arming: Arming?
+    private var approaching: Approaching?
     private var lastCourse: Double?
+    private var lastFix: VehicleFix?
     private var recentlyFinished: [String: Date] = [:]
+    /// 已經預告過的區間，同一段不重複預告。
+    private var announcedApproach: [String: Date] = [:]
 
     public init(sections: [SpeedSection], settings: AlertSettings = AlertSettings()) {
         self.sections = sections
@@ -119,8 +165,11 @@ public final class SectionSpeedTracker {
     public func reset() {
         active = nil
         arming = nil
+        approaching = nil
         lastCourse = nil
+        lastFix = nil
         recentlyFinished.removeAll()
+        announcedApproach.removeAll()
     }
 
     public var isActive: Bool { active != nil }
@@ -147,25 +196,165 @@ public final class SectionSpeedTracker {
             lastCourse = GeoMath.normalize(course)
         }
         recentlyFinished = recentlyFinished.filter { fix.timestamp.timeIntervalSince($0.value) < 300 }
+        announcedApproach = announcedApproach.filter { fix.timestamp.timeIntervalSince($0.value) < 300 }
+        lastFix = fix
 
         var events: [SectionEvent] = []
 
         if active != nil {
             advance(fix: fix, events: &events)
-        } else if let entered = updateArming(fix) {
-            active = entered
-            events.append(.entered(section: entered.section, minimumSeconds: Int(entered.minimumSeconds.rounded(.up))))
+        } else if let entered = updateArming(fix) ?? lateEntry(fix) {
+            begin(entered, events: &events)
             // 啟動時可能已經過了起點幾秒，立刻檢查倒數提醒。
             advance(fix: fix, events: &events)
+        } else {
+            updateApproach(fix, events: &events)
         }
 
         guard let a = active else {
-            return SectionResult(events: events, status: nil)
+            return SectionResult(events: events, status: nil, approach: currentApproach)
         }
         return SectionResult(events: events, status: makeStatus(a, now: fix.timestamp))
     }
 
+    /// 沒有新定位時（隧道、訊號差）由 App 每秒呼叫，依最後的車速和時間推算。
+    /// 定位正常時回傳 nil，表示沒有要更新的內容。
+    public func tick(now: Date) -> SectionResult? {
+        guard let last = lastFix, now.timeIntervalSince(last.timestamp) >= gpsGapSeconds else { return nil }
+        var events: [SectionEvent] = []
+
+        if active == nil, let entered = enterWithoutFix(last: last, now: now) {
+            begin(entered, events: &events)
+        }
+        if var a = active {
+            updateCountdown(&a, now: now, events: &events)
+            active = a
+            return SectionResult(events: events, status: makeStatus(a, now: now, assumedSpeed: last.speedMps))
+        }
+        guard var ap = approaching else { return nil }
+        // 畫面上的距離也繼續往下算
+        let moved = max(0, last.speedMps) * now.timeIntervalSince(last.timestamp)
+        ap.distance = max(0, GeoMath.distance(last.point, ap.section.start) - moved)
+        approaching = ap
+        return SectionResult(events: events, status: nil, approach: currentApproach)
+    }
+
     // MARK: - 內部流程
+
+    private var currentApproach: SectionApproach? {
+        approaching.map { SectionApproach(section: $0.section, distance: $0.distance) }
+    }
+
+    private func begin(_ entered: Active, events: inout [SectionEvent]) {
+        active = entered
+        arming = nil
+        approaching = nil
+        events.append(.entered(section: entered.section, minimumSeconds: Int(entered.minimumSeconds.rounded(.up))))
+    }
+
+    private func makeActive(_ s: SpeedSection, startTime: Date, point: GeoPoint, lastTime: Date,
+                            traveled: Double = 0) -> Active {
+        let minSec = s.minimumSeconds(atKmh: settings.sectionEffectiveLimit(s.speedLimit, sectionID: s.groupID))
+            * (1 + settings.sectionSafetyMargin)
+        return Active(section: s, startTime: startTime, minimumSeconds: minSec,
+                      traveled: traveled, lastPoint: point, lastTime: lastTime,
+                      pendingMilestones: Self.milestones(forMinimumSeconds: minSec,
+                                                         finalCountdown: settings.sectionFinalCountdown),
+                      zeroAnnounced: false, minEndDistance: .greatestFiniteMagnitude,
+                      minEndTime: nil)
+    }
+
+    /// 預告距離：和一般照相點相同的規則。
+    private func approachDistance(for s: SpeedSection) -> Double {
+        settings.thresholds(speedLimit: s.speedLimit, currentSpeedKmh: 0).pre
+    }
+
+    /// 是不是朝著起點、順著區間的方向開過去：
+    /// 行進方向和區間進入方向不能相反，起點要在前方，而且要從起點的「後面」接近（不是橫向路過）。
+    private func isHeadingToStart(of s: SpeedSection, from point: GeoPoint, heading: Double) -> Bool {
+        let toStart = GeoMath.bearing(from: point, to: s.start)
+        return GeoMath.angleDifference(heading, s.entryHeading) <= 90
+            && GeoMath.angleDifference(toStart, heading) <= 70
+            && GeoMath.angleDifference(toStart, s.entryHeading) <= 70
+    }
+
+    private func updateApproach(_ fix: VehicleFix, events: inout [SectionEvent]) {
+        guard let heading = lastCourse else { return }
+        if var ap = approaching {
+            let d = GeoMath.distance(fix.point, ap.section.start)
+            ap.distance = d
+            ap.minDistance = min(ap.minDistance, d)
+            let turnedAway = !isHeadingToStart(of: ap.section, from: fix.point, heading: heading)
+                && d > ap.minDistance + 60
+            if d > approachDistance(for: ap.section) + 200 || turnedAway {
+                approaching = nil
+            } else {
+                approaching = ap
+                return
+            }
+        }
+        var best: (section: SpeedSection, distance: Double)?
+        for s in sections where recentlyFinished[s.id] == nil && announcedApproach[s.id] == nil {
+            let d = GeoMath.distance(fix.point, s.start)
+            guard d > settings.sectionGateRadius, d <= approachDistance(for: s),
+                  isHeadingToStart(of: s, from: fix.point, heading: heading),
+                  d < (best?.distance ?? .greatestFiniteMagnitude) else { continue }
+            best = (s, d)
+        }
+        guard let best else { return }
+        announcedApproach[best.section.id] = fix.timestamp
+        approaching = Approaching(section: best.section, distance: best.distance, minDistance: best.distance)
+        events.append(.approaching(section: best.section, distance: best.distance))
+    }
+
+    /// 沒有經過起點的判定範圍（隧道口訊號差、GPS 跳點、匝道在起點之後才併入），但已經走在區間前段：
+    /// 一樣算進入，開始時間依目前車速往回推，倒數才不會偏長。
+    private func lateEntry(_ fix: VehicleFix) -> Active? {
+        guard arming == nil, let heading = lastCourse, fix.speedKmh >= settings.minimumSpeedForCourse else { return nil }
+        for s in sections where recentlyFinished[s.id] == nil {
+            guard let spot = locateNearStart(of: s, point: fix.point),
+                  spot.lateral <= onPathDistance,
+                  GeoMath.angleDifference(heading, spot.bearing) <= 45 else { continue }
+            let startTime = fix.timestamp.addingTimeInterval(-spot.along / max(1, fix.speedMps))
+            return makeActive(s, startTime: startTime, point: fix.point, lastTime: fix.timestamp, traveled: spot.along)
+        }
+        return nil
+    }
+
+    /// 把點投影到區間前段（起點開始 `lateEntryDistance` 公尺內）。
+    private func locateNearStart(of s: SpeedSection, point: GeoPoint) -> (along: Double, lateral: Double, bearing: Double)? {
+        // 先用直線距離過濾，大部分區間都不用算
+        guard GeoMath.distance(point, s.start) <= lateEntryDistance + onPathDistance else { return nil }
+        let path = s.displayPath
+        var walked = 0.0
+        var best: (along: Double, lateral: Double, bearing: Double)?
+        for (a, b) in zip(path, path.dropFirst()) {
+            let length = GeoMath.distance(a, b)
+            let projection = GeoMath.project(point, ontoSegment: a, b)
+            let along = walked + projection.t * length
+            if along <= lateEntryDistance, projection.distance < (best?.lateral ?? .greatestFiniteMagnitude) {
+                best = (along, projection.distance, GeoMath.bearing(from: a, to: b))
+            }
+            walked += length
+            if walked > lateEntryDistance { break }
+        }
+        return best
+    }
+
+    /// 沒有定位：最後一筆定位在起點前面時，依車速推算什麼時候經過起點。
+    private func enterWithoutFix(last: VehicleFix, now: Date) -> Active? {
+        let target: SpeedSection?
+        if let arm = arming {
+            target = arm.section
+        } else {
+            target = approaching?.section
+        }
+        guard let s = target, last.speedKmh >= settings.minimumSpeedForCourse else { return nil }
+        let eta = GeoMath.distance(last.point, s.start) / max(1, last.speedMps)
+        let startTime = last.timestamp.addingTimeInterval(eta)
+        guard now >= startTime else { return nil }
+        return makeActive(s, startTime: startTime, point: s.start, lastTime: startTime)
+    }
 
     /// 處理「接近起點」階段；確定通過起點時回傳啟動後的狀態。
     private func updateArming(_ fix: VehicleFix) -> Active? {
@@ -179,17 +368,9 @@ public final class SectionSpeedTracker {
             let passedStart = d > arm.minDistance + 5 || d <= 5
             if passedStart {
                 arming = nil
-                let s = arm.section
                 let startTime = d <= 5 ? fix.timestamp : arm.minTime
                 let startPoint = d <= 5 ? fix.point : arm.minPoint
-                let minSec = s.minimumSeconds(atKmh: settings.sectionEffectiveLimit(s.speedLimit, sectionID: s.groupID))
-                    * (1 + settings.sectionSafetyMargin)
-                return Active(section: s, startTime: startTime, minimumSeconds: minSec,
-                              traveled: 0, lastPoint: startPoint, lastTime: startTime,
-                              pendingMilestones: Self.milestones(forMinimumSeconds: minSec,
-                                                                 finalCountdown: settings.sectionFinalCountdown),
-                              zeroAnnounced: false, minEndDistance: .greatestFiniteMagnitude,
-                              minEndTime: nil)
+                return makeActive(arm.section, startTime: startTime, point: startPoint, lastTime: startTime)
             }
             if d > settings.sectionGateRadius * 2 {
                 arming = nil   // 離開起點範圍但沒有真正通過（例如轉彎離開）
@@ -223,20 +404,7 @@ public final class SectionSpeedTracker {
         a.lastTime = fix.timestamp
 
         let elapsed = fix.timestamp.timeIntervalSince(a.startTime)
-        let remaining = max(0, a.minimumSeconds - elapsed)
-
-        // 倒數提醒：跨過多個時間點時（例如 GPS 中斷），只報最新的那一個。
-        let crossed = a.pendingMilestones.filter { Double($0) >= remaining }
-        if !crossed.isEmpty {
-            a.pendingMilestones.removeAll { Double($0) >= remaining }
-            if remaining > 0, let latest = crossed.min() {
-                events.append(.remaining(seconds: latest))
-            }
-        }
-        if remaining <= 0 && !a.zeroAnnounced {
-            a.zeroAnnounced = true
-            events.append(.zeroReached)
-        }
+        updateCountdown(&a, now: fix.timestamp, events: &events)
 
         // 區間內超速警示（以瞬間車速判斷）
         let threshold = settings.sectionEffectiveLimit(a.section.speedLimit, sectionID: a.section.groupID)
@@ -292,11 +460,29 @@ public final class SectionSpeedTracker {
         active = a
     }
 
-    private func makeStatus(_ a: Active, now: Date) -> SectionStatus {
+    /// 倒數提醒：跨過多個時間點時（例如 GPS 中斷），只報最新的那一個。
+    private func updateCountdown(_ a: inout Active, now: Date, events: inout [SectionEvent]) {
+        let remaining = max(0, a.minimumSeconds - now.timeIntervalSince(a.startTime))
+        let crossed = a.pendingMilestones.filter { Double($0) >= remaining }
+        if !crossed.isEmpty {
+            a.pendingMilestones.removeAll { Double($0) >= remaining }
+            if remaining > 0, let latest = crossed.min() {
+                events.append(.remaining(seconds: latest))
+            }
+        }
+        if remaining <= 0 && !a.zeroAnnounced {
+            a.zeroAnnounced = true
+            events.append(.zeroReached)
+        }
+    }
+
+    /// assumedSpeed：沒有定位時，用最後的車速推算這段時間走了多遠（不影響累計的 traveled）。
+    private func makeStatus(_ a: Active, now: Date, assumedSpeed: Double = 0) -> SectionStatus {
         let elapsed = max(0, now.timeIntervalSince(a.startTime))
         let remaining = max(0, a.minimumSeconds - elapsed)
-        let remainingMeters = max(0, a.section.lengthMeters - a.traveled)
-        let avg = elapsed > 1 ? SpeedUnit.kmh(fromMps: a.traveled / elapsed) : 0
+        let traveled = a.traveled + max(0, assumedSpeed) * max(0, now.timeIntervalSince(a.lastTime))
+        let remainingMeters = max(0, a.section.lengthMeters - traveled)
+        let avg = elapsed > 1 ? SpeedUnit.kmh(fromMps: traveled / elapsed) : 0
         let limit = settings.sectionEffectiveLimit(a.section.speedLimit, sectionID: a.section.groupID)
         var suggested = limit
         if remaining > 0.5 {
@@ -305,7 +491,7 @@ public final class SectionSpeedTracker {
         return SectionStatus(section: a.section, startTime: a.startTime, elapsed: elapsed,
                              minimumSeconds: a.minimumSeconds, remainingSeconds: remaining,
                              earliestExit: a.startTime.addingTimeInterval(a.minimumSeconds),
-                             traveledMeters: a.traveled, remainingMeters: remainingMeters,
+                             traveledMeters: traveled, remainingMeters: remainingMeters,
                              averageKmh: avg, suggestedMaxKmh: suggested,
                              effectiveLimitKmh: limit)
     }

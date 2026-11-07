@@ -35,6 +35,19 @@ struct BannerGalleryView: View {
 
                 label("照相點（真實資料裡很長的地址）")
                 CameraBanner(target: CameraTarget(camera: longAddressCamera, distance: 280, phase: .pre, isOverspeed: false))
+
+                label("接近區間")
+                CameraBanner(target: SectionApproach(section: section, distance: 300).asCameraTarget)
+
+                label("導航：最長的指示縮短後、偏離路線")
+                NavigationBanner(progress: RouteProgress(nextStepIndex: 1, nextInstruction: "靠左行駛進入縣道122，朝臺灣新竹地方法院新竹簡易庭、新竹市政府前進",
+                                                         distanceToNextManeuver: 800, distanceRemaining: 7_300,
+                                                         distanceFromRoute: 0),
+                                 destination: "台北車站")
+                NavigationBanner(progress: RouteProgress(nextStepIndex: 1, nextInstruction: "右轉進入忠孝東路",
+                                                         distanceToNextManeuver: 350, distanceRemaining: 7_300,
+                                                         distanceFromRoute: 80, isOffRoute: true),
+                                 destination: "台北車站")
             }
             .padding()
         }

@@ -40,6 +40,8 @@ final class ActivityAlertPolicyTests: XCTestCase {
                        ActivityAlertContent(title: "區間時間已到", body: "可依速限行駛"))
         XCTAssertEqual(alert([], [.overspeedStarted(threshold: 70)]),
                        ActivityAlertContent(title: "區間測速超速", body: "車速超過70"))
+        XCTAssertEqual(alert([], [.approaching(section: section, distance: 300)]),
+                       ActivityAlertContent(title: "前方區間測速", body: "300公尺後進入，速限60"))
     }
 
     func testSectionOverspeedIsSkippedWhileCameraOverspeedIsActive() {

@@ -243,6 +243,204 @@ final class SectionSpeedTrackerTests: XCTestCase {
         XCTAssertFalse(events.contains { if case .overspeedStarted = $0.event { return true }; return false })
     }
 
+    // MARK: - 預告（實測：自強隧道、台64 都是進去之後才提醒）
+
+    private func approachEvents(_ events: [TimedEvent<SectionEvent>]) -> [(time: TimeInterval, distance: Double)] {
+        events.compactMap { e in
+            if case let .approaching(_, d) = e.event { return (e.time, d) }
+            return nil
+        }
+    }
+
+    /// 起點在 origin 北方 1 km、往北的區間。
+    private func distantSection(limit: Int = 60) -> SpeedSection {
+        let start = GeoMath.destination(from: origin, bearing: 0, distance: 1_000)
+        return SpeedSection(id: "far", name: "測試區間", start: start,
+                            end: GeoMath.destination(from: start, bearing: 0, distance: 3_000),
+                            lengthMeters: 3_000, speedLimit: limit)
+    }
+
+    func testApproachAnnouncedOnceBeforeEnteringAt300Meters() {
+        let tracker = SectionSpeedTracker(sections: [distantSection()], settings: strictSettings())
+        let events = runSections(tracker, straightTrack(from: origin, bearing: 0, speedKmh: 50, seconds: 120),
+                                 includeApproach: true)
+        let approach = approachEvents(events)
+        XCTAssertEqual(approach.count, 1, "只預告一次")
+        XCTAssertEqual(approach[0].distance, 300, accuracy: 15)
+        guard let entered = events.first(where: { if case .entered = $0.event { return true }; return false }) else {
+            return XCTFail("應該要進入區間")
+        }
+        // 50 km/h = 13.9 m/s：預告到進入約 300 m ≈ 21 秒
+        XCTAssertEqual(entered.time - approach[0].time, 21.6, accuracy: 2)
+    }
+
+    func testApproachUsesLongerDistanceOnFastRoads() {
+        let tracker = SectionSpeedTracker(sections: [distantSection(limit: 90)], settings: strictSettings())
+        let events = runSections(tracker, straightTrack(from: origin, bearing: 0, speedKmh: 90, seconds: 60),
+                                 includeApproach: true)
+        XCTAssertEqual(approachEvents(events).first?.distance ?? 0, 600, accuracy: 30)
+    }
+
+    func testApproachStatusShownUntilEntered() {
+        let tracker = SectionSpeedTracker(sections: [distantSection()], settings: strictSettings())
+        var approaches: [SectionApproach] = []
+        var statusSeen = false
+        for f in straightTrack(from: origin, bearing: 0, speedKmh: 50, seconds: 100) {
+            let r = tracker.process(f)
+            if let a = r.approach {
+                XCTAssertFalse(statusSeen, "進入區間之後就不該再顯示接近中")
+                approaches.append(a)
+            }
+            if r.status != nil { statusSeen = true }
+        }
+        XCTAssertGreaterThan(approaches.count, 10)
+        XCTAssertLessThan(approaches.last!.distance, approaches.first!.distance)
+        XCTAssertEqual(approaches.first!.asCameraTarget.camera.speedLimit, 60)
+    }
+
+    func testNoApproachFromOppositeOrCrossDirection() {
+        let s = distantSection()
+        // 反方向：從區間裡面往南開，經過起點
+        let beyond = GeoMath.destination(from: s.start, bearing: 0, distance: 400)
+        let opposite = runSections(SectionSpeedTracker(sections: [s], settings: strictSettings()),
+                                   straightTrack(from: beyond, bearing: 180, speedKmh: 50, seconds: 60), includeApproach: true)
+        XCTAssertTrue(approachEvents(opposite).isEmpty)
+        // 橫向：從起點西邊 400 m 往東開，橫越起點
+        let west = GeoMath.destination(from: s.start, bearing: 270, distance: 400)
+        let cross = runSections(SectionSpeedTracker(sections: [s], settings: strictSettings()),
+                                straightTrack(from: west, bearing: 90, speedKmh: 50, seconds: 60), includeApproach: true)
+        XCTAssertTrue(approachEvents(cross).isEmpty)
+    }
+
+    func testApproachClearedAfterTurningAway() {
+        let tracker = SectionSpeedTracker(sections: [distantSection()], settings: strictSettings())
+        // 往北開到離起點約 200 m，然後右轉離開
+        var last: SectionApproach?
+        var seen = false
+        for f in segmentedTrack(from: origin, segments: [(0, 36, 80), (90, 36, 60)]) {
+            let r = tracker.process(f)
+            if r.approach != nil { seen = true }
+            last = r.approach
+            XCTAssertTrue(r.events.allSatisfy { if case .entered = $0 { return false }; return true })
+        }
+        XCTAssertTrue(seen)
+        XCTAssertNil(last, "轉彎離開之後不該還顯示接近區間")
+    }
+
+    // MARK: - 沒有經過起點的判定範圍
+
+    /// 匝道在起點之後才併入：第一筆定位就已經在區間裡，一樣算進入，開始時間往回推。
+    func testEntersWhenFirstSeenShortlyAfterStart() {
+        let s = distantSection()
+        // 從起點東邊的匝道往西北併入，到起點北方 150 m
+        let onPath = GeoMath.destination(from: s.start, bearing: 0, distance: 150)
+        let ramp = GeoMath.destination(from: onPath, bearing: 90, distance: 300)
+        let fixes = segmentedTrack(from: ramp, segments: [(270, 50, 21), (0, 50, 30)])
+        let tracker = SectionSpeedTracker(sections: [s], settings: strictSettings())
+        var startTime: Date?
+        for f in fixes {
+            if let st = tracker.process(f).status, startTime == nil { startTime = st.startTime }
+        }
+        let start = try! XCTUnwrap(startTime, "應該要算進入區間")
+        // 併入點是第 21 秒左右，往回推約 150 m ≈ 11 秒
+        XCTAssertLessThan(start.timeIntervalSince(t0), 21)
+    }
+
+    /// GPS 從起點前 150 m 直接跳到起點後 100 m（隧道口常見），沒有定位落在 60 m 判定範圍裡。
+    func testEntersWhenGpsJumpsOverGate() {
+        let s = distantSection()
+        let tracker = SectionSpeedTracker(sections: [s], settings: strictSettings())
+        var entered = false
+        let before = GeoMath.destination(from: s.start, bearing: 180, distance: 150)
+        let after = GeoMath.destination(from: s.start, bearing: 0, distance: 100)
+        let mps = SpeedUnit.mps(fromKmh: 50)
+        for (i, p) in [before, after].enumerated() {
+            let f = VehicleFix(point: p, speedMps: mps, course: 0, timestamp: t0.addingTimeInterval(Double(i) * 18))
+            entered = entered || tracker.process(f).events.contains { if case .entered = $0 { return true }; return false }
+        }
+        XCTAssertTrue(entered)
+    }
+
+    func testDoesNotEnterMidSection() {
+        // 離起點 1 km 才上路（交流道從區間中段上來）：照相機沒拍到起點，不算進入
+        let s = distantSection()
+        let mid = GeoMath.destination(from: s.start, bearing: 0, distance: 1_000)
+        let events = runSections(SectionSpeedTracker(sections: [s], settings: strictSettings()),
+                                 straightTrack(from: mid, bearing: 0, speedKmh: 50, seconds: 30))
+        XCTAssertFalse(events.contains { if case .entered = $0.event { return true }; return false })
+    }
+
+    // MARK: - 隧道裡沒有定位
+
+    /// 定位在隧道口前 100 m 中斷：依車速推算經過起點的時間，倒數和語音繼續，出隧道後接回定位。
+    func testTunnelWithoutGpsKeepsCountingDown() {
+        // 900 m 隧道，速限 50（容許值 0）：900 ÷ 13.89 × 1.03 = 66.7 秒
+        let start = GeoMath.destination(from: origin, bearing: 0, distance: 500)
+        let end = GeoMath.destination(from: start, bearing: 0, distance: 900)
+        let s = SpeedSection(id: "tunnel-f", name: "隧道（往北）", start: start, end: end, lengthMeters: 900, speedLimit: 50)
+        let tracker = SectionSpeedTracker(sections: [s], settings: strictSettings())
+        let mps = SpeedUnit.mps(fromKmh: 50)
+        let all = straightTrack(from: origin, bearing: 0, speedKmh: 50, seconds: 110)
+        var events: [TimedEvent<SectionEvent>] = []
+        var statuses: [SectionStatus] = []
+        for (i, f) in all.enumerated() {
+            let along = mps * Double(i)
+            let now = f.timestamp
+            // 隧道口前 100 m 到隧道口後 30 m 沒有定位
+            if along > 400 && along < 1_430 {
+                if let r = tracker.tick(now: now) {
+                    for e in r.events { events.append(TimedEvent(time: now.timeIntervalSince(t0), event: e)) }
+                    if let st = r.status { statuses.append(st) }
+                }
+                continue
+            }
+            let r = tracker.process(f)
+            for e in r.events { events.append(TimedEvent(time: now.timeIntervalSince(t0), event: e)) }
+        }
+        guard let entered = events.first(where: { if case .entered = $0.event { return true }; return false }) else {
+            return XCTFail("沒有定位也要進入區間：\(events.map { $0.event })")
+        }
+        XCTAssertEqual(entered.time, 500 / mps, accuracy: 2, "應該在經過隧道口的時間進入")
+        XCTAssertFalse(statuses.isEmpty, "隧道裡畫面的倒數要繼續")
+        XCTAssertEqual(statuses.last!.remainingMeters, max(0, 900 - mps * statuses.last!.elapsed), accuracy: 30)
+        let remaining = events.compactMap { e -> Int? in
+            if case let .remaining(sec) = e.event { return sec }
+            return nil
+        }
+        XCTAssertEqual(remaining, [60, 30, 10])
+        XCTAssertTrue(events.contains { $0.event == .zeroReached })
+    }
+
+    func testTickDoesNothingWhileGpsIsFine() {
+        let tracker = SectionSpeedTracker(sections: [section()], settings: strictSettings())
+        for f in straightTrack(from: origin, bearing: 0, speedKmh: 50, seconds: 30) {
+            _ = tracker.process(f)
+            XCTAssertNil(tracker.tick(now: f.timestamp.addingTimeInterval(1)))
+        }
+    }
+
+    func testTickDoesNotEnterWhenStopped() {
+        let start = GeoMath.destination(from: origin, bearing: 0, distance: 200)
+        let s = SpeedSection(id: "t", name: "t", start: start,
+                             end: GeoMath.destination(from: start, bearing: 0, distance: 900),
+                             lengthMeters: 900, speedLimit: 50)
+        let tracker = SectionSpeedTracker(sections: [s], settings: strictSettings())
+        _ = tracker.process(VehicleFix(point: origin, speedMps: 10, course: 0, timestamp: t0))
+        // 塞車停在隧道口前：沒有車速就不推算
+        _ = tracker.process(VehicleFix(point: origin, speedMps: 0, course: 0, timestamp: t0.addingTimeInterval(1)))
+        let result = tracker.tick(now: t0.addingTimeInterval(60))
+        XCTAssertFalse(result?.events.contains { if case .entered = $0 { return true }; return false } ?? false)
+    }
+
+    func testShortNameDropsAdministrativePrefix() {
+        func named(_ name: String) -> SpeedSection {
+            SpeedSection(id: "n", name: name, start: origin, end: origin, lengthMeters: 1, speedLimit: 50)
+        }
+        XCTAssertEqual(named("新北市中和區 台64線 1.6K–5.4K（往西）").shortName, "台64線 1.6K–5.4K")
+        XCTAssertEqual(named("臺北市 自強隧道（往北）").shortName, "自強隧道")
+        XCTAssertEqual(named("北宜 19K–23.1K（往宜蘭）").shortName, "北宜 19K–23.1K")
+    }
+
     func testSafetyMarginIsConfigurable() {
         var settings = strictSettings()
         settings.sectionSafetyMargin = 0

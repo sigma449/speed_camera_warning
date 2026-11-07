@@ -30,7 +30,7 @@ struct RootView: View {
                 }
                 if let section = model.sectionStatus {
                     SectionBanner(status: section, currentSpeed: model.currentSpeedKmh)
-                } else if let target = model.cameraTarget, target.phase >= .pre {
+                } else if let target = model.bannerTarget {
                     CameraBanner(target: target)
                 }
                 if let message = model.statusMessage {

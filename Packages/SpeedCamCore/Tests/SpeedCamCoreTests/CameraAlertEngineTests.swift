@@ -155,10 +155,50 @@ final class CameraAlertEngineTests: XCTestCase {
         XCTAssertEqual(fixed.filter { $0.event.isOverspeedStarted }.count, 1)
     }
 
+    /// 區間照相機在區間路線上：由 SectionSpeedTracker 預告和倒數，這裡不再當成一支固定照相提醒。
+    /// 否則自強隧道中段那支會在隧道裡才跳出來，也會和倒數重複。
+    func testSectionCameraOnKnownSectionIsNotAlertedAsFixedCamera() {
+        let cam = camera(north: 1_000, limit: 50, type: .section)
+        let start = GeoMath.destination(from: origin, bearing: 0, distance: 600)
+        let end = GeoMath.destination(from: origin, bearing: 0, distance: 1_500)
+        let sec = SpeedSection(id: "tunnel-f", name: "隧道（往北）", start: start, end: end,
+                               lengthMeters: 900, speedLimit: 50)
+        let covered = engine([cam])
+        covered.sections = [sec]
+        XCTAssertTrue(covered.isCoveredBySection(cam))
+        XCTAssertTrue(runAlerts(covered, straightTrack(from: origin, bearing: 0, speedKmh: 50, seconds: 120)).isEmpty)
+
+        // 沒有對應區間的區間照相機（資料解析不了的那些）仍然要提醒
+        let alone = engine([cam])
+        let events = runAlerts(alone, straightTrack(from: origin, bearing: 0, speedKmh: 50, seconds: 120))
+        XCTAssertEqual(events.filter { $0.event.isPre }.count, 1)
+
+        // 一般照相不受影響
+        let fixed = camera("fixed", north: 1_000, limit: 50)
+        let withFixed = engine([fixed])
+        withFixed.sections = [sec]
+        XCTAssertFalse(withFixed.isCoveredBySection(fixed))
+        XCTAssertEqual(runAlerts(withFixed, straightTrack(from: origin, bearing: 0, speedKmh: 50, seconds: 120))
+            .filter { $0.event.isPre }.count, 1)
+    }
+
+    func testNearAlertSaysWhetherPreAlertWasGiven() {
+        // 正常接近：預告過了
+        let normal = runAlerts(engine([camera(north: 1_000)]), straightTrack(from: origin, bearing: 0, speedKmh: 50, seconds: 90))
+        guard case let .nearAlert(_, _, afterPre)? = normal.first(where: { $0.event.isNear })?.event else { return XCTFail() }
+        XCTAssertTrue(afterPre)
+        // 第一次看到就在近距內：沒有預告過，語音要念完整的句子
+        let sudden = runAlerts(engine([camera(north: 80)]), straightTrack(from: origin, bearing: 0, speedKmh: 40, seconds: 20))
+        guard case let .nearAlert(_, _, afterPre2)? = sudden.first(where: { $0.event.isNear })?.event else { return XCTFail() }
+        XCTAssertFalse(afterPre2)
+    }
+
     func testSectionCameraUsesNearbySectionOverride() {
+        // 照相機在區間起點外 400 m（超過 300 m 的範圍，不算在區間路線上），但還是套用那一段的容許值
         let cam = camera(north: 1_000, limit: 40, type: .section)
-        let end = GeoMath.destination(from: cam.point, bearing: 0, distance: 4_000)
-        let sec = SpeedSection(id: "s9-f", name: "測試（往北）", start: cam.point, end: end,
+        let start = GeoMath.destination(from: cam.point, bearing: 0, distance: 400)
+        let end = GeoMath.destination(from: start, bearing: 0, distance: 4_000)
+        let sec = SpeedSection(id: "s9-f", name: "測試（往北）", start: start, end: end,
                                lengthMeters: 4_000, speedLimit: 40)
         var settings = AlertSettings()      // 預設 +10 → 門檻 50
         let e1 = engine([cam], settings: settings)
@@ -195,7 +235,7 @@ final class CameraAlertEngineTests: XCTestCase {
             events.compactMap { e -> String? in
                 guard pred(e.event) else { return nil }
                 switch e.event {
-                case let .preAlert(c, _), let .nearAlert(c, _), let .passed(c): return c.id
+                case let .preAlert(c, _), let .nearAlert(c, _, _), let .passed(c): return c.id
                 default: return nil
                 }
             }

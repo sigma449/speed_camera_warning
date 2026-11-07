@@ -9,7 +9,6 @@ final class NavigationController {
     private(set) var route: MKRoute?
     private(set) var destination: MKMapItem?
     private var tracker: RouteProgressTracker?
-    private var lastRerouteRequest = Date.distantPast
 
     var isActive: Bool { route != nil }
 
@@ -35,10 +34,12 @@ final class NavigationController {
     // MARK: 路線
 
     /// 依車種規劃路線。汽車用不到線形資料，就不載入。
-    func calculateRoute(to destination: MKMapItem, mode: VehicleMode) async throws -> RoutePlan<MKRoute> {
+    /// source：重新規劃時傳最新定位。系統的「目前位置」可能還是幾秒前的，開車時會差好幾十公尺。
+    func calculateRoute(to destination: MKMapItem, mode: VehicleMode,
+                        from source: MKMapItem? = nil) async throws -> RoutePlan<MKRoute> {
         var rules = RouteRules.noData
         if mode != .car { rules = await RoadLineStore.loadRules() }
-        return try await RoutePlanner.plan(from: MKMapItem.forCurrentLocation(), to: destination,
+        return try await RoutePlanner.plan(from: source ?? MKMapItem.forCurrentLocation(), to: destination,
                                            mode: mode, rules: rules)
     }
 
@@ -46,8 +47,7 @@ final class NavigationController {
         self.route = route
         self.destination = destination
         let polyline = MapItems.coordinates(of: route.polyline)
-        let steps = route.steps.map { RouteStepInfo(instruction: $0.instructions, distance: $0.distance) }
-        tracker = RouteProgressTracker(polyline: polyline, steps: steps)
+        tracker = RouteProgressTracker(polyline: polyline, steps: MapItems.stepInfos(of: route))
     }
 
     func stop() {
@@ -60,13 +60,6 @@ final class NavigationController {
         tracker?.process(fix)
     }
 
-    /// 重新規劃有頻率限制（至少間隔 15 秒），避免在路口附近反覆觸發。
-    func shouldReroute(now: Date = Date()) -> Bool {
-        guard now.timeIntervalSince(lastRerouteRequest) >= 15 else { return false }
-        lastRerouteRequest = now
-        return true
-    }
-
     /// 第一個有內容的指示（開始導航時念出來）。
     var firstInstruction: String? {
         route?.steps.first { !$0.instructions.isEmpty }?.instructions
@@ -75,6 +68,9 @@ final class NavigationController {
     /// 依指示文字挑選轉彎箭頭圖示。
     static func symbol(for instruction: String) -> String {
         if instruction.contains("迴轉") { return "arrow.uturn.down" }
+        if instruction.contains("下交流道") {
+            return instruction.contains("左側") ? "arrow.up.left" : "arrow.up.right"
+        }
         if instruction.contains("靠左") { return "arrow.up.left" }
         if instruction.contains("靠右") { return "arrow.up.right" }
         if instruction.contains("左轉") { return "arrow.turn.up.left" }

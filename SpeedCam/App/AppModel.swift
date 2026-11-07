@@ -1,3 +1,4 @@
+import AVFoundation
 import Combine
 import CoreLocation
 import Foundation
@@ -30,6 +31,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var lastFix: VehicleFix?
     @Published private(set) var cameraTarget: CameraTarget?
     @Published private(set) var sectionStatus: SectionStatus?
+    /// 正在接近、還沒進入的區間。
+    @Published private(set) var sectionApproach: SectionApproach?
     @Published private(set) var routeProgress: RouteProgress?
     @Published private(set) var route: MKRoute?
     @Published private(set) var destinationName: String?
@@ -66,8 +69,17 @@ final class AppModel: ObservableObject {
     /// 目前畫面要顯示的速限：區間中用區間速限，否則用前方照相點的速限。
     var displayedSpeedLimit: Int? {
         if let s = sectionStatus { return s.section.speedLimit }
-        return cameraTarget?.camera.speedLimit
+        return cameraTarget?.camera.speedLimit ?? sectionApproach?.section.speedLimit
     }
+
+    /// 上方橫幅要顯示的照相點：預告過的照相點優先，其次是接近中的區間。
+    var bannerTarget: CameraTarget? {
+        if let target = cameraTarget, target.phase >= .pre { return target }
+        return sectionApproach?.asCameraTarget
+    }
+
+    /// Live Activity 目前的狀態（設定頁顯示，實機看不到時才知道原因）。
+    var liveActivityStatusText: String { activity.statusText }
 
     var isOverspeed: Bool {
         if cameraTarget?.isOverspeed == true { return true }
@@ -88,6 +100,13 @@ final class AppModel: ObservableObject {
     private var sectionTracker: SectionSpeedTracker
     private var demoTask: Task<Void, Never>?
     private var didAppear = false
+    /// 巡航中每秒執行：沒有定位時讓區間倒數繼續跑，Live Activity 沒開始成功時再試一次。
+    private var tickTask: Task<Void, Never>?
+    private var lastActivityAttempt = Date.distantPast
+    private var rerouteTask: Task<Void, Never>?
+    private var lastRerouteAnnouncement = Date.distantPast
+    private var audioRouteObserver: NSObjectProtocol?
+    private var isInCar = false
 
     private static let settingsKey = "alertSettings.v2"
     private static let legacySettingsKey = "alertSettings.v1"
@@ -137,6 +156,10 @@ final class AppModel: ObservableObject {
             self?.applySnappedPath(path, toGroup: groupID)
         }
         applySettingsToComponents()
+        audioRouteObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor in self?.audioRouteChanged() }
+            }
     }
 
     private static func parsePreviewTarget(_ arguments: [String]) -> (coordinate: CLLocationCoordinate2D, name: String)? {
@@ -176,10 +199,48 @@ final class AppModel: ObservableObject {
     }
 
     func sceneBecameActive() {
-        // Live Activity 最長 8 小時，而且只能在前景開始；回到 App 時視需要重新開始。
-        if isCruising && settings.liveActivityEnabled && activity.needsRestart {
-            activity.start(initial: activityState())
+        restartLiveActivityIfNeeded()
+    }
+
+    /// Live Activity 最長 8 小時，而且只能在前景開始；剛開 App 時太早要求也可能被系統拒絕。
+    /// 所以回到 App 時、以及在前景的每隔幾秒都檢查一次，沒有在跑就再開。
+    private func restartLiveActivityIfNeeded() {
+        guard isCruising, !demoMode, settings.liveActivityEnabled, activity.needsRestart,
+              UIApplication.shared.applicationState != .background,
+              Date().timeIntervalSince(lastActivityAttempt) >= 5 else { return }
+        lastActivityAttempt = Date()
+        activity.start(initial: activityState())
+    }
+
+    /// 接上 CarPlay 時主動更新一次：Live Activity 可能是連上之前開始的，內容也可能已經過期。
+    private func audioRouteChanged() {
+        let inCar = AVAudioSession.sharedInstance().currentRoute.outputs.contains { $0.portType == .carAudio }
+        defer { isInCar = inCar }
+        guard inCar, !isInCar, isCruising, settings.liveActivityEnabled else { return }
+        activity.refresh(activityState())
+    }
+
+    private func startTicking() {
+        tickTask?.cancel()
+        tickTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                self?.tick()
+            }
         }
+    }
+
+    private func tick() {
+        restartLiveActivityIfNeeded()
+        // 隧道裡沒有定位：倒數和語音依時間繼續
+        guard let result = sectionTracker.tick(now: Date()) else { return }
+        sectionStatus = result.status
+        sectionApproach = result.approach
+        for event in result.events { handleSectionEvent(event) }
+        let alert = settings.liveActivityAlertsEnabled
+            ? ActivityAlertPolicy.alert(cameraEvents: [], sectionEvents: result.events)
+            : nil
+        activity.update(activityState(), alert: alert)
     }
 
     // MARK: 巡航
@@ -205,8 +266,10 @@ final class AppModel: ObservableObject {
         sectionTracker.reset()
         location.start()
         if settings.liveActivityEnabled {
+            lastActivityAttempt = Date()
             activity.start(initial: activityState())
         }
+        startTicking()
         announcer.speak("開始巡航，測速提醒已開啟")
     }
 
@@ -214,12 +277,15 @@ final class AppModel: ObservableObject {
         guard isCruising else { return }
         endNavigation(silently: true)
         isCruising = false
+        tickTask?.cancel()
+        tickTask = nil
         UIApplication.shared.isIdleTimerDisabled = false
         location.stop()
         activity.end()
         announcer.stopAll()
         cameraTarget = nil
         sectionStatus = nil
+        sectionApproach = nil
     }
 
     func toggleCruise() {
@@ -354,6 +420,8 @@ final class AppModel: ObservableObject {
 
     func endNavigation(silently: Bool = false) {
         guard navigation.isActive else { return }
+        rerouteTask?.cancel()
+        rerouteTask = nil
         navigation.stop()
         route = nil
         routeProgress = nil
@@ -362,17 +430,35 @@ final class AppModel: ObservableObject {
         if !silently { announcer.speak("導航結束") }
     }
 
+    /// 偏離路線時由 `RouteProgressTracker` 觸發；還沒回到路線上會每 15 秒再觸發一次，
+    /// 所以這次失敗（沒有網路）或新路線又走錯，都不會卡在舊路線上。
     private func reroute() {
-        guard let destination = navigation.destination, navigation.shouldReroute() else { return }
-        announcer.speak(AnnouncementFormatter.rerouting)
-        Task {
+        guard let destination = navigation.destination, rerouteTask == nil else { return }
+        // 重試時不要一直念
+        if Date().timeIntervalSince(lastRerouteAnnouncement) >= 60 {
+            lastRerouteAnnouncement = Date()
+            announcer.speak(AnnouncementFormatter.rerouting)
+        }
+        let source = lastFix.map { MapItems.item(at: $0.point) }
+        rerouteTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.rerouteTask = nil }
             do {
-                let plan = try await navigation.calculateRoute(to: destination, mode: settings.vehicleMode)
-                navigation.start(route: plan.route, destination: destination)
-                route = plan.route
-                if let warning = plan.warning { statusMessage = warning.text }
+                let plan = try await self.navigation.calculateRoute(to: destination, mode: self.settings.vehicleMode,
+                                                                    from: source)
+                // 等待期間使用者可能已經結束導航
+                guard !Task.isCancelled, self.navigation.destination === destination else { return }
+                self.navigation.start(route: plan.route, destination: destination)
+                self.route = plan.route
+                self.statusMessage = plan.warning?.text
+                // 不等下一筆定位：藍線和下一步馬上換成新路線
+                if let fix = self.lastFix {
+                    self.routeProgress = self.navigation.process(fix)?.progress
+                }
+                self.activity.update(self.activityState(), alert: nil)
             } catch {
-                statusMessage = "重新規劃失敗：\(error.localizedDescription)"
+                guard !Task.isCancelled else { return }
+                self.statusMessage = "重新規劃失敗，稍後再試：\(error.localizedDescription)"
             }
         }
     }
@@ -388,6 +474,7 @@ final class AppModel: ObservableObject {
 
         cameraTarget = cam.target
         sectionStatus = sec.status
+        sectionApproach = sec.approach
         routeProgress = nav?.progress
 
         // 語音優先順序：近距 / 超速 > 區間 > 預告 > 導航
@@ -409,9 +496,13 @@ final class AppModel: ObservableObject {
         case let .preAlert(camera, distance):
             let th = settings.thresholds(speedLimit: camera.speedLimit, currentSpeedKmh: fix.speedKmh)
             announcer.speak(AnnouncementFormatter.cameraAlert(camera: camera, announcedDistance: spoken(distance, threshold: th.pre)))
-        case let .nearAlert(camera, distance):
+        case let .nearAlert(camera, distance, afterPre):
             let th = settings.thresholds(speedLimit: camera.speedLimit, currentSpeedKmh: fix.speedKmh)
-            announcer.speak(AnnouncementFormatter.cameraAlert(camera: camera, announcedDistance: spoken(distance, threshold: th.near)),
+            let announced = spoken(distance, threshold: th.near)
+            // 預告過了，近距只要念距離；第一次提醒就在近距內時才念完整的句子
+            announcer.speak(afterPre
+                            ? AnnouncementFormatter.cameraNearAfterPre(announcedDistance: announced)
+                            : AnnouncementFormatter.cameraAlert(camera: camera, announcedDistance: announced),
                             urgent: true)
         case .passed:
             announcer.passTone()
@@ -432,6 +523,10 @@ final class AppModel: ObservableObject {
 
     private func handleSectionEvent(_ event: SectionEvent) {
         switch event {
+        case let .approaching(section, distance):
+            let threshold = settings.thresholds(speedLimit: section.speedLimit, currentSpeedKmh: 0).pre
+            announcer.speak(AnnouncementFormatter.sectionApproaching(
+                section: section, announcedDistance: spoken(distance, threshold: threshold)))
         case let .entered(section, minimumSeconds):
             announcer.speak(AnnouncementFormatter.sectionEntered(
                 section: section, minimumSeconds: minimumSeconds,
@@ -476,6 +571,12 @@ final class AppModel: ObservableObject {
         var s = SpeedCamActivityState()
         s.currentSpeedKmh = currentSpeedKmh
         s.vehicleModeName = settings.vehicleMode.shortName
+        // 導航資訊一律放進去：區間和照相模式快到轉彎時，小字也要顯示下一步（見 navHint）
+        if let p = routeProgress {
+            s.maneuverText = p.isOffRoute ? "重新規劃中" : ManeuverText.short(p.nextInstruction)
+            s.maneuverSymbol = p.isOffRoute ? "arrow.triangle.2.circlepath" : NavigationController.symbol(for: p.nextInstruction)
+            s.maneuverDistance = p.isOffRoute ? nil : p.distanceToNextManeuver
+        }
         if let sec = sectionStatus {
             s.mode = .section
             s.sectionEarliestExit = sec.earliestExit
@@ -491,11 +592,14 @@ final class AppModel: ObservableObject {
             s.distanceMeters = target.distance
             s.speedLimit = target.camera.speedLimit
             s.isOverspeed = target.isOverspeed
-        } else if let p = routeProgress {
+        } else if let approach = sectionApproach {
+            s.mode = .camera
+            s.cameraTypeName = CameraType.section.displayName
+            s.cameraSymbol = "timer"
+            s.distanceMeters = approach.distance
+            s.speedLimit = approach.section.speedLimit
+        } else if routeProgress != nil {
             s.mode = .navigation
-            s.maneuverText = p.nextInstruction
-            s.maneuverSymbol = NavigationController.symbol(for: p.nextInstruction)
-            s.maneuverDistance = p.distanceToNextManeuver
         } else {
             s.mode = .idle
         }

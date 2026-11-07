@@ -115,6 +115,33 @@ def attach_paths(sections: list[dict], path_lookup, log=print) -> int:
     return done
 
 
+def apply_official_lengths(sections: list[dict], path: str, log=print) -> int:
+    """用警方公告的偵測長度（manual/section_lengths.csv）蓋過里程差，回傳套用的段數。"""
+    try:
+        with open(path, encoding="utf-8-sig") as f:
+            rows = _rows(f.read())
+    except FileNotFoundError:
+        return 0
+    from .mileposts import normalize_road
+    applied = 0
+    for row in rows:
+        road = normalize_road(row.get("road"))
+        a, b, length = parse_float(row.get("from_km")), parse_float(row.get("to_km")), parse_float(row.get("length_m"))
+        if road is None or a is None or b is None or not length:
+            log(f"  [警告] 區間長度資料不完整：{row}")
+            continue
+        matched = [s for s in sections if s.get("road") == road and s.get("startKm") == a and s.get("endKm") == b]
+        if not matched:
+            log(f"  [警告] 公告長度對不到區間：{road} {a}K→{b}K")
+            continue
+        for s in matched:
+            s["lengthMeters"] = round(length, 1)
+            s["lengthEstimated"] = False
+        applied += len(matched)
+    log(f"公告長度：套用 {applied} 段")
+    return applied
+
+
 class SectionError(ValueError):
     pass
 

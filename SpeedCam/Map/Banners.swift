@@ -130,16 +130,25 @@ struct NavigationBanner: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            Image(systemName: NavigationController.symbol(for: progress.nextInstruction))
+            Image(systemName: progress.isOffRoute ? "arrow.triangle.2.circlepath"
+                  : NavigationController.symbol(for: progress.nextInstruction))
                 .font(.system(size: 40, weight: .bold))
                 .frame(width: 56)
             VStack(alignment: .leading, spacing: 2) {
-                Text(AnnouncementFormatter.displayDistance(progress.distanceToNextManeuver))
-                    .font(.system(size: 34, weight: .heavy, design: .rounded))
-                    .monospacedDigit()
-                Text(progress.nextInstruction)
-                    .font(.headline)
-                    .lineLimit(2)
+                if progress.isOffRoute {
+                    // 舊路線的下一步已經不對了，不要繼續顯示
+                    Text("重新規劃中")
+                        .font(.system(size: 34, weight: .heavy, design: .rounded))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                } else {
+                    Text(AnnouncementFormatter.displayDistance(progress.distanceToNextManeuver))
+                        .font(.system(size: 34, weight: .heavy, design: .rounded))
+                        .monospacedDigit()
+                    Text(ManeuverText.short(progress.nextInstruction))
+                        .font(.headline)
+                        .lineLimit(2)
+                }
                 if let destination {
                     Text("往 \(destination)・剩 \(AnnouncementFormatter.displayDistance(progress.distanceRemaining))")
                         .font(.footnote)

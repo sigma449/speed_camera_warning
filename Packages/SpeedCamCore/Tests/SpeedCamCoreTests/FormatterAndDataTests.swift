@@ -30,6 +30,19 @@ final class AnnouncementFormatterTests: XCTestCase {
                        "前方100公尺，平面測速照相，速限40")
     }
 
+    /// 使用者實測：近距時語音精簡一點，用幾公尺就好。
+    func testNearAlertAfterPreOnlySaysDistance() {
+        XCTAssertEqual(AnnouncementFormatter.cameraNearAfterPre(announcedDistance: 100), "100公尺")
+        XCTAssertEqual(AnnouncementFormatter.cameraNearAfterPre(announcedDistance: 200), "200公尺")
+    }
+
+    func testSectionApproachingText() {
+        let section = SpeedSection(id: "s", name: "測試", start: GeoPoint(lat: 25, lon: 121),
+                                   end: GeoPoint(lat: 25.01, lon: 121), lengthMeters: 1_100, speedLimit: 70)
+        XCTAssertEqual(AnnouncementFormatter.sectionApproaching(section: section, announcedDistance: 300),
+                       "前方300公尺，進入區間測速，速限70")
+    }
+
     func testRoadLevelDecodingToleratesUnknownValues() throws {
         let json = #"[{"id":"a","type":"fixed","lat":25,"lon":121,"address":"x","level":"elevated"},"#
             + #"{"id":"b","type":"fixed","lat":25,"lon":121,"address":"y","level":"tunnel"},"#

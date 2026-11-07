@@ -195,10 +195,23 @@ struct ReplayLeg: Decodable {
     let speedKmh: Double?
 }
 
+/// 隧道裡沒有定位。模擬時在這些範圍內不給定位，只呼叫 tick（App 每秒做的事）。
+let tunnels: [(name: String, a: GeoPoint, b: GeoPoint)] = [
+    ("自強隧道", GeoPoint(lat: 25.08698, lon: 121.54930), GeoPoint(lat: 25.09442, lon: 121.54870)),
+    ("辛亥隧道", GeoPoint(lat: 25.01000, lon: 121.55730), GeoPoint(lat: 25.01320, lon: 121.55400)),
+]
+
+func isInTunnel(_ p: GeoPoint) -> Bool {
+    tunnels.contains { t in
+        let projection = GeoMath.project(p, ontoSegment: t.a, t.b)
+        return projection.distance <= 80 && projection.t > 0 && projection.t < 1
+    }
+}
+
 func describe(_ event: CameraAlertEvent) -> String? {
     switch event {
     case let .preAlert(c, d): return "【照相預告】\(Int(d)) m \(c.displayTypeName) 速限\(c.speedLimit ?? 0) \(c.address)"
-    case let .nearAlert(c, d): return "【照相近距】\(Int(d)) m \(c.displayTypeName) \(c.address)"
+    case let .nearAlert(c, d, afterPre): return "【照相近距】\(Int(d)) m \(afterPre ? "只念距離" : "完整句子") \(c.address)"
     case let .passed(c): return "【通過照相】\(c.address)"
     default: return nil
     }
@@ -206,6 +219,7 @@ func describe(_ event: CameraAlertEvent) -> String? {
 
 func describe(_ event: SectionEvent) -> String? {
     switch event {
+    case let .approaching(s, d): return "【區間預告】\(Int(d)) m 前 \(s.name)"
     case let .entered(s, sec): return "【進入區間】\(s.name) 長 \(Int(s.lengthMeters)) m，至少 \(sec) 秒"
     case let .remaining(sec): return "【區間倒數】還有 \(sec) 秒"
     case .zeroReached: return "【區間歸零】"
@@ -263,8 +277,7 @@ func runReplay(legs: [ReplayLeg], databasePath: String, output: FileHandle) asyn
         }
         print(String(format: "  路線折線總長 %.0f m，步驟折線加總 %.0f m，Apple 距離 %.0f m", total, acc, route.distance))
 
-        let stepInfos = route.steps.map { RouteStepInfo(instruction: $0.instructions, distance: $0.distance) }
-        let nav = RouteProgressTracker(polyline: polyline, steps: stepInfos)
+        let nav = RouteProgressTracker(polyline: polyline, steps: MapItems.stepInfos(of: route))
         let engine = CameraAlertEngine(index: SpatialIndex(cameras: db.cameras), settings: AlertSettings())
         engine.sections = db.sections
         let sections = SectionSpeedTracker(sections: db.sections, settings: AlertSettings())
@@ -278,15 +291,32 @@ func runReplay(legs: [ReplayLeg], databasePath: String, output: FileHandle) asyn
         var segment = 0
         var displayed = ""
         var nextManeuver = 0
+        var inTunnel = false
         while traveled < total {
             while segment < polyline.count - 2 && cumulative[segment + 1] <= traveled { segment += 1 }
             let a = polyline[segment], b = polyline[segment + 1]
             let span = max(0.01, cumulative[segment + 1] - cumulative[segment])
             let ratio = min(1, max(0, (traveled - cumulative[segment]) / span))
             let point = GeoPoint(lat: a.lat + (b.lat - a.lat) * ratio, lon: a.lon + (b.lon - a.lon) * ratio)
+            let now = start.addingTimeInterval(second)
             let fix = VehicleFix(point: point, speedMps: speed, course: GeoMath.bearing(from: a, to: b),
-                                 horizontalAccuracy: 5, timestamp: start.addingTimeInterval(second))
+                                 horizontalAccuracy: 5, timestamp: now)
             let stamp = String(format: "  %7.0f m %.5f,%.5f ", traveled, point.lat, point.lon)
+
+            // 隧道裡沒有定位：只有時間在走
+            let tunnelNow = isInTunnel(point)
+            if tunnelNow != inTunnel {
+                inTunnel = tunnelNow
+                print(stamp + (tunnelNow ? "── 進隧道，定位中斷" : "── 出隧道，定位恢復"))
+            }
+            if tunnelNow {
+                for event in sections.tick(now: now)?.events ?? [] {
+                    if let text = describe(event) { print(stamp + text) }
+                }
+                traveled += speed
+                second += 1
+                continue
+            }
 
             let navResult = nav.process(fix)
             if let progress = navResult.progress, progress.nextInstruction != displayed {

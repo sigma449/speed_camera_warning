@@ -225,6 +225,13 @@ public struct SpeedSection: Codable, Hashable, Identifiable, Sendable {
         return String(name[..<open.lowerBound])
     }
 
+    /// 橫幅用的短名稱：去掉開頭的縣市區（例如「新北市中和區 台64線 1.6K–5.4K」→「台64線 1.6K–5.4K」）。
+    public var shortName: String {
+        let parts = displayGroupName.split(separator: " ", maxSplits: 1).map(String.init)
+        guard parts.count == 2, let last = parts[0].last, "縣市區鄉鎮".contains(last) else { return displayGroupName }
+        return parts[1]
+    }
+
     /// 以速限行駛完整區間所需的最短秒數（不含安全餘裕）。
     public var minimumSeconds: Double {
         minimumSeconds(atKmh: Double(speedLimit))

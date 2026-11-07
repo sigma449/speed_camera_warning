@@ -52,10 +52,13 @@ func runAlerts(_ engine: CameraAlertEngine, _ fixes: [VehicleFix]) -> [TimedEven
     return out
 }
 
-func runSections(_ tracker: SectionSpeedTracker, _ fixes: [VehicleFix]) -> [TimedEvent<SectionEvent>] {
+/// 預設不含預告：大部分測試關心的是進入區間之後。
+func runSections(_ tracker: SectionSpeedTracker, _ fixes: [VehicleFix],
+                 includeApproach: Bool = false) -> [TimedEvent<SectionEvent>] {
     var out: [TimedEvent<SectionEvent>] = []
     for f in fixes {
         for e in tracker.process(f).events {
+            if !includeApproach, case .approaching = e { continue }
             out.append(TimedEvent(time: f.timestamp.timeIntervalSince(t0), event: e))
         }
     }
@@ -124,7 +127,7 @@ extension CameraAlertEvent {
     var isOverspeedEnded: Bool { if case .overspeedEnded = self { return true }; return false }
     var distance: Double? {
         switch self {
-        case let .preAlert(_, d), let .nearAlert(_, d): return d
+        case let .preAlert(_, d), let .nearAlert(_, d, _): return d
         default: return nil
         }
     }

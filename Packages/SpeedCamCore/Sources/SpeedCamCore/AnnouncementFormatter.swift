@@ -31,6 +31,16 @@ public enum AnnouncementFormatter {
         return text
     }
 
+    /// 近距提醒：已經預告過這支，只要念距離（例如「100公尺」）。
+    public static func cameraNearAfterPre(announcedDistance: Double) -> String {
+        spokenDistance(announcedDistance)
+    }
+
+    /// 接近區間起點的預告。
+    public static func sectionApproaching(section: SpeedSection, announcedDistance: Double) -> String {
+        "前方\(spokenDistance(announcedDistance))，進入區間測速，速限\(section.speedLimit)"
+    }
+
     public static func overspeed(limit: Int) -> String {
         "您已超速，速限\(limit)"
     }
