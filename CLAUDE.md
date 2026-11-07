@@ -40,7 +40,11 @@ Live Activity 在 iOS 26 會出現在 CarPlay 儀表板，**不需要 entitlemen
   要從起點後方、順著進入方向接近才算（`isHeadingToStart`），反方向和橫向路過不提醒；分不出平行的平面道路。
 - **進入區間的判定**（`SectionSpeedTracker`）：通過起點 60 m 判定範圍時開始計時。GPS 跳過判定範圍、匝道在起點後才併入時，走在區間前 300 m 也算進入，開始時間依車速往回推。
   起點 300 m 之後才上路（照相機沒拍到起點）不算進入。
-- **隧道裡沒有定位**：App 每秒呼叫 `SectionSpeedTracker.tick`，超過 2.5 秒沒有定位就依最後的車速和時間推算：經過起點、倒數、語音都繼續，定位回來再接上。
+- **隧道裡沒有定位**：App 每秒呼叫 `SectionSpeedTracker.tick` 和 `CameraAlertEngine.tick`，超過 2.5 秒沒有定位就依最後的車速和時間推算：經過區間起點、倒數、語音、照相的預告和近距都繼續，定位回來再接上（2026-11-07 使用者同意固定照相也這樣做）。
+  - 誤差超過 100 m 或沒有車速的定位（隧道裡的基地台定位，`VehicleFix.isReliable`）當作沒有定位，不交給這兩個核心。
+  - 固定照相用「最後一筆定位到照相點的直線距離，減掉走過的距離」，不推算位置：隧道有弧度（雪山隧道偏離直線 600 m），直線距離比實際路程短，誤差是提早提醒。
+  - 地址寫隧道的（資料裡 54 支，含區間）最遠算到 15 km，不是對向就算；其他只算 1.5 km 內、前方 30° 內的，否則平行道路會誤報（雪山隧道入口旁的宜3線），搭捷運進地下也會一直提醒。最後車速低於 20 km/h 不推算（停車場）。
+  - 「通過」要等定位回來才判斷；車速是舊的，所以不嗶，超過 10 秒就結束超速狀態。
 - **區間照相機**：落在已知區間路線 300 m 內的區間照相機不再當固定照相提醒（`CameraAlertEngine.isCoveredBySection`），由預告和倒數處理；否則自強隧道中段那支會在隧道裡才跳出來。
   資料沒有對應區間的（無法解析的那些）仍然照一般照相提醒。
 - **區間測速倒數**：顯示還要幾秒才能到終點；每分鐘語音一次，最後 30 秒、10 秒各一次，歸零時提醒。最短時間另加 3% 安全餘裕。
@@ -179,10 +183,10 @@ App 的啟動參數（CI 截圖用）：
 
 ## 建置與測試
 
-- **Swift 核心邏輯**（144 個測試）：
+- **Swift 核心邏輯**（159 個測試）：
   `docker run --rm -v "$PWD/Packages/SpeedCamCore":/pkg -w /pkg swift:6.2-noble swift test`
   （雲端 session 裡 Docker 沒在跑的話先執行 `dockerd &`。）
-- **Python 資料處理**（174 個測試）：`python3 -m pytest -q data-pipeline`。
+- **Python 資料處理**（175 個測試）：`python3 -m pytest -q data-pipeline`。
 - **iOS App** 只能在 GitHub Actions 編譯：
   - `CI`（每次 push）：Swift 測試、pytest、iOS 模擬器建置和截圖。截圖會以 base64 印在 log 裡（`scripts/ci/print-screenshots.sh`），因為雲端 session 下載不了 artifact。
   - `Build IPA`（手動）：`gh workflow run build-ipa.yml --repo sigma449/speed_camera_warning --ref main`。會下載最新資料、編譯未簽署的 IPA（artifact `SpeedCam-ipa`，保留 30 天）。
@@ -190,6 +194,7 @@ App 的啟動參數（CI 截圖用）：
   - `路線實測`（手動，約 5 分鐘）：`gh workflow run route-probe.yml --repo sigma449/speed_camera_warning --ref main -f mode=plan -f cases=scripts/ci/route-probe-cases.json`。不用建置 App，在 macOS 上直接編譯 App 的 `RoutePlanner` 和 `SpeedCamCore`，用真正的 MapKit 規劃台灣路線。改了選路規則或 `road_lines.json` 就跑一次。
     `mode=plan` 看三種車種實際選到哪條路；`mode=compare` 比較不同避開設定 Apple 回傳的路線。`route-probe-elevated.json` 沿著各條快速道路和高架規劃，用來確認 Apple 算不算 highway。結果在 log 和 artifact `route-probe`（含步驟文字和路線座標）。
     **`mode=replay`（模擬開車）**：`-f mode=replay -f cases=scripts/ci/route-replay-1107.json`。沿著 Apple 的路線每秒給一筆定位，用真實的照相點和區間資料跑核心程式，印出每個語音和提醒的位置，並檢查每個動作點畫面顯示的對不對（log 最後有「相符 N／M」）。隧道裡不給定位，只呼叫 `tick`。改了提醒、區間或導航就跑一次；使用者回報實測問題時，把路線加進清單就能重現。
+    `route-replay-tunnels.json` 專門測隧道（辛亥、文山、懷恩、萬里、過港、東澳、雪山），可以用 `tunnelSpeedFactor` 模擬隧道裡車速變慢，提醒後面會印實際離照相點多遠。隧道範圍在 `route-probe.swift` 的 `tunnels`。
   - `iOS 15 實際執行`（手動，約 20 分鐘）：`gh workflow run ios15-test.yml --repo sigma449/speed_camera_warning --ref main`。從 Apple 官方 CDN 安裝 iOS 15.5 模擬器（不用登入），在 iPhone 7 模擬器上實際開啟 App 並截圖。改了舊系統的程式就跑一次。截圖一樣在 log 裡。
 - 用 `gh run watch <id> --exit-status` 等結果，`gh run view <id> --log` 讀 log。
 - 環境：runner `macos-26`、Xcode 26.6、App 最低 iOS 15.0、Widget 最低 iOS 26.0、`SWIFT_VERSION 5.0`、`SWIFT_STRICT_CONCURRENCY minimal`。
@@ -224,6 +229,7 @@ App 的啟動參數（CI 截圖用）：
   `sources.ssl_context()` 關閉了 `VERIFY_X509_STRICT`，憑證鏈仍然會驗證。
 - **資料下載失敗時**：Build IPA 會改用 repo 裡的 cameras.json，但那是空的，所以會停止建置。這是刻意的。
 - **SideStore 登入錯誤 -80045**（2026-10 起 Apple 的變更）：處理方式寫在 `docs/SETUP.md` 的常見問題。
+- **資料的方向欄位不一定是行車方向**：過港隧道的「南向」「北向」其實是管道名稱（南孔是旗津往前鎮，實際往東北）。地址寫明方向的改用 `normalize.heading_from_address`。
 - **高架道路與平面道路**：App 只用經緯度和方向判斷，分不出高架和平面，兩者重疊的路段會互相誤報。
   例如市民大道：高架照相點（速限 80）和平面照相點（市民大道三段 214 號前，速限 40）只差約 250 m。
   原始資料的「市民高架道下建國南路」「市民高架道下光復南路」是**高架上的照相點**：速限 80、東西雙向，平面道路速限只有 40～50。
@@ -250,7 +256,7 @@ App 的啟動參數（CI 截圖用）：
 
 ## 目前進度和下一步（2026-11-07）
 
-1. **最新 IPA**：Build IPA run 42366929114（`main` 59d5739，artifact 13571942466，2026-12-07 到期）。79 段區間、1,887 處照相點，App 最低 15.0、Widget 26.0。包含 2026-11-07 實測問題的修正（見下一項）。
+1. **最新 IPA**：Build IPA run 42379834232（`main` 9bd771c，artifact 13577705562，2026-12-07 到期）。79 段區間、1,887 處照相點，App 最低 15.0、Widget 26.0。包含 2026-11-07 實測問題的修正（見下一項），以及隧道裡的固定照相依時間提醒。
 2. **2026-11-07 第一次長程實測的 12 個問題**（長春路→自強隧道→中油陽明山站→秀朗橋上台64→板橋文化路→長春路，約 60 km，紀錄不在 repo）：
    - **第 11、9 項（轉彎提示錯一步、閘道沒提示）**：指示文字的語意寫反。模擬開車修改前 7／55，修改後 72／72（路線多加 3 段）。修好但要實機確認：Apple 有時候沒有上閘道那一步（2026-11-06 的紀錄）。
    - **第 5 項（自強隧道）**：資料解析不了，只有隧道中段一個固定照相點。現在是真的區間，隧道口前 300 m 預告，隧道裡依時間倒數。起終點用 OSM 的隧道口，實際照相位置要看現場。
@@ -266,12 +272,14 @@ App 的啟動參數（CI 截圖用）：
    - 上述功能
    - 地圖上的車種選單（CI 點不了選單，沒拍到打開的樣子）；紅黃牌和白牌實際規劃的路線；偏離路線重新規劃時會不會換回同一種走法
    - 提醒時機、方向誤報
+   - 隧道裡 iOS 實際給什麼定位（完全沒有、基地台定位，或 iOS 自己推算的定位）：CI 驗證不到，`VehicleFix.isReliable` 是依一般行為寫的。如果 iOS 給誤差小於 100 m 但位置不準的定位，推算不會啟動。
    - 北宜區間開始／結束的時機
    - CarPlay 儀表板上的 Live Activity：實際位置、有沒有持續更新、車機用哪個尺寸
    - 不在 Dashboard 頁面時，接近照相點會不會跳底部通知；提示音和語音有沒有重疊。
      CI 驗證不到這些。沒有跳通知的話，先查通知權限：App 目前沒有要求，Apple 文件也沒說需不需要。
 4. **已知問題／待辦**：
-   - 隧道出口的固定照相（例如辛亥路4段辛亥隧道出口）：隧道裡沒有定位時，模擬到定位恢復才提醒，只剩 22 m。區間已經依時間推算，固定照相還沒有。
+   - 長隧道的推算誤差會累積：雪山隧道裡實際車速比進隧道前慢 15% 時（模擬），最後一支照相機提早約 1.7 km 提醒。車速變快則會太晚，CI 沒有測。
+   - 地址沒有方向的照相點（`axis`），走平行的道路會誤報：有定位時就是這樣，例如走國 5 接近頭城時會提醒北宜路的「台9線69k+20m」。
    - 區間預告分不出平行的平面道路（高架下的平面道路也會預告）。
    - 只有新北市的區間用公告長度，其他縣市的公告還沒查。還沒有區間的見「資料來源」。
    - 部分快速道路區間貼齊失敗，保留里程牌路形：台61 157.8–151.6、41.5–46.9；台64 1.6–5.4；台9 110.96–108.224。
