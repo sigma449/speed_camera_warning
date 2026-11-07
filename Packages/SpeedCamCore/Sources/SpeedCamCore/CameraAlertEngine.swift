@@ -71,6 +71,11 @@ public final class CameraAlertEngine {
     /// 地址寫著隧道的照相點可以推算到這麼遠（雪山隧道 13 km）。
     /// 其他照相點不推這麼遠，否則搭捷運進地下之後會一直誤報。
     public var noFixTunnelRange: Double = 15_000
+    /// 沒有定位時，一般照相點要幾乎在正前方才算（度）。
+    public var noFixAheadTolerance: Double = 30
+    /// 隧道裡的照相點，取締方向和進隧道時的方向最多差幾度。資料的方向只有八方位，隧道又有弧度，
+    /// 同方向最多差到 93°（萬里隧道），對向管道至少差 127°（過港隧道）。
+    public var noFixTunnelDirectionTolerance: Double = 110
     /// 推算已經超過照相點這麼遠就不再追蹤，定位回來時才不會一次響好幾聲通過（公尺）。
     public var noFixForgetDistance: Double = 500
     /// 沒有定位時，超速狀態最多留幾秒：車速是舊的，不知道有沒有降速。
@@ -180,7 +185,7 @@ public final class CameraAlertEngine {
         var nearest: (key: String, distance: Double)?
         for (key, var t) in tracked {
             let fromLast = GeoMath.distance(last.point, t.camera.point)
-            guard isRelevant(t.camera, distance: fromLast, from: last.point, heading: heading, isTracked: true) else { continue }
+            guard fromLast < 30 || isAheadWithoutFix(t.camera, distance: fromLast, from: last.point, heading: heading) else { continue }
             let remaining = fromLast - moved
             if remaining < -noFixForgetDistance {
                 tracked[key] = nil
@@ -229,10 +234,23 @@ public final class CameraAlertEngine {
     private func addCandidatesWithoutFix(last: VehicleFix, heading: Double) {
         for (cam, d) in index.cameras(near: last.point, radius: noFixTunnelRange) {
             guard tracked[cam.id] == nil, cooldown[cam.id] == nil, !isCoveredBySection(cam) else { continue }
-            guard d <= noFixRange || cam.address.contains("隧道") else { continue }
-            guard isRelevant(cam, distance: d, from: last.point, heading: heading, isTracked: false) else { continue }
+            guard isAheadWithoutFix(cam, distance: d, from: last.point, heading: heading) else { continue }
             tracked[cam.id] = Tracked(camera: cam, phase: .approaching, minDistance: d, distance: d)
         }
+    }
+
+    /// 沒有定位時，這支照相點算不算在前面的路上。有定位時可以看距離有沒有真的變小，推算不行，所以另外判斷：
+    /// - 地址寫著隧道：只要不是對向、大致在前方就算。隧道有弧度，進隧道時的方向可能差很多（雪山隧道往北差到 44°）。
+    /// - 其他：範圍內而且幾乎在正前方才算。旁邊平行道路的照相點，推算時會一直靠近
+    ///   （雪山隧道往北的入口，宜3線的照相點在右前方約 50°，模擬時誤報）。
+    private func isAheadWithoutFix(_ camera: Camera, distance: Double, from point: GeoPoint, heading: Double) -> Bool {
+        let aheadDiff = GeoMath.angleDifference(GeoMath.bearing(from: point, to: camera.point), heading)
+        if camera.address.contains("隧道") {
+            let sameWay = camera.heading.map { GeoMath.angleDifference(heading, $0) <= noFixTunnelDirectionTolerance } ?? true
+            return sameWay && aheadDiff < 90
+        }
+        return distance <= noFixRange && aheadDiff <= noFixAheadTolerance
+            && isRelevant(camera, distance: distance, from: point, heading: heading, isTracked: false)
     }
 
     private func expireCooldowns(at fix: VehicleFix) {

@@ -404,6 +404,22 @@ final class CameraAlertEngineTests: XCTestCase {
     func testNoFixIgnoresOppositeDirection() {
         let opposite = camera(north: 800, heading: 180)
         XCTAssertTrue(runWithGap(engine([opposite]), speedKmh: 50, fixSeconds: 5, gapSeconds: 60).isEmpty)
+        let otherTube = camera(north: 800, heading: 180, address: "國道五號南向19.7公里(雪山隧道科技執法)")
+        XCTAssertTrue(runWithGap(engine([otherTube]), speedKmh: 50, fixSeconds: 5, gapSeconds: 60).isEmpty, "對向管道")
+    }
+
+    func testNoFixIgnoresCameraOnParallelRoad() {
+        // 右前方 50°：開到定位中斷時已經在追蹤，但有定位時距離不會縮到預告範圍，不能因為推算而提醒
+        let p = GeoMath.destination(from: origin, bearing: 50, distance: 600)
+        let side = Camera(id: "side", type: .fixed, lat: p.lat, lon: p.lon, heading: 0, speedLimit: 50, address: "宜3線3k+850m宜三路")
+        XCTAssertTrue(runWithGap(engine([side]), speedKmh: 50, fixSeconds: 2, gapSeconds: 60).isEmpty)
+    }
+
+    func testNoFixAllowsTunnelCameraWithDifferentHeading() {
+        // 隧道有弧度，資料的方向只有八方位：萬里隧道進去的方向和照相點差 93°
+        let curved = camera(north: 900, heading: 93, address: "台2線48.3公里萬里隧道出口處（往基隆）")
+        XCTAssertEqual(runWithGap(engine([curved]), speedKmh: 50, fixSeconds: 5, gapSeconds: 60)
+            .filter { $0.event.isPre }.count, 1)
     }
 
     func testNoFixSkipsSectionCameraOnKnownSection() {

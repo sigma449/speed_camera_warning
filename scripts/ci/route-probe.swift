@@ -198,7 +198,7 @@ struct ReplayLeg: Decodable {
 }
 
 /// 隧道裡沒有定位。模擬時在這些範圍內不給定位，只呼叫 tick（App 每秒做的事）。
-/// 座標是 OSM 的隧道線形（簡化過），每條只記一個方向，另一個方向的管道也在 80 m 內。
+/// 座標是 OSM 的隧道線形（簡化過），每條只記一個方向，另一個方向的管道也在 130 m 內。
 let tunnels: [[GeoPoint]] = ([
     [(25.08698, 121.54930), (25.09442, 121.54870)],     // 自強隧道
     [(25.01000, 121.55730), (25.01320, 121.55400)],     // 辛亥隧道
@@ -219,7 +219,7 @@ func isInTunnel(_ p: GeoPoint) -> Bool {
     tunnels.contains { path in
         zip(path, path.dropFirst()).enumerated().contains { i, segment in
             let projection = GeoMath.project(p, ontoSegment: segment.0, segment.1)
-            guard projection.distance <= 80 else { return false }
+            guard projection.distance <= 130 else { return false }
             // 隧道的頭尾不能超出去，中間的折點可以
             return (i > 0 || projection.t > 0) && (i < path.count - 2 || projection.t < 1)
         }
