@@ -5,9 +5,9 @@ final class CameraAlertEngineTests: XCTestCase {
 
     /// 在起點正北方 distance 公尺處放一支照相機。
     private func camera(_ id: String = "cam", north distance: Double, heading: Double? = 0,
-                        limit: Int? = 50, type: CameraType = .fixed) -> Camera {
+                        limit: Int? = 50, type: CameraType = .fixed, address: String = "測試路") -> Camera {
         let p = GeoMath.destination(from: origin, bearing: 0, distance: distance)
-        return Camera(id: id, type: type, lat: p.lat, lon: p.lon, heading: heading, speedLimit: limit, address: "測試路")
+        return Camera(id: id, type: type, lat: p.lat, lon: p.lon, heading: heading, speedLimit: limit, address: address)
     }
 
     private func engine(_ cams: [Camera], settings: AlertSettings = AlertSettings()) -> CameraAlertEngine {
@@ -275,5 +275,176 @@ final class CameraAlertEngineTests: XCTestCase {
         XCTAssertEqual(events.filter { $0.event.isNear }.count, 1)
         XCTAssertEqual(events.filter { $0.event.isPassed }.count, 1)
         XCTAssertEqual(events.filter { $0.event.isOverspeedStarted }.count, 1, "50 km/h 經過速限 40 的照相應該超速")
+    }
+
+    // MARK: - 沒有定位（隧道）
+
+    /// 往北開 fixSeconds 秒之後定位中斷，之後每秒只呼叫 tick（App 在隧道裡做的事）。
+    private func runWithGap(_ e: CameraAlertEngine, speedKmh: Double, fixSeconds: Int,
+                            gapSeconds: Int) -> [TimedEvent<CameraAlertEvent>] {
+        var out = runAlerts(e, straightTrack(from: origin, bearing: 0, speedKmh: speedKmh, seconds: fixSeconds))
+        for s in 1...gapSeconds {
+            let now = t0.addingTimeInterval(Double(fixSeconds + s))
+            for event in e.tick(now: now)?.events ?? [] {
+                out.append(TimedEvent(time: now.timeIntervalSince(t0), event: event))
+            }
+        }
+        return out
+    }
+
+    /// 定位回來時的一筆定位：在起點正北方 distance 公尺。
+    private func fix(north distance: Double, speedKmh: Double = 50, at seconds: Int) -> VehicleFix {
+        VehicleFix(point: GeoMath.destination(from: origin, bearing: 0, distance: distance),
+                   speedMps: SpeedUnit.mps(fromKmh: speedKmh), course: 0, horizontalAccuracy: 5,
+                   timestamp: t0.addingTimeInterval(Double(seconds)))
+    }
+
+    func testNoFixKeepsAlertingByTime() {
+        // 開 10 秒（139 m）進隧道，照相點在隧道裡，還沒進預告距離
+        let events = runWithGap(engine([camera(north: 1_000, limit: 50)]), speedKmh: 50, fixSeconds: 10, gapSeconds: 60)
+        let pres = events.filter { $0.event.isPre }
+        let nears = events.filter { $0.event.isNear }
+        XCTAssertEqual(pres.count, 1)
+        XCTAssertEqual(nears.count, 1)
+        XCTAssertEqual(pres[0].event.distance!, 300, accuracy: 15)
+        XCTAssertEqual(nears[0].event.distance!, 100, accuracy: 15)
+        XCTAssertEqual(pres[0].time, (1_000 - 300) / SpeedUnit.mps(fromKmh: 50), accuracy: 1.5, "時間要和車速相符")
+        guard case let .nearAlert(_, _, afterPre)? = nears.first?.event else { return XCTFail() }
+        XCTAssertTrue(afterPre, "預告過了，近距只念距離")
+        XCTAssertFalse(events.contains { $0.event.isPassed }, "沒有定位不能說已經通過")
+    }
+
+    func testNoFixTargetCountsDownThenDisappears() {
+        let e = engine([camera(north: 500)])
+        _ = runAlerts(e, straightTrack(from: origin, bearing: 0, speedKmh: 36, seconds: 10))   // 10 m/s，開了 100 m
+        var distances: [Double] = []
+        for s in 3...39 {
+            if let t = e.tick(now: t0.addingTimeInterval(Double(10 + s)))?.target { distances.append(t.distance) }
+        }
+        XCTAssertEqual(distances, distances.sorted(by: >))
+        XCTAssertEqual(distances.first ?? 0, 370, accuracy: 2)
+        XCTAssertNil(e.tick(now: t0.addingTimeInterval(55))?.target, "推算已經過了，畫面不再顯示這支")
+    }
+
+    func testTickDoesNothingWhileFixesAreFresh() {
+        let e = engine([camera(north: 1_000)])
+        _ = runAlerts(e, straightTrack(from: origin, bearing: 0, speedKmh: 50, seconds: 10))
+        XCTAssertNil(e.tick(now: t0.addingTimeInterval(11)))
+        XCTAssertNil(e.tick(now: t0.addingTimeInterval(12.4)))
+        XCTAssertNotNil(e.tick(now: t0.addingTimeInterval(12.5)))
+    }
+
+    func testNoFixAtLowSpeedIsNotEstimated() {
+        // 開進停車場之類的情況，不是隧道
+        let e = engine([camera(north: 400)])
+        _ = runAlerts(e, straightTrack(from: origin, bearing: 0, speedKmh: 15, seconds: 5))
+        XCTAssertNil(e.tick(now: t0.addingTimeInterval(60)))
+    }
+
+    func testFixReturningPastCameraCountsAsPassedOnce() {
+        let e = engine([camera(north: 500)])
+        let before = runWithGap(e, speedKmh: 50, fixSeconds: 5, gapSeconds: 35)
+        XCTAssertEqual(before.filter { $0.event.isPre }.count, 1)
+        XCTAssertEqual(before.filter { $0.event.isNear }.count, 1)
+        XCTAssertFalse(before.contains { $0.event.isPassed })
+
+        // 出隧道：已經過了照相點一段距離
+        let back = e.process(fix(north: 600, at: 41))
+        XCTAssertEqual(back.events.filter { $0.isPassed }.count, 1)
+        XCTAssertNil(back.target)
+        XCTAssertTrue(e.process(fix(north: 614, at: 42)).events.isEmpty, "不重複提醒")
+    }
+
+    func testFixReturningBeforeCameraContinuesWithoutRepeating() {
+        // 隧道裡塞車：推算已經快到了，定位回來時其實還有 200 m
+        let e = engine([camera(north: 1_000)])
+        let before = runWithGap(e, speedKmh: 50, fixSeconds: 10, gapSeconds: 60)
+        XCTAssertEqual(before.filter { $0.event.isNear }.count, 1)
+        var after: [CameraAlertEvent] = []
+        for (i, meters) in stride(from: 800.0, through: 1_100, by: 14).enumerated() {
+            after += e.process(fix(north: meters, at: 71 + i)).events
+        }
+        XCTAssertFalse(after.contains { $0.isPre || $0.isNear })
+        XCTAssertEqual(after.filter { $0.isPassed }.count, 1, "真的經過時才算通過")
+    }
+
+    func testNoFixFindsTunnelCamerasBeyondSearchRadius() {
+        // 長隧道：照相點在定位中斷時還很遠，要靠地址知道它在隧道裡
+        let inTunnel = camera(north: 5_000, limit: 90, address: "國道五號南向19.7公里(雪山隧道科技執法)")
+        let events = runWithGap(engine([inTunnel]), speedKmh: 80, fixSeconds: 5, gapSeconds: 230)
+        XCTAssertEqual(events.filter { $0.event.isPre }.count, 1)
+        XCTAssertEqual(events.first { $0.event.isPre }?.event.distance ?? 0, 600, accuracy: 30)
+        XCTAssertEqual(events.filter { $0.event.isNear }.count, 1)
+
+        // 地址沒有隧道的不推這麼遠（例如搭捷運進地下）
+        let onStreet = camera(north: 5_000, limit: 50)
+        XCTAssertTrue(runWithGap(engine([onStreet]), speedKmh: 80, fixSeconds: 5, gapSeconds: 230).isEmpty)
+        let nearby = camera(north: 1_400, limit: 50)
+        XCTAssertEqual(runWithGap(engine([nearby]), speedKmh: 80, fixSeconds: 5, gapSeconds: 60)
+            .filter { $0.event.isPre }.count, 1, "隧道出口附近的照相點地址不一定寫隧道")
+    }
+
+    func testNoFixCamerasInSeriesAlertInOrderAndPassOnce() {
+        let cams = [1_000.0, 2_400, 3_800].enumerated().map { i, meters in
+            camera("c\(i)", north: meters, limit: 90, address: "雪山隧道")
+        }
+        let e = engine(cams)
+        let events = runWithGap(e, speedKmh: 80, fixSeconds: 2, gapSeconds: 175)
+        let ids = events.compactMap { event -> String? in
+            if case let .preAlert(c, _) = event.event { return c.id }
+            return nil
+        }
+        XCTAssertEqual(ids, ["c0", "c1", "c2"])
+        XCTAssertEqual(events.filter { $0.event.isNear }.count, 3)
+        // 出隧道：前面幾支已經不追蹤，不會一次響三聲
+        let back = e.process(fix(north: 3_900, speedKmh: 80, at: 178))
+        XCTAssertEqual(back.events.filter { $0.isPassed }.count, 1)
+    }
+
+    func testNoFixIgnoresOppositeDirection() {
+        let opposite = camera(north: 800, heading: 180)
+        XCTAssertTrue(runWithGap(engine([opposite]), speedKmh: 50, fixSeconds: 5, gapSeconds: 60).isEmpty)
+    }
+
+    func testNoFixSkipsSectionCameraOnKnownSection() {
+        let cam = camera(north: 1_000, limit: 50, type: .section, address: "自強隧道區間測速")
+        let start = GeoMath.destination(from: origin, bearing: 0, distance: 600)
+        let end = GeoMath.destination(from: origin, bearing: 0, distance: 1_500)
+        let e = engine([cam])
+        e.sections = [SpeedSection(id: "s-f", name: "測試", start: start, end: end, lengthMeters: 900, speedLimit: 50)]
+        XCTAssertTrue(runWithGap(e, speedKmh: 50, fixSeconds: 5, gapSeconds: 60).isEmpty, "由區間的預告和倒數處理")
+    }
+
+    func testNoFixStopsBeepingBecauseSpeedIsStale() {
+        let e = engine([camera(north: 1_500, limit: 50)])
+        let before = runAlerts(e, straightTrack(from: origin, bearing: 0, speedKmh: 70, seconds: 64))
+        XCTAssertEqual(before.filter { $0.event.isOverspeedStarted }.count, 1)
+
+        var after: [CameraAlertEvent] = []
+        for s in 1...9 { after += e.tick(now: t0.addingTimeInterval(Double(64 + s)))?.events ?? [] }
+        XCTAssertFalse(after.contains { $0.isBeep || $0.isOverspeedEnded }, "短暫沒有定位不算結束，但也不嗶")
+
+        let later = e.tick(now: t0.addingTimeInterval(74))
+        XCTAssertEqual(later?.events.filter { $0.isOverspeedEnded }.count, 1)
+        XCTAssertEqual(later?.target?.isOverspeed, false)
+    }
+
+    func testResetForgetsLastFix() {
+        let e = engine([camera(north: 1_000)])
+        _ = runAlerts(e, straightTrack(from: origin, bearing: 0, speedKmh: 50, seconds: 5))
+        e.reset()
+        XCTAssertNil(e.lastFix)
+        XCTAssertNil(e.tick(now: t0.addingTimeInterval(60)))
+    }
+
+    func testCellTowerFixIsNotReliable() {
+        func make(speed: Double, accuracy: Double) -> VehicleFix {
+            VehicleFix(point: origin, speedMps: speed, course: nil, horizontalAccuracy: accuracy, timestamp: t0)
+        }
+        XCTAssertTrue(make(speed: 14, accuracy: 5).isReliable)
+        XCTAssertTrue(make(speed: 0, accuracy: 30).isReliable, "停紅燈")
+        XCTAssertFalse(make(speed: 0, accuracy: 1_414).isReliable, "基地台定位")
+        XCTAssertFalse(make(speed: -1, accuracy: 65).isReliable, "沒有車速，不是 GPS")
+        XCTAssertFalse(make(speed: 14, accuracy: 0).isReliable, "iOS 回報精度無效")
     }
 }

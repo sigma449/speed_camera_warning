@@ -62,12 +62,27 @@ public final class CameraAlertEngine {
     }
     /// 區間照相機離區間路線多近，就算是那一段的一部分（公尺）。
     public var sectionCameraCoverage: Double = 300
+    /// 超過這個秒數沒有定位，就依最後的車速推算（和區間倒數相同）。
+    public var gpsGapSeconds: TimeInterval = 2.5
+    /// 最後的車速低於這個值不推算：多半是停車或開進停車場，不是進隧道。
+    public var noFixMinimumSpeedKmh: Double = 20
+    /// 沒有定位時，最多推算到多遠的照相點（從最後一筆定位算，公尺）。
+    public var noFixRange: Double = 1_500
+    /// 地址寫著隧道的照相點可以推算到這麼遠（雪山隧道 13 km）。
+    /// 其他照相點不推這麼遠，否則搭捷運進地下之後會一直誤報。
+    public var noFixTunnelRange: Double = 15_000
+    /// 推算已經超過照相點這麼遠就不再追蹤，定位回來時才不會一次響好幾聲通過（公尺）。
+    public var noFixForgetDistance: Double = 500
+    /// 沒有定位時，超速狀態最多留幾秒：車速是舊的，不知道有沒有降速。
+    public var noFixOverspeedHold: TimeInterval = 10
 
     private struct Tracked {
         var camera: Camera
         var phase: AlertPhase
         var minDistance: Double
         var distance: Double
+        /// 這段沒有定位時推算過：定位回來時如果已經在後面，就算通過。
+        var estimated = false
     }
 
     private struct Cooldown {
@@ -82,6 +97,10 @@ public final class CameraAlertEngine {
     private var lastBeep: Date?
     /// 區間照相機是否已經算在某一段區間裡（結果留著，不用每秒重算）。
     private var coveredBySection: [String: Bool] = [:]
+    /// 最後一筆定位。App 只會把可靠的定位交給引擎。
+    public private(set) var lastFix: VehicleFix?
+    /// 這段沒有定位已經找過照相點了（記最後一筆定位的時間）。
+    private var searchedWithoutFix: Date?
 
     public init(index: SpatialIndex, settings: AlertSettings = AlertSettings()) {
         self.index = index
@@ -100,6 +119,8 @@ public final class CameraAlertEngine {
         lastCourse = nil
         isOverspeed = false
         lastBeep = nil
+        lastFix = nil
+        searchedWithoutFix = nil
     }
 
     /// 目前採用的行進方向（低速時沿用上一次的有效方向）。
@@ -107,6 +128,7 @@ public final class CameraAlertEngine {
 
     public func process(_ fix: VehicleFix) -> CameraAlertResult {
         var events: [CameraAlertEvent] = []
+        lastFix = fix
 
         if let course = fix.course, course >= 0, fix.speedKmh >= settings.minimumSpeedForCourse {
             lastCourse = GeoMath.normalize(course)
@@ -126,15 +148,7 @@ public final class CameraAlertEngine {
 
         var target: CameraTarget?
         if let key = targetKey, var t = tracked[key] {
-            let th = settings.thresholds(speedLimit: t.camera.speedLimit, currentSpeedKmh: fix.speedKmh)
-            if t.distance <= th.near && t.phase < .near {
-                let afterPre = t.phase == .pre
-                t.phase = .near
-                events.append(.nearAlert(camera: t.camera, distance: t.distance, afterPre: afterPre))
-            } else if t.distance <= th.pre && t.phase < .pre {
-                t.phase = .pre
-                events.append(.preAlert(camera: t.camera, distance: t.distance))
-            }
+            advancePhase(&t, speedKmh: fix.speedKmh, events: &events)
             tracked[key] = t
             updateOverspeed(target: t, fix: fix, events: &events)
             target = CameraTarget(camera: t.camera, distance: t.distance, phase: t.phase, isOverspeed: isOverspeed)
@@ -146,7 +160,80 @@ public final class CameraAlertEngine {
         return CameraAlertResult(events: events, target: target)
     }
 
+    /// 沒有新定位時（隧道、訊號差）由 App 每秒呼叫。定位正常時回傳 nil。
+    ///
+    /// 依最後的車速和時間推算到照相點還有多遠：最後一筆定位到照相點的直線距離，減掉這段時間走的距離。
+    /// 不推算位置：隧道有弧度（觀音隧道 8 km 偏離直線 1 km），照直線走會離照相點越來越遠。
+    /// 直線距離比實際路程短，誤差是提早提醒，不會太晚。
+    /// 「通過」要等定位回來才判斷，因為車速是舊的，不能確定真的過了。
+    public func tick(now: Date) -> CameraAlertResult? {
+        guard let last = lastFix, let heading = lastCourse else { return nil }
+        let elapsed = now.timeIntervalSince(last.timestamp)
+        guard elapsed >= gpsGapSeconds, last.speedKmh >= noFixMinimumSpeedKmh else { return nil }
+
+        if searchedWithoutFix != last.timestamp {
+            searchedWithoutFix = last.timestamp
+            addCandidatesWithoutFix(last: last, heading: heading)
+        }
+
+        let moved = last.speedMps * elapsed
+        var nearest: (key: String, distance: Double)?
+        for (key, var t) in tracked {
+            let fromLast = GeoMath.distance(last.point, t.camera.point)
+            guard isRelevant(t.camera, distance: fromLast, from: last.point, heading: heading, isTracked: true) else { continue }
+            let remaining = fromLast - moved
+            if remaining < -noFixForgetDistance {
+                tracked[key] = nil
+                continue
+            }
+            t.estimated = true
+            t.distance = max(0, remaining)
+            tracked[key] = t
+            if remaining > 0, remaining < (nearest?.distance ?? .greatestFiniteMagnitude) {
+                nearest = (key, remaining)
+            }
+        }
+
+        var events: [CameraAlertEvent] = []
+        // 車速是舊的：不嗶，太久沒有定位就當作結束
+        if isOverspeed, elapsed >= noFixOverspeedHold {
+            isOverspeed = false
+            events.append(.overspeedEnded)
+        }
+
+        var target: CameraTarget?
+        if let key = nearest?.key, var t = tracked[key] {
+            advancePhase(&t, speedKmh: last.speedKmh, events: &events)
+            tracked[key] = t
+            target = CameraTarget(camera: t.camera, distance: t.distance, phase: t.phase, isOverspeed: isOverspeed)
+        }
+        return CameraAlertResult(events: events, target: target)
+    }
+
     // MARK: - 內部流程
+
+    /// 到了預告或近距的距離就提醒（每段只提醒一次）。
+    private func advancePhase(_ t: inout Tracked, speedKmh: Double, events: inout [CameraAlertEvent]) {
+        let th = settings.thresholds(speedLimit: t.camera.speedLimit, currentSpeedKmh: speedKmh)
+        if t.distance <= th.near && t.phase < .near {
+            let afterPre = t.phase == .pre
+            t.phase = .near
+            events.append(.nearAlert(camera: t.camera, distance: t.distance, afterPre: afterPre))
+        } else if t.distance <= th.pre && t.phase < .pre {
+            t.phase = .pre
+            events.append(.preAlert(camera: t.camera, distance: t.distance))
+        }
+    }
+
+    /// 隧道比搜尋半徑長時，隧道裡的照相點在定位中斷前還沒開始追蹤，這裡一次找出來。
+    private func addCandidatesWithoutFix(last: VehicleFix, heading: Double) {
+        for (cam, d) in index.cameras(near: last.point, radius: noFixTunnelRange) {
+            guard tracked[cam.id] == nil, cooldown[cam.id] == nil, !isCoveredBySection(cam) else { continue }
+            guard d <= noFixRange || cam.address.contains("隧道") else { continue }
+            guard isRelevant(cam, distance: d, from: last.point, heading: heading, isTracked: false) else { continue }
+            tracked[cam.id] = Tracked(camera: cam, phase: .approaching, minDistance: d, distance: d)
+        }
+    }
 
     private func expireCooldowns(at fix: VehicleFix) {
         cooldown = cooldown.filter { _, c in
@@ -164,8 +251,11 @@ public final class CameraAlertEngine {
             let aheadDiff = GeoMath.angleDifference(GeoMath.bearing(from: fix.point, to: t.camera.point), heading)
             let behindAndClose = d < 200 && aheadDiff > 100 && t.minDistance < 250
             let movingAwayAfterClose = t.minDistance < 150 && d > t.minDistance + 40
+            // 沒有定位的那段已經過了：定位回來時可能離照相點很遠，上面兩個條件都不成立
+            let passedWithoutFix = t.estimated && aheadDiff > 100
+            t.estimated = false
 
-            if behindAndClose || movingAwayAfterClose {
+            if behindAndClose || movingAwayAfterClose || passedWithoutFix {
                 tracked[key] = nil
                 cooldown[key] = Cooldown(point: t.camera.point, time: fix.timestamp)
                 if t.phase >= .pre {

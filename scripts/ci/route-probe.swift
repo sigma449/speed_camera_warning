@@ -193,18 +193,46 @@ struct ReplayLeg: Decodable {
     let to: Place
     /// 模擬車速；沒寫就用 Apple 估的平均時速
     let speedKmh: Double?
+    /// 隧道裡實際的車速是幾倍（App 只知道進隧道前的車速）。沒寫就是 1，例如 0.7 是隧道裡慢下來。
+    let tunnelSpeedFactor: Double?
 }
 
 /// 隧道裡沒有定位。模擬時在這些範圍內不給定位，只呼叫 tick（App 每秒做的事）。
-let tunnels: [(name: String, a: GeoPoint, b: GeoPoint)] = [
-    ("自強隧道", GeoPoint(lat: 25.08698, lon: 121.54930), GeoPoint(lat: 25.09442, lon: 121.54870)),
-    ("辛亥隧道", GeoPoint(lat: 25.01000, lon: 121.55730), GeoPoint(lat: 25.01320, lon: 121.55400)),
-]
+/// 座標是 OSM 的隧道線形（簡化過），每條只記一個方向，另一個方向的管道也在 80 m 內。
+let tunnels: [[GeoPoint]] = ([
+    [(25.08698, 121.54930), (25.09442, 121.54870)],     // 自強隧道
+    [(25.01000, 121.55730), (25.01320, 121.55400)],     // 辛亥隧道
+    [(24.84789, 121.79150), (24.85208, 121.79156), (24.85688, 121.79030), (24.85948, 121.78898), (24.86407, 121.78549),
+     (24.87769, 121.77117), (24.88040, 121.76875), (24.89516, 121.75829), (24.89992, 121.75406), (24.90337, 121.75010),
+     (24.91571, 121.73412), (24.92064, 121.72900), (24.92527, 121.72543), (24.93279, 121.72050), (24.93862, 121.71474)],   // 雪山隧道
+    [(25.00919, 121.58163), (25.01241, 121.58156), (25.01516, 121.58103), (25.01805, 121.57993), (25.02119, 121.57801)],   // 文山隧道
+    [(24.99617, 121.55171), (24.99176, 121.55137)],     // 懷恩隧道
+    [(24.53358, 121.83528), (24.53715, 121.83650), (24.56028, 121.84246), (24.56298, 121.84356)],   // 東澳隧道
+    [(24.36815, 121.78003), (24.37574, 121.78290), (24.38293, 121.78446), (24.41217, 121.78705), (24.41560, 121.78657),
+     (24.42020, 121.78483), (24.42414, 121.78207), (24.42869, 121.77759), (24.43023, 121.77651), (24.43285, 121.77531),
+     (24.43614, 121.77463)],    // 觀音隧道
+    [(25.19253, 121.68452), (25.19378, 121.68500), (25.19470, 121.68459), (25.20044, 121.67848)],   // 萬里隧道
+    [(22.56013, 120.30978), (22.56586, 120.31780)],     // 過港隧道
+] as [[(Double, Double)]]).map { $0.map { GeoPoint(lat: $0.0, lon: $0.1) } }
 
 func isInTunnel(_ p: GeoPoint) -> Bool {
-    tunnels.contains { t in
-        let projection = GeoMath.project(p, ontoSegment: t.a, t.b)
-        return projection.distance <= 80 && projection.t > 0 && projection.t < 1
+    tunnels.contains { path in
+        zip(path, path.dropFirst()).enumerated().contains { i, segment in
+            let projection = GeoMath.project(p, ontoSegment: segment.0, segment.1)
+            guard projection.distance <= 80 else { return false }
+            // 隧道的頭尾不能超出去，中間的折點可以
+            return (i > 0 || projection.t > 0) && (i < path.count - 2 || projection.t < 1)
+        }
+    }
+}
+
+/// 沒有定位時的提醒：另外印出車子實際離照相點多遠，看推算準不準。
+func withActualDistance(_ event: CameraAlertEvent, at point: GeoPoint) -> String {
+    switch event {
+    case let .preAlert(c, _), let .nearAlert(c, _, _):
+        return "（實際直線 \(Int(GeoMath.distance(point, c.point))) m）"
+    default:
+        return ""
     }
 }
 
@@ -311,10 +339,13 @@ func runReplay(legs: [ReplayLeg], databasePath: String, output: FileHandle) asyn
                 print(stamp + (tunnelNow ? "── 進隧道，定位中斷" : "── 出隧道，定位恢復"))
             }
             if tunnelNow {
+                for event in engine.tick(now: now)?.events ?? [] {
+                    if let text = describe(event) { print(stamp + text + withActualDistance(event, at: point)) }
+                }
                 for event in sections.tick(now: now)?.events ?? [] {
                     if let text = describe(event) { print(stamp + text) }
                 }
-                traveled += speed
+                traveled += speed * (leg.tunnelSpeedFactor ?? 1)
                 second += 1
                 continue
             }

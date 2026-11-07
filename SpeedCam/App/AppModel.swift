@@ -232,13 +232,25 @@ final class AppModel: ObservableObject {
 
     private func tick() {
         restartLiveActivityIfNeeded()
-        // 隧道裡沒有定位：倒數和語音依時間繼續
-        guard let result = sectionTracker.tick(now: Date()) else { return }
-        sectionStatus = result.status
-        sectionApproach = result.approach
-        for event in result.events { handleSectionEvent(event) }
+        // 隧道裡沒有定位：照相提醒、區間倒數和語音都依時間繼續
+        let now = Date()
+        let cam = alertEngine.tick(now: now)
+        let sec = sectionTracker.tick(now: now)
+        guard cam != nil || sec != nil else { return }
+
+        if let cam { cameraTarget = cam.target }
+        if let sec {
+            sectionStatus = sec.status
+            sectionApproach = sec.approach
+        }
+        if let fix = alertEngine.lastFix {
+            for event in cam?.events ?? [] { handleCameraEvent(event, fix: fix) }
+        }
+        for event in sec?.events ?? [] { handleSectionEvent(event) }
+
         let alert = settings.liveActivityAlertsEnabled
-            ? ActivityAlertPolicy.alert(cameraEvents: [], sectionEvents: result.events)
+            ? ActivityAlertPolicy.alert(cameraEvents: cam?.events ?? [], sectionEvents: sec?.events ?? [],
+                                        cameraOverspeedActive: cameraTarget?.isOverspeed == true)
             : nil
         activity.update(activityState(), alert: alert)
     }
@@ -468,24 +480,27 @@ final class AppModel: ObservableObject {
     func handle(_ fix: VehicleFix) {
         lastFix = fix
 
-        let cam = alertEngine.process(fix)
-        let sec = sectionTracker.process(fix)
+        // 隧道裡的基地台定位不能判斷照相點和區間，當作沒有定位，由 tick 依時間推算
+        let cam = fix.isReliable ? alertEngine.process(fix) : nil
+        let sec = fix.isReliable ? sectionTracker.process(fix) : nil
         let nav = navigation.process(fix)
 
-        cameraTarget = cam.target
-        sectionStatus = sec.status
-        sectionApproach = sec.approach
+        if let cam { cameraTarget = cam.target }
+        if let sec {
+            sectionStatus = sec.status
+            sectionApproach = sec.approach
+        }
         routeProgress = nav?.progress
 
         // 語音優先順序：近距 / 超速 > 區間 > 預告 > 導航
-        for event in cam.events { handleCameraEvent(event, fix: fix) }
-        for event in sec.events { handleSectionEvent(event) }
+        for event in cam?.events ?? [] { handleCameraEvent(event, fix: fix) }
+        for event in sec?.events ?? [] { handleSectionEvent(event) }
         if let nav {
             for event in nav.events { handleRouteEvent(event) }
         }
 
         let alert = settings.liveActivityAlertsEnabled
-            ? ActivityAlertPolicy.alert(cameraEvents: cam.events, sectionEvents: sec.events,
+            ? ActivityAlertPolicy.alert(cameraEvents: cam?.events ?? [], sectionEvents: sec?.events ?? [],
                                         cameraOverspeedActive: cameraTarget?.isOverspeed == true)
             : nil
         activity.update(activityState(), alert: alert)

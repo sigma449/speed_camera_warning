@@ -339,4 +339,13 @@ public struct VehicleFix: Sendable, Equatable {
     }
 
     public var speedKmh: Double { max(0, SpeedUnit.kmh(fromMps: speedMps)) }
+
+    /// 可以拿來判斷照相點和區間的最大誤差（公尺）。
+    public static let maximumReliableAccuracy: Double = 100
+
+    /// 是不是 GPS 等級的定位。隧道裡 iOS 可能改給基地台定位：誤差幾百公尺，也沒有車速和方向。
+    /// 這種定位要當作沒有定位，否則「多久沒有定位」一直歸零，推算不會開始，車速也會變成 0。
+    public var isReliable: Bool {
+        speedMps >= 0 && horizontalAccuracy > 0 && horizontalAccuracy <= Self.maximumReliableAccuracy
+    }
 }

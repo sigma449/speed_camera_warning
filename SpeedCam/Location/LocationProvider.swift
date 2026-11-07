@@ -95,7 +95,7 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         let course: Double? = (location.course >= 0 && location.courseAccuracy >= 0 && location.courseAccuracy < 90)
             ? location.course : nil
         return VehicleFix(point: GeoPoint(lat: location.coordinate.latitude, lon: location.coordinate.longitude),
-                          speedMps: location.speed >= 0 ? location.speed : 0,
+                          speedMps: location.speed,   // 負值表示無效（見 VehicleFix.isReliable）
                           course: course,
                           horizontalAccuracy: max(0, location.horizontalAccuracy),
                           timestamp: location.timestamp)
