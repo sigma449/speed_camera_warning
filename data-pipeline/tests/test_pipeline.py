@@ -54,6 +54,17 @@ def test_parse_axis(text, expected):
     assert parse_axis(text) == expected
 
 
+def test_heading_from_address_overrides_tube_name():
+    # 過港隧道的「南向」「北向」是管道名稱，不是行車方向
+    def heading(address, direct):
+        row = {"Address": address, "Latitude": "22.5628", "Longitude": "120.3138", "direct": direct, "limit": "50"}
+        return normalize_rows([row])[0].heading
+
+    assert heading("過港隧道南孔〈旗津往前鎮方向〉機車道1110M處", "南向") == 52
+    assert heading("過港隧道北孔（前鎮往旗津方向）汽車道850M處", "北向") == 232
+    assert heading("其他路", "南向") == 180
+
+
 # ---------------------------------------------------------------- 速限
 @pytest.mark.parametrize("text,expected", [
     ("50", 50), ("60公里", 60), ("大型車60/小型車70", 60), ("速限 110", 110),

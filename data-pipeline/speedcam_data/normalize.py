@@ -297,6 +297,18 @@ def make_id(lat: float, lon: float, heading: Optional[float]) -> str:
 
 _TYPE_PRIORITY = {"section": 5, "redLightSpeed": 4, "fixed": 3, "mobile": 2, "redLight": 1, "tech": 0}
 
+# 資料的方向欄位不一定是行車方向：過港隧道寫的「南向」「北向」其實是管道名稱（南孔、北孔）。
+# 南孔是旗津往前鎮（往東北），北孔是前鎮往旗津（往西南）。角度來自 OSM 的隧道線形。
+_HEADING_FROM_ADDRESS = (("旗津往前鎮", 52.0), ("前鎮往旗津", 232.0))
+
+
+def heading_from_address(address: str) -> Optional[float]:
+    """地址寫明行車方向、而且方向欄位不可靠的照相點。"""
+    for words, heading in _HEADING_FROM_ADDRESS:
+        if words in address:
+            return heading
+    return None
+
 
 def normalize_rows(rows: Iterable[dict], report: Optional[NormalizeReport] = None) -> list[Camera]:
     report = report or NormalizeReport()
@@ -310,7 +322,9 @@ def normalize_rows(rows: Iterable[dict], report: Optional[NormalizeReport] = Non
         lat, lon = coords
         address = pick(row, "address") or ""
         direction_text = pick(row, "direction")
-        heading = parse_direction(direction_text)
+        heading = heading_from_address(address)
+        if heading is None:
+            heading = parse_direction(direction_text)
         axis = parse_axis(direction_text) if heading is None else None
         if axis is not None:
             report.axis_known += 1

@@ -416,8 +416,8 @@ final class CameraAlertEngineTests: XCTestCase {
     }
 
     func testNoFixAllowsTunnelCameraWithDifferentHeading() {
-        // 隧道有弧度，資料的方向只有八方位：萬里隧道進去的方向和照相點差 93°
-        let curved = camera(north: 900, heading: 93, address: "台2線48.3公里萬里隧道出口處（往基隆）")
+        // 隧道有弧度，資料的方向只有八方位：萬里隧道往照相點的方向和取締方向差 77°
+        let curved = camera(north: 900, heading: 77, address: "台2線48.3公里萬里隧道出口處（往基隆）")
         XCTAssertEqual(runWithGap(engine([curved]), speedKmh: 50, fixSeconds: 5, gapSeconds: 60)
             .filter { $0.event.isPre }.count, 1)
     }

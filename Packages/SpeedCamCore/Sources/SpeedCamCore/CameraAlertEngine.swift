@@ -73,9 +73,9 @@ public final class CameraAlertEngine {
     public var noFixTunnelRange: Double = 15_000
     /// 沒有定位時，一般照相點要幾乎在正前方才算（度）。
     public var noFixAheadTolerance: Double = 30
-    /// 隧道裡的照相點，取締方向和進隧道時的方向最多差幾度。資料的方向只有八方位，隧道又有弧度，
-    /// 同方向最多差到 93°（萬里隧道），對向管道至少差 127°（過港隧道）。
-    public var noFixTunnelDirectionTolerance: Double = 110
+    /// 隧道裡的照相點，取締方向和「往照相點的方向」最多差幾度。資料的方向只有八方位：
+    /// 同方向最多差 77°（萬里隧道），對向管道至少差 128°。
+    public var noFixTunnelDirectionTolerance: Double = 100
     /// 推算已經超過照相點這麼遠就不再追蹤，定位回來時才不會一次響好幾聲通過（公尺）。
     public var noFixForgetDistance: Double = 500
     /// 沒有定位時，超速狀態最多留幾秒：車速是舊的，不知道有沒有降速。
@@ -241,12 +241,14 @@ public final class CameraAlertEngine {
 
     /// 沒有定位時，這支照相點算不算在前面的路上。有定位時可以看距離有沒有真的變小，推算不行，所以另外判斷：
     /// - 地址寫著隧道：只要不是對向、大致在前方就算。隧道有弧度，進隧道時的方向可能差很多（雪山隧道往北差到 44°）。
+    ///   對向用「往照相點的方向」比，不用進隧道時的方向：隧道口常有彎，那個方向不準。
     /// - 其他：範圍內而且幾乎在正前方才算。旁邊平行道路的照相點，推算時會一直靠近
     ///   （雪山隧道往北的入口，宜3線的照相點在右前方約 50°，模擬時誤報）。
     private func isAheadWithoutFix(_ camera: Camera, distance: Double, from point: GeoPoint, heading: Double) -> Bool {
-        let aheadDiff = GeoMath.angleDifference(GeoMath.bearing(from: point, to: camera.point), heading)
+        let toCamera = GeoMath.bearing(from: point, to: camera.point)
+        let aheadDiff = GeoMath.angleDifference(toCamera, heading)
         if camera.address.contains("隧道") {
-            let sameWay = camera.heading.map { GeoMath.angleDifference(heading, $0) <= noFixTunnelDirectionTolerance } ?? true
+            let sameWay = camera.heading.map { GeoMath.angleDifference(toCamera, $0) <= noFixTunnelDirectionTolerance } ?? true
             return sameWay && aheadDiff < 90
         }
         return distance <= noFixRange && aheadDiff <= noFixAheadTolerance
