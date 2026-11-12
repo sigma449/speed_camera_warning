@@ -3,6 +3,19 @@ import XCTest
 
 final class CameraAlertEngineTests: XCTestCase {
 
+    func testYinheReportedCameraOnlyAlertsTowardXindianWithoutOverspeed() {
+        let camera = Camera(id: "yinhe", type: .fixed, lat: 24.9555732, lon: 121.5698732,
+                            heading: 240.6, speedLimit: nil, address: "北宜路過銀河社區（往新店）")
+        for heading in [240.6, 60.6] {
+            let start = GeoMath.destination(from: camera.point, bearing: heading + 180, distance: 400)
+            let engine = CameraAlertEngine(index: SpatialIndex(cameras: [camera]))
+            let events = runAlerts(engine, straightTrack(from: start, bearing: heading, speedKmh: 60, seconds: 45))
+            XCTAssertEqual(events.contains { $0.event.isPre }, heading == 240.6)
+            XCTAssertEqual(events.contains { $0.event.isNear }, heading == 240.6)
+            XCTAssertFalse(events.contains { $0.event.isOverspeedStarted || $0.event.isBeep })
+        }
+    }
+
     /// 在起點正北方 distance 公尺處放一支照相機。
     private func camera(_ id: String = "cam", north distance: Double, heading: Double? = 0,
                         limit: Int? = 50, type: CameraType = .fixed, address: String = "測試路") -> Camera {

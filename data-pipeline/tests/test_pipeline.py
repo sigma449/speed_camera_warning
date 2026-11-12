@@ -258,6 +258,25 @@ def test_bundled_manual_files_are_valid():
     assert north["speedLimit"] == 50 and north["lengthMeters"] == 900
 
 
+def test_yinhe_manual_camera_keeps_unknown_limit_and_does_not_merge_with_348():
+    rows = sources.read_local_rows([os.path.join(HERE, "..", "manual", "cameras_extra.csv")])
+    reported = next(row for row in rows if row["座標緯度"] == "24.9555732")
+    old = {"設置地點": "北宜路2段348號對面（往新店）", "座標緯度": "24.953762",
+           "座標經度": "121.562910", "拍攝方向": "往西", "速限": "50", "取締項目": "測速照相"}
+    report = NormalizeReport()
+    cameras = normalize_rows([reported, old], report)
+    assert len(cameras) == 2 and report.duplicates_merged == 0
+    new = next(camera for camera in cameras if camera.address == reported["設置地點"])
+    assert new.heading == pytest.approx(240.6)
+    assert new.speedLimit is None and new.type == "fixed"
+    assert new.id != next(camera.id for camera in cameras if camera.address == old["設置地點"])
+
+
+@pytest.mark.parametrize("text,expected", [("240.6°", 240.6), ("0°", 0), ("360°", None), ("-1°", None)])
+def test_explicit_manual_direction_degrees(text, expected):
+    assert parse_direction(text) == expected
+
+
 def test_official_lengths_override_mileage_by_direction():
     from speedcam_data.sections import apply_official_lengths
     index = mileposts.build_index(_milepost_rows() + _milepost_rows(0, 30, road="台64"), log=lambda *_: None)

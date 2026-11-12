@@ -95,6 +95,9 @@ def parse_direction(text: Optional[str]) -> Optional[float]:
     if not text:
         return None
     s = re.sub(r"\s+", "", str(text))
+    if re.fullmatch(r"\d{1,3}(?:\.\d+)?°", s):
+        heading = float(s[:-1])
+        return heading if 0 <= heading < 360 else None
     s = s.replace("方向", "").replace("車道", "").replace("行駛", "行")
     if any(w in s for w in _BOTH_WORDS):
         return None
