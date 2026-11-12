@@ -144,6 +144,7 @@ def build(rows: list[dict], sections: list[dict], now: dt.datetime | None = None
     }
     if supplemental_report:
         db["sourceReport"] = {"sources": supplemental_report.counts, "osmComparison": comparison,
+                              "mobileDirections": supplemental_report.mobile_directions,
                               "conflicts": supplemental_report.conflicts, "issues": supplemental_report.issues}
         supplemental_report.print(cameras, log=log)
     return db, report

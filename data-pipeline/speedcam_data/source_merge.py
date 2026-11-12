@@ -14,6 +14,7 @@ class SourceReport:
     counts: dict[str, dict[str, int]] = field(default_factory=dict)
     issues: list[str] = field(default_factory=list)
     conflicts: list[str] = field(default_factory=list)
+    mobile_directions: list[dict] = field(default_factory=list)
 
     def count(self, source: str, key: str, amount: int = 1) -> None:
         values = self.counts.setdefault(source, {"downloaded": 0, "usable": 0, "added": 0, "merged": 0})
@@ -27,6 +28,12 @@ class SourceReport:
         for source, n in self.counts.items():
             log(f"  {source}：原始 {n['downloaded']}，可定位 {n['usable']}，"
                 f"淨新增 {n['added']}，重疊 {n['merged']}")
+            if any(key in n for key in ("directional", "bidirectional", "unresolved")):
+                log(f"    熱點行向：單向 {n.get('directional', 0)}，"
+                    f"明載雙向 {n.get('bidirectional', 0)}，無法唯一判向 {n.get('unresolved', 0)}")
+        for row in self.mobile_directions:
+            log(f"  [熱點行向] {row['source']}｜{row['district']} {row['address']}｜{row['status']}"
+                f"｜heading={row['heading']} axis={row['axis']}｜{row['evidence']}")
         types = dict.fromkeys(("fixed", "redLight", "redLightSpeed", "section", "tech", "mobile", "noise"), 0)
         for camera in cameras:
             types[camera.type] = types.get(camera.type, 0) + 1

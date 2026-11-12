@@ -7,6 +7,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 import re
 from typing import Callable
+import unicodedata
 
 from . import sources
 from .normalize import Camera, detect_type, parse_axis, parse_direction, parse_float, parse_level, parse_limit
@@ -293,9 +294,69 @@ def parse_hccp_tech(raw: bytes) -> list[dict]:
     raise ValueError("新竹警方官網找不到科技執法表；不使用授權未核的移動表")
 
 
+def _single_mileage(address: str) -> tuple[str, float] | None:
+    text = unicodedata.normalize("NFKC", address)
+    matches = list(re.finditer(
+        r"[臺台](\d+[甲乙丙丁]?)線(?:快速公路|快速道路)?\s*(\d+(?:\.\d+)?)\s*(公里|[kK])"
+        r"(?:\+(\d+)(?:[mM])?)?", text))
+    if len(matches) != 1:
+        return None
+    match = matches[0]
+    if re.search(r"(?:至|到|～|~|—|－|-)\s*\d", text[match.end():]):
+        return None
+    return "台" + match[1], float(match[2]) + float(match[4] or 0) / 1000
+
+
+def _place_name(text: str) -> str:
+    text = re.sub(r"\s+", "", text).replace("臺", "台")
+    text = re.sub(r"方向$", "", text)
+    return {"北市": "台北"}.get(text, re.sub(r"[縣市區鄉鎮]$", "", text))
+
+
+class MobileDirectionIndex:
+    """只用同路、明載里程的官方行政區證據，不拿「往某地」本身當作目的地位置。"""
+
+    def __init__(self, rows: list[dict], junctions: list[Camera]) -> None:
+        self.places: dict[tuple[str, str], set[float]] = {}
+        for raw in rows:
+            row = _clean(raw)
+            mileage = _single_mileage(row.get("address", row.get("路段", "")))
+            if mileage:
+                self._add(*mileage, row.get("district", row.get("行政區", "")))
+        for camera in junctions:
+            if camera.source == "osm":
+                continue
+            mileage = _single_mileage(camera.address)
+            if mileage:
+                for place in (camera.city, camera.district):
+                    if place:
+                        self._add(*mileage, place)
+
+    def _add(self, road: str, km: float, place: str) -> None:
+        # 行政區有時連縣市一起寫；保留縣市與最後的鄉鎮區，不能用任意子字串配對。
+        names = re.findall(r"[^縣市區鄉鎮]+[縣市區鄉鎮]", place)
+        for name in names or [place]:
+            if name:
+                self.places.setdefault((road, _place_name(name)), set()).add(km)
+
+    def toward(self, road: str, km: float, destination: str) -> tuple[int | None, str]:
+        target = _place_name(destination)
+        miles = self.places.get((road, target), set())
+        if not miles:
+            return None, f"同路官方行政區沒有「{target}」的可核里程"
+        low, high = min(miles), max(miles)
+        evidence = f"同路官方行政區「{target}」里程 {low:g}–{high:g}K"
+        if km < low - .05:
+            return 1, evidence
+        if km > high + .05:
+            return -1, evidence
+        return None, evidence + "跨越／接近熱點，無法唯一判向"
+
+
 def adapt_mobile(rows: list[dict], source: str, report: SourceReport, resolve=None,
                  junctions: list[Camera] = ()) -> list[Camera]:
     result = []
+    directions = MobileDirectionIndex(rows, junctions)
     for raw in rows:
         r = _clean(raw)
         if source == "169075":
@@ -307,11 +368,11 @@ def adapt_mobile(rows: list[dict], source: str, report: SourceReport, resolve=No
             direction = address
         coords = None
         method = None
+        matched_junctions = []
         # 只接受明確單一省道里程，不把整段的端點／中心當成熱點。
-        mileage = re.search(r"[臺台](\d+[甲乙丙丁]?)線(?:快速公路)?\s*(\d+(?:\.\d+)?)\s*(公里|[kKＫｋ])(?:\+(\d+)(?:[mM])?)?", address)
-        if mileage and not re.search(r"(?:至|到|～|~|—|－|-)\s*\d", address[mileage.end():]):
-            road = "台" + mileage[1]
-            km = float(mileage[2]) + float(mileage[4] or 0) / 1000
+        mileage = _single_mileage(address)
+        if mileage:
+            road, km = mileage
             coords = resolve(road, km) if resolve else None
             method = "official-milepost"
         elif "路口" in address or "街口" in address or "巷口" in address:
@@ -321,16 +382,52 @@ def adapt_mobile(rows: list[dict], source: str, report: SourceReport, resolve=No
             matches = [c for c in junctions if c.city == "新北市" and key(c.address) == key(address)]
             if matches and len({(round(c.lat, 4), round(c.lon, 4)) for c in matches}) == 1:
                 coords = matches[0].lat, matches[0].lon
+                matched_junctions = matches
                 method = "existing-official-junction"
         if not coords:
             report.issue(source, f"{district} {address}", "無原生座標／可靠單點里程或唯一既有路口，未發布")
             continue
-        heading = parse_direction(direction)
+        destination = re.search(r"往([^()（）]+)", direction)
+        both = any(word in direction for word in ("雙向", "往返", "雙方向", "兩向"))
+        # 「往北市」是地名，不是「往北」；明載八方位才沿用方位角。
+        heading = (parse_direction(destination[1].removesuffix("方向").strip())
+                   if destination and re.fullmatch(r"[東西南北]{1,2}(?:方向)?", destination[1].strip())
+                   else None)
         axis = parse_axis(direction)
-        if heading is None and "雙向" in direction and mileage and resolve:
-            a, b = resolve(road, max(0, km - .05)), resolve(road, km + .05)
+        evidence = "公告明載雙向" if both else "公告未載可核單向"
+        if heading is not None:
+            evidence = f"公告明載方位「{destination[1]}」"
+        if mileage and resolve:
+            a = resolve(road, max(0, km - .05)) or coords
+            b = resolve(road, km + .05) or coords
             if a and b and a != b:
-                axis = round(bearing(*a, *b) % 180, 1)
+                increasing = bearing(*a, *b)
+                axis = round(increasing % 180, 1) % 180
+                if destination and not both and heading is None:
+                    sign, evidence = directions.toward(road, km, destination[1])
+                    if sign:
+                        heading = round((increasing + (180 if sign < 0 else 0)) % 360, 1) % 360
+                        evidence += "，取里程" + ("增加" if sign > 0 else "減少") + "方向"
+            else:
+                evidence = "缺少相鄰里程座標，無法取得道路軸向"
+        elif matched_junctions and heading is None:
+            axes = {(c.heading if c.heading is not None else c.axis) % 180
+                    for c in matched_junctions if c.heading is not None or c.axis is not None}
+            if len(axes) == 1:
+                axis = axes.pop()
+                evidence = "沿用唯一既有官方路口的道路軸向；公告未載單向"
+        if both:
+            heading = None
+        status = "directional" if heading is not None else "bidirectional" if both and axis is not None else "unresolved"
+        report.count(source, status)
+        report.mobile_directions.append(dict(source=source, address=address, district=district,
+                                             heading=heading, axis=axis if heading is None else None,
+                                             status=status, evidence=evidence))
+        if status == "unresolved":
+            report.issue(source, f"{district} {address}", evidence + "；維持沿路雙向軸向" if axis is not None
+                         else evidence + "；缺道路軸向，未發布")
+            if axis is None:
+                continue
         identity = hashlib.sha1(f"{district}|{address}".encode()).hexdigest()[:12]
         result.append(Camera(id=f"{source}-{identity}", type="mobile", lat=coords[0], lon=coords[1],
                              heading=heading, axis=axis if heading is None else None, speedLimit=None,
@@ -338,6 +435,7 @@ def adapt_mobile(rows: list[dict], source: str, report: SourceReport, resolve=No
                              district=district, source=source, sourceID=identity, positionMethod=method,
                              enforcementItems="移動測速公告熱點",
                              conditions=("里程牌定位（含內插）；" if method == "official-milepost" else "")
+                             + evidence + "；"
                              + "公告候選地點，非即時執法；原公告有效期間未載明"))
     return result
 

@@ -106,6 +106,64 @@ def test_mobile_missing_milepost_or_ambiguous_intersection_is_not_guessed():
     assert len(report.issues) == 2
 
 
+def test_mobile_named_destination_uses_same_road_administrative_mileage_not_compass_guess():
+    rows = [{"district": "石碇區", "address": f"臺9線22.5K(往{target})"}
+            for target in ("新店", "宜蘭", "未核實地名")]
+    xindian = cam("xindian", address="臺9線14.5K")
+    yilan = cam("yilan", address="臺9線78K")
+    yilan.city, yilan.district = "宜蘭縣", "宜蘭市"
+    report = SourceReport()
+    cameras = extra.adapt_mobile(rows, "ntpc-mobile", report,
+                                 resolve=lambda road, km: (25, 121.5 + km / 1000),
+                                 junctions=[xindian, yilan])
+    assert [c.heading for c in cameras] == [270, 90, None]
+    assert cameras[2].axis == 90
+    assert [r["status"] for r in report.mobile_directions] == ["directional", "directional", "unresolved"]
+    assert any("未核實地名" in issue and "沿路雙向軸向" in issue for issue in report.issues)
+    assert "減少" in cameras[0].conditions and "增加" in cameras[1].conditions
+
+
+def test_mobile_bidirectional_and_ambiguous_destinations_keep_local_axis_including_curves():
+    rows = [{"district": "金山區", "address": f"臺2甲線2K{suffix}"}
+            for suffix in ("雙向", "(往金山)", "(往臺北)", "(往北市)", "")]
+    a = cam("a", address="臺2甲線1K")
+    b = cam("b", address="臺2甲線3K")
+    a.district = b.district = "金山區"
+    # 這一小段里程增加時向西，不能把「往金山」猜成地圖上的北方。
+    report = SourceReport()
+    cameras = extra.adapt_mobile(rows, "ntpc-mobile", report,
+                                 resolve=lambda road, km: (25, 121.5 - km / 1000), junctions=[a, b])
+    assert len(cameras) == 5
+    assert all(c.heading is None and c.axis == 90 for c in cameras)
+    assert report.counts["ntpc-mobile"]["bidirectional"] == 1
+    assert report.counts["ntpc-mobile"]["unresolved"] == 4
+    assert any("跨越" in issue for issue in report.issues)
+    assert all(row["evidence"] for row in report.mobile_directions)
+
+
+def test_mobile_destination_names_keep_bali_and_do_not_mix_branch_roads_or_osm():
+    rows = [{"district": "林口區", "address": f"臺61線12K(往{target})"} for target in ("八里", "臺北", "金山")]
+    bali = cam("bali", address="臺61線2K")
+    bali.district = "八里區"
+    wrong_road = cam("branch", address="臺61乙線1K")
+    wrong_road.city, wrong_road.district = "臺北市", "北投區"
+    unverified = cam("osm", source="osm", address="臺61線1K")
+    unverified.district = "金山區"
+    cameras = extra.adapt_mobile(rows, "ntpc-mobile", SourceReport(),
+                                 resolve=lambda road, km: (25 + km / 1000, 121.5),
+                                 junctions=[bali, wrong_road, unverified])
+    assert [c.heading for c in cameras] == [180, None, None]
+    assert cameras[1].axis == cameras[2].axis == 0
+
+
+def test_mobile_without_adjacent_geometry_reports_missing_axis_instead_of_cross_road_alert():
+    report = SourceReport()
+    rows = [{"district": "坪林區", "address": "臺9線33K(往未知)"}]
+    assert extra.adapt_mobile(rows, "ntpc-mobile", report, resolve=lambda *args: (25, 121.5)) == []
+    assert report.counts["ntpc-mobile"]["unresolved"] == 1
+    assert any("缺道路軸向，未發布" in issue for issue in report.issues)
+
+
 def test_mobile_junction_matching_preserves_road_name_characters():
     rows = [{"district": "新店區", "address": "臺北路與中正路口"}]
     junctions = [cam("other-road", address="北路與中正路口")]
