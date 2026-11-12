@@ -232,6 +232,9 @@ def test_production_build_keeps_official_fixes_when_mileposts_are_offline(monkey
     monkeypatch.setattr(sources, "fetch_national_rows", lambda: base)
     monkeypatch.setattr(sources, "fetch_official_rows", lambda dataset, *args, **kwargs:
                         sources.read_local_rows([build_cameras.DEFAULT_FREEWAY_SNAPSHOT]) if dataset == "13940" else ntpc_rows())
+    def supplemental_offline(*args, **kwargs):
+        raise OSError("supplemental sources offline")
+    monkeypatch.setattr(sources, "http_get", supplemental_offline)
     def offline(**kwargs):
         raise OSError("mileposts offline")
     monkeypatch.setattr(build_cameras.mileposts, "fetch_index", offline)
@@ -240,4 +243,7 @@ def test_production_build_keeps_official_fixes_when_mileposts_are_offline(monkey
     db = json.loads(out.read_text(encoding="utf-8"))
     assert next(c for c in db["cameras"] if c["address"].startswith("國道"))["lat"] == 23.373209
     assert {"ntpc-huanhe-f", "ntpc-huanhe-r", "ntpc-shoushan"} <= {s["id"] for s in db["sections"]}
-    assert "mileposts offline" in capsys.readouterr().out
+    output = capsys.readouterr().out
+    assert "mileposts offline" in output
+    assert "supplemental sources offline" in output
+    assert db["sourceReport"]["sources"]["osm"]["usable"] > 0

@@ -227,6 +227,20 @@ class Camera:
     # 高架（elevated）或平面（surface）；只在兩者可能混淆的地方標示
     level: Optional[str] = None
     sectionGroupID: Optional[str] = None
+    enforcementItems: Optional[str] = None
+    conditions: Optional[str] = None
+    source: Optional[str] = None
+    sourceID: Optional[str] = None
+    sourceURL: Optional[str] = None
+    positionMethod: Optional[str] = None
+
+    @property
+    def enforces_speed(self) -> bool:
+        if self.type in ("mobile", "noise"):
+            return False
+        if self.enforcementItems is not None:
+            return any(word in self.enforcementItems for word in ("超速", "測速"))
+        return self.type in ("fixed", "redLightSpeed", "section")
 
     def to_json(self) -> dict:
         d = {
@@ -250,6 +264,9 @@ class Camera:
             d["level"] = self.level
         if self.sectionGroupID:
             d["sectionGroupID"] = self.sectionGroupID
+        for key in ("enforcementItems", "conditions", "source", "sourceID", "sourceURL", "positionMethod"):
+            if getattr(self, key) is not None:
+                d[key] = getattr(self, key)
         return d
 
 

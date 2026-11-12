@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import datetime as dt
 import json
 import os
@@ -27,6 +28,8 @@ from speedcam_data.sections import (  # noqa: E402
 )
 from speedcam_data import section_text  # noqa: E402
 from speedcam_data import official  # noqa: E402
+from speedcam_data import additional_sources, osm_cameras  # noqa: E402
+from speedcam_data.source_merge import SourceReport, merge_sources  # noqa: E402
 
 DEFAULT_OUTPUT = os.path.join(HERE, "..", "SpeedCam", "Resources", "cameras.json")
 DEFAULT_SECTIONS = os.path.join(HERE, "manual", "sections.csv")
@@ -89,18 +92,60 @@ def add_paths(sections: list[dict], fetch_index, log=print) -> None:
 
 
 def build(rows: list[dict], sections: list[dict], now: dt.datetime | None = None,
-          extra_sources: tuple = (), road_data: dict | None = None, log=print) -> tuple[dict, NormalizeReport]:
+          extra_sources: tuple = (), road_data: dict | None = None, log=print,
+          supplemental: bool = False, offline_sources: bool = False, resolve_mobile=None) -> tuple[dict, NormalizeReport]:
     now = now or dt.datetime.now(dt.timezone.utc)
     report = NormalizeReport()
     cameras = normalize_rows(rows, report)
+    supplemental_report = None
+    comparison = None
+    if supplemental:
+        supplemental_report = SourceReport()
+        manual_rows = [row for row in rows if row.get("_manual")]
+        manual_ids = {camera.id for camera in normalize_rows(manual_rows)}
+        for camera in cameras:
+            camera.source = "manual" if camera.id in manual_ids else "7320"
+            camera.sourceID = camera.id
+            camera.sourceURL = ("https://github.com/sigma449/speed_camera_warning"
+                                if camera.source == "manual" else "https://data.gov.tw/dataset/7320")
+        for source, downloaded, added in (
+            ("7320", len(rows) - len(manual_rows), len(cameras) - len(manual_ids)),
+            ("manual", len(manual_rows), len(manual_ids)),
+        ):
+            supplemental_report.count(source, "downloaded", downloaded)
+            supplemental_report.count(source, "usable", added)
+            supplemental_report.count(source, "added", added)
+        additions, attribution = additional_sources.load_official(supplemental_report, offline=offline_sources, log=log)
+        cameras = merge_sources(cameras, additions, supplemental_report)
+        elements = osm_cameras.load_elements(offline=offline_sources, log=log)
+        osm = osm_cameras.parse_cameras(elements, supplemental_report)
+        supplemental_report.count("osm", "downloaded", sum(
+            e.get("tags", {}).get("highway") == "speed_camera"
+            or e.get("tags", {}).get("type") == "enforcement" for e in elements))
+        supplemental_report.count("osm", "usable", len(osm))
+        comparison = osm_cameras.comparison(osm, [c for c in cameras if c.source != "manual"])
+        log("OSM 距離＋方向比對：" + json.dumps(comparison, ensure_ascii=False))
+        cameras = merge_sources(cameras, osm, supplemental_report)
+        hotspots, mobile_attribution = additional_sources.load_mobile(
+            supplemental_report, offline=offline_sources, resolve=resolve_mobile, junctions=cameras, log=log)
+        cameras = merge_sources(cameras, hotspots, supplemental_report)
+        extra_sources = tuple(extra_sources) + tuple(attribution) + tuple(mobile_attribution)
+        if osm:
+            extra_sources += (osm_cameras.ATTRIBUTION,)
+        if any(camera.positionMethod == "official-milepost" for camera in hotspots):
+            extra_sources += (mileposts.ATTRIBUTION,)
     official.audit_cameras(cameras, sections, road_data or {}, log=log)
     db = {
         "version": now.strftime("%Y-%m-%d"),
         "generatedAt": now.replace(microsecond=0).isoformat().replace("+00:00", "Z"),
-        "sources": list(sources.ATTRIBUTION) + list(extra_sources),
+        "sources": list(dict.fromkeys(list(sources.ATTRIBUTION) + list(extra_sources))),
         "cameras": [c.to_json() for c in cameras],
         "sections": sections,
     }
+    if supplemental_report:
+        db["sourceReport"] = {"sources": supplemental_report.counts, "osmComparison": comparison,
+                              "conflicts": supplemental_report.conflicts, "issues": supplemental_report.issues}
+        supplemental_report.print(cameras, log=log)
     return db, report
 
 
@@ -112,7 +157,7 @@ def unchanged(path: str, db: dict) -> bool:
     except (OSError, ValueError):
         return False
     return old.get("cameras") == db["cameras"] and old.get("sections") == db["sections"] \
-        and old.get("sources") == db["sources"]
+        and old.get("sources") == db["sources"] and old.get("sourceReport") == db.get("sourceReport")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -126,6 +171,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--section-lengths", default=DEFAULT_SECTION_LENGTHS, help="警方公告的區間偵測長度")
     ap.add_argument("--freeway-input", help="13940 本機 CSV／ZIP（--input 離線建置時可另外指定）")
     ap.add_argument("--ntpc-input", help="126156 本機 CSV（--input 離線建置時可另外指定）")
+    ap.add_argument("--additional-snapshots", action="store_true",
+                    help="搭配 --input，明確加入 repo 多來源／OSM 快照；新增來源不連網")
     ap.add_argument("--no-auto-sections", action="store_true", help="不從文字自動產生區間")
     ap.add_argument("--min-count", type=int, default=0,
                     help="照相點少於這個數量就視為失敗（避免把空資料打包進 App）")
@@ -138,7 +185,7 @@ def main(argv: list[str] | None = None) -> int:
     if os.path.exists(args.extra):
         extra = sources.read_local_rows([args.extra])
         print(f"人工補充照相點 {len(extra)} 筆")
-        rows += extra
+        rows += [dict(row, _manual=True) for row in extra]
 
     freeway_rows = []
     ntpc_rows = []
@@ -192,7 +239,21 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, ValueError) as exc:
         print(f"[警告] 道路線形讀取失敗，無法稽核國道座標：{exc}")
         road_data = {}
-    db, report = build(rows, sections, extra_sources=extra, road_data=road_data)
+    mobile_milepost_warning = False
+
+    def resolve_mobile(road, km):
+        nonlocal mobile_milepost_warning
+        try:
+            return fetch_index().resolve(road, km)
+        except (OSError, ValueError, RuntimeError, KeyError, csv.Error) as exc:
+            if not mobile_milepost_warning:
+                print(f"[警告] 移動熱點無法取得里程牌，里程地點不發布：{exc}")
+                mobile_milepost_warning = True
+            return None
+
+    db, report = build(rows, sections, extra_sources=extra, road_data=road_data,
+                       supplemental=not args.input or args.additional_snapshots,
+                       offline_sources=args.additional_snapshots, resolve_mobile=resolve_mobile)
     print(report.summary())
     diag = report.diagnostics()
     if diag:

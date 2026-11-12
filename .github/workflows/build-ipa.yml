@@ -60,6 +60,16 @@ jobs:
           zip -qry SpeedCam.ipa Payload
           ls -lh SpeedCam.ipa
 
+      - name: 提供融合資料庫與來源（ODbL）
+        uses: actions/upload-artifact@v4
+        with:
+          name: SpeedCam-data
+          path: |
+            SpeedCam/Resources/cameras.json
+            data-pipeline/
+            docs/data_sources_survey.md
+          retention-days: 30
+
       - uses: actions/upload-artifact@v4
         with:
           name: SpeedCam-ipa

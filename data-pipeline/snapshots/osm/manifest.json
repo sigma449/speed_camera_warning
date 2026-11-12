@@ -1,0 +1,96 @@
+{
+  "south": {
+    "bbox": [
+      21.8,
+      119.3,
+      22.7,
+      122.1
+    ],
+    "sourceURL": "https://download.geofabrik.de/asia/taiwan-latest.osm.pbf",
+    "pbfMD5": "e38ce20852235f903fd7677c677e0051",
+    "timestamp": "2026-11-11T21:22:47+00:00",
+    "elements": 168,
+    "failedQuery": "[out:json][timeout:25];area[\"ISO3166-1\"=\"TW\"][admin_level=2]->.tw;(nwr(21.8,119.3,22.7,122.1)(area.tw)[\"highway\"=\"speed_camera\"];rel(21.8,119.3,22.7,122.1)(area.tw)[\"type\"=\"enforcement\"];);out body;>;out body qt;",
+    "origin": "Geofabrik PBF；Overpass 兩端點 POST/GET 皆失聯，未冒充 Overpass 回應",
+    "sha256": "5a74e65e6f5ef58fa94ceb17fa0b1de66301edc948467780c02cc6cbabe6f1eb"
+  },
+  "central-south": {
+    "endpoint": "https://overpass-api.de/api/interpreter",
+    "bbox": [
+      22.7,
+      119.3,
+      23.6,
+      122.1
+    ],
+    "query": "[out:json][timeout:25];area[\"ISO3166-1\"=\"TW\"][admin_level=2]->.tw;(nwr(area.tw)(22.7,119.3,23.6,122.1)[\"highway\"=\"speed_camera\"];rel(area.tw)(22.7,119.3,23.6,122.1)[\"type\"=\"enforcement\"];);out body;>;out body qt;",
+    "timestamp": "2026-11-12T11:55:18Z",
+    "elements": 245,
+    "cameras": 179,
+    "relations": 21,
+    "origin": "Overpass",
+    "sha256": "2ee30a0070d783caf555f6839f4264a4a7dbb2c60bdd4a8d4274bdafd60c9600"
+  },
+  "central-north": {
+    "endpoint": "https://overpass-api.de/api/interpreter",
+    "bbox": [
+      23.6,
+      119.3,
+      24.5,
+      122.1
+    ],
+    "query": "[out:json][timeout:25];area[\"ISO3166-1\"=\"TW\"][admin_level=2]->.tw;(nwr(area.tw)(23.6,119.3,24.5,122.1)[\"highway\"=\"speed_camera\"];rel(area.tw)(23.6,119.3,24.5,122.1)[\"type\"=\"enforcement\"];);out body;>;out body qt;",
+    "timestamp": "2026-11-12T11:55:18Z",
+    "elements": 829,
+    "cameras": 263,
+    "relations": 44,
+    "origin": "Overpass",
+    "sha256": "6723ffd9c5479261ee05ee70fde35e0f0684e7e47d25d3fe543504ba87c8da53"
+  },
+  "north": {
+    "endpoint": "https://overpass-api.de/api/interpreter",
+    "bbox": [
+      24.5,
+      119.3,
+      25.4,
+      122.1
+    ],
+    "query": "[out:json][timeout:25];area[\"ISO3166-1\"=\"TW\"][admin_level=2]->.tw;(nwr(area.tw)(24.5,119.3,25.4,122.1)[\"highway\"=\"speed_camera\"];rel(area.tw)(24.5,119.3,25.4,122.1)[\"type\"=\"enforcement\"];);out body;>;out body qt;",
+    "timestamp": "2026-11-12T11:56:18Z",
+    "elements": 1371,
+    "cameras": 452,
+    "relations": 119,
+    "origin": "Overpass",
+    "sha256": "42af93bc1cd31b98ebe6a7c43505b97ea2a39d20daad20de995dda8ef2394da5"
+  },
+  "kinmen": {
+    "bbox": [
+      24.3,
+      118.1,
+      24.6,
+      118.5
+    ],
+    "sourceURL": "https://download.geofabrik.de/asia/taiwan-latest.osm.pbf",
+    "pbfMD5": "e38ce20852235f903fd7677c677e0051",
+    "timestamp": "2026-11-11T21:22:47+00:00",
+    "elements": 2,
+    "failedQuery": "[out:json][timeout:25];area[\"ISO3166-1\"=\"TW\"][admin_level=2]->.tw;(nwr(24.3,118.1,24.6,118.5)(area.tw)[\"highway\"=\"speed_camera\"];rel(24.3,118.1,24.6,118.5)(area.tw)[\"type\"=\"enforcement\"];);out body;>;out body qt;",
+    "origin": "Geofabrik PBF；Overpass 兩端點 POST/GET 皆失聯，未冒充 Overpass 回應",
+    "sha256": "da01ebb3f11a9ad4e1296735d989201b8a991456a3f2422f8197e01672b9bc64"
+  },
+  "matsu": {
+    "endpoint": "https://overpass-api.de/api/interpreter",
+    "bbox": [
+      25.9,
+      119.8,
+      26.4,
+      120.6
+    ],
+    "query": "[out:json][timeout:25];area[\"ISO3166-1\"=\"TW\"][admin_level=2]->.tw;(nwr(area.tw)(25.9,119.8,26.4,120.6)[\"highway\"=\"speed_camera\"];rel(area.tw)(25.9,119.8,26.4,120.6)[\"type\"=\"enforcement\"];);out body;>;out body qt;",
+    "timestamp": "2026-11-12T11:58:19Z",
+    "elements": 0,
+    "cameras": 0,
+    "relations": 0,
+    "origin": "Overpass",
+    "sha256": "813ec47398b1e4a84cf61ab05ee6e717c2c42ddb05becf927cfea1d97bc924ac"
+  }
+}
