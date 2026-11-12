@@ -83,10 +83,7 @@ final class AppModel: ObservableObject {
 
     var isOverspeed: Bool {
         if cameraTarget?.isOverspeed == true { return true }
-        if let status = sectionStatus {
-            return Double(currentSpeedKmh) > status.effectiveLimitKmh
-        }
-        return false
+        return sectionStatus?.isOverspeed == true
     }
 
     // MARK: 內部元件
@@ -152,8 +149,8 @@ final class AppModel: ObservableObject {
         location.onAuthorizationChange = { [weak self] status in
             self?.authorizationChanged(status)
         }
-        pathSnapper.onSnapped = { [weak self] groupID, path in
-            self?.applySnappedPath(path, toGroup: groupID)
+        pathSnapper.onSnapped = { [weak self] sectionID, path in
+            self?.applySnappedPath(path, toSection: sectionID)
         }
         applySettingsToComponents()
         audioRouteObserver = NotificationCenter.default.addObserver(
@@ -243,8 +240,8 @@ final class AppModel: ObservableObject {
             sectionStatus = sec.status
             sectionApproach = sec.approach
         }
-        if let fix = alertEngine.lastFix {
-            for event in cam?.events ?? [] { handleCameraEvent(event, fix: fix) }
+        if let cam, let fix = alertEngine.lastFix {
+            handleCameraResult(cam, fix: fix)
         }
         for event in sec?.events ?? [] { handleSectionEvent(event) }
 
@@ -493,7 +490,7 @@ final class AppModel: ObservableObject {
         routeProgress = nav?.progress
 
         // 語音優先順序：近距 / 超速 > 區間 > 預告 > 導航
-        for event in cam?.events ?? [] { handleCameraEvent(event, fix: fix) }
+        if let cam { handleCameraResult(cam, fix: fix) }
         for event in sec?.events ?? [] { handleSectionEvent(event) }
         if let nav {
             for event in nav.events { handleRouteEvent(event) }
@@ -506,34 +503,22 @@ final class AppModel: ObservableObject {
         activity.update(activityState(), alert: alert)
     }
 
-    private func handleCameraEvent(_ event: CameraAlertEvent, fix: VehicleFix) {
-        switch event {
-        case let .preAlert(camera, distance):
-            let th = settings.thresholds(speedLimit: camera.speedLimit, currentSpeedKmh: fix.speedKmh)
-            announcer.speak(AnnouncementFormatter.cameraAlert(camera: camera, announcedDistance: spoken(distance, threshold: th.pre)))
-        case let .nearAlert(camera, distance, afterPre):
-            let th = settings.thresholds(speedLimit: camera.speedLimit, currentSpeedKmh: fix.speedKmh)
-            let announced = spoken(distance, threshold: th.near)
-            // 預告過了，近距只要念距離；第一次提醒就在近距內時才念完整的句子
-            announcer.speak(afterPre
-                            ? AnnouncementFormatter.cameraNearAfterPre(announcedDistance: announced)
-                            : AnnouncementFormatter.cameraAlert(camera: camera, announcedDistance: announced),
-                            urgent: true)
-        case .passed:
-            announcer.passTone()
-        case let .overspeedStarted(limit, _):
-            announcer.beep()
-            announcer.speak(AnnouncementFormatter.overspeed(limit: limit), urgent: true)
-        case .overspeedBeep:
-            announcer.beep()
-        case .overspeedEnded:
-            break
+    private func handleCameraResult(_ result: CameraAlertResult, fix: VehicleFix) {
+        for speech in CameraAnnouncementPolicy.speech(for: result, speedKmh: fix.speedKmh, settings: settings) {
+            announcer.speak(speech.text, urgent: speech.urgent)
+        }
+        for event in result.events {
+            switch event {
+            case .passed: announcer.passTone()
+            case .overspeedStarted, .overspeedBeep: announcer.beep()
+            case .preAlert, .nearAlert, .overspeedEnded: break
+            }
         }
     }
 
     /// 播報時念門檻距離（300、100…）比念「296 公尺」自然；第一次偵測就已經很近時改念實際距離。
     private func spoken(_ distance: Double, threshold: Double) -> Double {
-        distance >= threshold - 40 ? threshold : distance
+        AnnouncementFormatter.announcedDistance(distance, threshold: threshold)
     }
 
     private func handleSectionEvent(_ event: SectionEvent) {
@@ -558,7 +543,6 @@ final class AppModel: ObservableObject {
         case let .overspeedStarted(threshold):
             // 照相機前的超速警示已經在嗶的話就不重複
             guard cameraTarget?.isOverspeed != true else { break }
-            announcer.beep()
             announcer.speak(AnnouncementFormatter.sectionOverspeed(threshold: threshold), urgent: true)
         case .overspeedBeep:
             guard cameraTarget?.isOverspeed != true else { break }
@@ -647,13 +631,15 @@ final class AppModel: ObservableObject {
     /// 請 Apple 地圖把區間路形貼齊道路（只處理還沒做過的，近的先做）。地圖移動後由 RootView 呼叫。
     func requestRoadSnapping(near center: GeoPoint?) {
         guard !demoMode, !database.sections.isEmpty else { return }
-        pathSnapper.enqueue(sectionOverlays, near: center ?? lastFix?.point)
+        pathSnapper.enqueue(database.sections, near: center ?? lastFix?.point)
     }
 
-    private func applySnappedPath(_ path: [GeoPoint], toGroup groupID: String) {
-        for i in database.sections.indices where database.sections[i].groupID == groupID {
-            database.sections[i].path = RoadSnapping.oriented(path, startingNear: database.sections[i].start)
+    private func applySnappedPath(_ path: [GeoPoint], toSection sectionID: String) {
+        for i in database.sections.indices where database.sections[i].id == sectionID {
+            database.sections[i].path = path
         }
+        sectionTracker.updatePath(path, forSectionID: sectionID)
+        alertEngine.sections = database.sections
     }
 
     private func applyDatabase(_ db: CameraDatabase) {

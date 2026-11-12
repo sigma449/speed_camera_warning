@@ -129,6 +129,15 @@
     "waitAtTurnaroundSeconds": 350
   },
   {
+    "name": "歸零01 北宜第1段同向停等350秒再繼續（第6項，不以迴轉中止掩蓋歸零政策）",
+    "from": { "name": "第1段資料起點前約400m", "lat": 24.9526532, "lon": 121.5939215 },
+    "to": { "name": "第1段資料終點後約400m", "lat": 24.9545394, "lon": 121.6261817 },
+    "vehicleMode": "motorcycleRedYellow",
+    "speedKmh": 60,
+    "pauseAtMeters": 1400,
+    "pauseSeconds": 350
+  },
+  {
     "name": "語音01 首筆定位就在固定照相近距內並超速（第11項，非實車GPS）",
     "from": { "name": "北宜路1段246號照相點前約80m", "lat": 24.9531259, "lon": 121.5439557 },
     "to": { "name": "該照相點後約600m", "lat": 24.9519177, "lon": 121.5499644 },

@@ -20,7 +20,7 @@ final class SectionPathSnapper {
         var failedAt: Date?
     }
 
-    /// 某一段（groupID）貼齊完成時呼叫，path 是該段第一個方向（起點 → 終點）的路形。
+    /// 某一方向貼齊完成時呼叫，path 只屬於這個 section.id 的門架配對。
     var onSnapped: ((String, [GeoPoint]) -> Void)?
 
     private var cache: [String: Entry] = [:]
@@ -41,24 +41,24 @@ final class SectionPathSnapper {
 
     /// 已經貼齊過的路形（方向與這個區間一致）。
     func cachedPath(for section: SpeedSection) -> [GeoPoint]? {
-        guard let entry = cache[section.groupID], entry.signature == Self.signature(section),
+        guard let entry = cache[section.id], entry.signature == RoadSnapping.cacheSignature(for: section),
               let raw = entry.path else { return nil }
         let points = raw.compactMap { $0.count >= 2 ? GeoPoint(lat: $0[0], lon: $0[1]) : nil }
         guard points.count >= 2 else { return nil }
         return RoadSnapping.oriented(points, startingNear: section.start)
     }
 
-    /// 把還沒貼齊的區間排進佇列（每段只需要一個方向）。near 是地圖中心或目前位置，越近越先處理。
+    /// 把還沒貼齊的方向排進佇列。near 是地圖中心或目前位置，越近越先處理。
     func enqueue(_ sections: [SpeedSection], near: GeoPoint?) {
         if let near { center = near }
-        for s in sections where pending[s.groupID] == nil && needsSnapping(s) {
-            pending[s.groupID] = s
+        for s in sections where pending[s.id] == nil && needsSnapping(s) {
+            pending[s.id] = s
         }
         startWorkerIfNeeded()
     }
 
     private func needsSnapping(_ s: SpeedSection) -> Bool {
-        guard let entry = cache[s.groupID], entry.signature == Self.signature(s) else { return true }
+        guard let entry = cache[s.id], entry.signature == RoadSnapping.cacheSignature(for: s) else { return true }
         if entry.path != nil { return false }
         if let failed = entry.failedAt, Date().timeIntervalSince(failed) < Self.retryInterval { return false }
         return true
@@ -71,7 +71,7 @@ final class SectionPathSnapper {
                 let path = await self.snap(next)
                 self.store(next, path: path)
                 if let path {
-                    self.onSnapped?(next.groupID, path)
+                    self.onSnapped?(next.id, path)
                 }
             }
             self?.worker = nil
@@ -88,12 +88,12 @@ final class SectionPathSnapper {
         } else {
             pick = pending.values.first
         }
-        if let pick { pending.removeValue(forKey: pick.groupID) }
+        if let pick { pending.removeValue(forKey: pick.id) }
         return pick
     }
 
     private func store(_ section: SpeedSection, path: [GeoPoint]?) {
-        cache[section.groupID] = Entry(signature: Self.signature(section),
+        cache[section.id] = Entry(signature: RoadSnapping.cacheSignature(for: section),
                                        path: path?.map { [($0.lat * 1e6).rounded() / 1e6, ($0.lon * 1e6).rounded() / 1e6] },
                                        failedAt: path == nil ? Date() : nil)
         if let data = try? JSONEncoder().encode(cache) {
@@ -178,16 +178,9 @@ final class SectionPathSnapper {
 
     // MARK: 存檔
 
-    /// 起訖點變了（資料更新）就重新貼齊。兩個方向共用同一個結果，所以起訖點排序後再組合。
-    private static func signature(_ s: SpeedSection) -> String {
-        let a = String(format: "%.5f,%.5f", s.start.lat, s.start.lon)
-        let b = String(format: "%.5f,%.5f", s.end.lat, s.end.lon)
-        return a < b ? "\(a)-\(b)" : "\(b)-\(a)"
-    }
-
     private static var fileURL: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSTemporaryDirectory())
-        return base.appendingPathComponent("snappedSectionPaths.v1.json")
+        return base.appendingPathComponent("snappedSectionPaths.v2.json")
     }
 }

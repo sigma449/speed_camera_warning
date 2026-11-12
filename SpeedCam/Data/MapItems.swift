@@ -59,14 +59,22 @@ enum MapItems {
 
     /// 導航用的步驟。長度用每一步折線的實際長度：整條路線的折線就是這些折線接起來，
     /// 轉彎點才會落在正確的位置。Apple 回報的距離和折線差到 2.3%，開到後面會累積成幾百公尺。
-    static func stepInfos(of route: MKRoute) -> [RouteStepInfo] {
-        route.steps.map { step in
-            let points = coordinates(of: step.polyline)
+    static func stepInfos(of route: MKRoute, resolver: RoadInstructionResolver = .empty) -> [RouteStepInfo] {
+        let paths = route.steps.map { coordinates(of: $0.polyline) }
+        return route.steps.enumerated().map { index, step in
+            let points = paths[index]
             var length = 0.0
             for (a, b) in zip(points, points.dropFirst()) {
                 length += GeoMath.distance(a, b)
             }
-            return RouteStepInfo(instruction: step.instructions, distance: length)
+            var joining: [GeoPoint] = []
+            if step.instructions.contains("上高速公路") {
+                for next in paths.dropFirst(index + 1) {
+                    joining += joining.isEmpty ? next : Array(next.dropFirst())
+                    if GeoMath.length(of: joining) >= 600 { break }
+                }
+            }
+            return RouteStepInfo(instruction: resolver.corrected(step.instructions, joining: joining), distance: length)
         }
     }
 }

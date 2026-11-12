@@ -9,6 +9,7 @@ final class NavigationController {
     private(set) var route: MKRoute?
     private(set) var destination: MKMapItem?
     private var tracker: RouteProgressTracker?
+    private var instructionResolver: RoadInstructionResolver = .empty
 
     var isActive: Bool { route != nil }
 
@@ -33,11 +34,12 @@ final class NavigationController {
 
     // MARK: 路線
 
-    /// 依車種規劃路線。汽車用不到線形資料，就不載入。
+    /// 依車種規劃路線；道路名稱校正使用與選路相同的內建線形。
     /// source：重新規劃時傳最新定位。系統的「目前位置」可能還是幾秒前的，開車時會差好幾十公尺。
     func calculateRoute(to destination: MKMapItem, mode: VehicleMode,
                         from source: MKMapItem? = nil) async throws -> RoutePlan<MKRoute> {
         var rules = RouteRules.noData
+        instructionResolver = await RoadLineStore.loadInstructionResolver()
         if mode != .car { rules = await RoadLineStore.loadRules() }
         return try await RoutePlanner.plan(from: source ?? MKMapItem.forCurrentLocation(), to: destination,
                                            mode: mode, rules: rules)
@@ -47,7 +49,7 @@ final class NavigationController {
         self.route = route
         self.destination = destination
         let polyline = MapItems.coordinates(of: route.polyline)
-        tracker = RouteProgressTracker(polyline: polyline, steps: MapItems.stepInfos(of: route))
+        tracker = RouteProgressTracker(polyline: polyline, steps: MapItems.stepInfos(of: route, resolver: instructionResolver))
     }
 
     func stop() {
@@ -62,7 +64,7 @@ final class NavigationController {
 
     /// 第一個有內容的指示（開始導航時念出來）。
     var firstInstruction: String? {
-        route?.steps.first { !$0.instructions.isEmpty }?.instructions
+        tracker?.steps.first { !$0.instruction.isEmpty }?.instruction
     }
 
     /// 依指示文字挑選轉彎箭頭圖示。

@@ -8,9 +8,11 @@ public struct RoadLineData: Decodable, Sendable {
     public var freeways: [[GeoPoint]]
     /// Apple 不算 highway、但不是平面道路的高架和快速道路（白牌不走）。
     public var whitePlateRestricted: [[GeoPoint]]
+    /// 有名稱的主線；國道另帶編號，供指示校正與資料稽核使用。
+    public var namedRoads: [NamedRoadLine]
 
     private enum CodingKeys: String, CodingKey {
-        case generatedAt, attribution, freeways, whitePlateRestricted
+        case generatedAt, attribution, freeways, whitePlateRestricted, namedRoads
     }
 
     public init(from decoder: Decoder) throws {
@@ -19,16 +21,38 @@ public struct RoadLineData: Decodable, Sendable {
         attribution = try c.decode(String.self, forKey: .attribution)
         freeways = Self.lines(try c.decode([[[Double]]].self, forKey: .freeways))
         whitePlateRestricted = Self.lines(try c.decode([[[Double]]].self, forKey: .whitePlateRestricted))
+        namedRoads = try c.decodeIfPresent([NamedRoadLine].self, forKey: .namedRoads) ?? []
     }
 
     public static func decode(from data: Data) throws -> RoadLineData {
         try JSONDecoder().decode(RoadLineData.self, from: data)
     }
 
-    private static func lines(_ raw: [[[Double]]]) -> [[GeoPoint]] {
+    fileprivate static func lines(_ raw: [[[Double]]]) -> [[GeoPoint]] {
         raw.map { line in
             line.compactMap { $0.count >= 2 ? GeoPoint(lat: $0[0], lon: $0[1]) : nil }
         }
+    }
+}
+
+public struct NamedRoadLine: Decodable, Sendable {
+    public var name: String
+    public var freewayRef: String?
+    public var lines: [[GeoPoint]]
+
+    public init(name: String, freewayRef: String? = nil, lines: [[GeoPoint]]) {
+        self.name = name
+        self.freewayRef = freewayRef
+        self.lines = lines
+    }
+
+    private enum CodingKeys: String, CodingKey { case name, freewayRef, lines }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        name = try c.decode(String.self, forKey: .name)
+        freewayRef = try c.decodeIfPresent(String.self, forKey: .freewayRef)
+        lines = RoadLineData.lines(try c.decode([[[Double]]].self, forKey: .lines))
     }
 }
 

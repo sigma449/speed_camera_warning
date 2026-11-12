@@ -49,4 +49,21 @@ final class RoadSnappingTests: XCTestCase {
         XCTAssertEqual(RoadSnapping.oriented(path, startingNear: east(5)), path)
         XCTAssertEqual(RoadSnapping.oriented(path, startingNear: east(990)), path.reversed())
     }
+
+    func testCacheInvalidatesChangedGatesAndNeverSharesAsymmetricDirections() {
+        let original = SpeedSection(id: "beiyi-2-f", name: "北宜", start: east(0), end: east(1_000),
+                                    lengthMeters: 1_000, speedLimit: 40)
+        var moved = original
+        moved.start = east(80)
+        XCTAssertNotEqual(RoadSnapping.cacheSignature(for: original), RoadSnapping.cacheSignature(for: moved))
+        var reverse = original
+        reverse.id = "beiyi-2-r"
+        reverse.start = east(1_010)
+        reverse.end = east(90)
+        XCTAssertEqual(original.groupID, reverse.groupID, "容許值仍共用")
+        XCTAssertNotEqual(RoadSnapping.cacheSignature(for: moved), RoadSnapping.cacheSignature(for: reverse))
+        var movedEnd = moved
+        movedEnd.end = east(1_001)
+        XCTAssertNotEqual(RoadSnapping.cacheSignature(for: moved), RoadSnapping.cacheSignature(for: movedEnd))
+    }
 }

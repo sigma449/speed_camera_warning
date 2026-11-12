@@ -222,7 +222,7 @@ final class SectionSpeedTrackerTests: XCTestCase {
         XCTAssertEqual(sec, 381)
     }
 
-    func testOverspeedInsideSectionBeepsEveryThreeSeconds() {
+    func testOverspeedInsideSectionBeepsEveryFifteenSeconds() {
         var settings = AlertSettings()
         settings.sectionToleranceKmh = 10   // 門檻 50
         let s = section(length: 3_000, limit: 40)
@@ -233,7 +233,8 @@ final class SectionSpeedTrackerTests: XCTestCase {
         let beeps = events.filter { $0.event == .overspeedBeep }
         let ended = events.filter { $0.event == .overspeedEnded }
         XCTAssertEqual(started.count, 1)
-        XCTAssertTrue((5...7).contains(beeps.count), "beeps=\(beeps.count)")
+        XCTAssertEqual(beeps.count, 2, "開始與第 15 秒各一聲")
+        XCTAssertEqual(beeps[1].time - beeps[0].time, 15, accuracy: 0.01)
         XCTAssertEqual(ended.count, 1)
         XCTAssertGreaterThan(ended[0].time, started[0].time)
     }
@@ -451,5 +452,241 @@ final class SectionSpeedTrackerTests: XCTestCase {
         let events = runSections(tracker, straightTrack(from: origin, bearing: 0, speedKmh: 50, seconds: 30))
         guard case let .entered(_, minSec)? = events.first?.event else { return XCTFail() }
         XCTAssertEqual(minSec, 180)
+    }
+
+    private func mappedSection(length: Double = 3_000) -> SpeedSection {
+        var s = section(length: length, limit: 40)
+        s.path = [s.start, s.end]
+        return s
+    }
+
+    func testReturnPastStartAbortsOnceAndClearsOverspeed() {
+        let s = mappedSection()
+        let tracker = SectionSpeedTracker(sections: [s])
+        let fixes = segmentedTrack(from: origin, segments: [(0, 60, 60), (180, 60, 65)])
+        let events = runSections(tracker, fixes)
+        let aborted = events.filter { if case .aborted = $0.event { return true }; return false }
+        XCTAssertEqual(aborted.count, 1)
+        XCTAssertFalse(tracker.isActive)
+        XCTAssertTrue(events.contains { $0.event == .overspeedEnded })
+        XCTAssertFalse(events.contains { $0.time > aborted[0].time && $0.event == .overspeedBeep })
+        XCTAssertFalse(events.contains { if case .completed = $0.event { return true }; return false })
+        XCTAssertLessThan(aborted[0].time, 100, "應在段內持續後退時就中止，不必等退回門架")
+    }
+
+    func testReturnPastStartWithoutPathAlsoAborts() {
+        let tracker = SectionSpeedTracker(sections: [section(limit: 40)])
+        let events = runSections(tracker, segmentedTrack(from: origin, segments: [(0, 60, 35), (180, 60, 45)]))
+        XCTAssertEqual(events.filter { if case .aborted = $0.event { return true }; return false }.count, 1)
+        XCTAssertFalse(tracker.isActive)
+    }
+
+    func testReentryAfterAbortCanStartAgainWithoutFiveMinuteCooldown() {
+        let tracker = SectionSpeedTracker(sections: [mappedSection()])
+        let events = runSections(tracker, segmentedTrack(from: origin,
+            segments: [(0, 60, 60), (180, 60, 60), (0, 60, 40)]))
+        XCTAssertEqual(events.filter { if case .entered = $0.event { return true }; return false }.count, 2)
+        XCTAssertEqual(events.filter { if case .aborted = $0.event { return true }; return false }.count, 1)
+        XCTAssertTrue(tracker.isActive)
+    }
+
+    func testForwardHairpinDoesNotAbort() {
+        let a = origin
+        let b = GeoMath.destination(from: a, bearing: 90, distance: 1_000)
+        let c = GeoMath.destination(from: b, bearing: 0, distance: 80)
+        let d = GeoMath.destination(from: c, bearing: 270, distance: 1_000)
+        let e = GeoMath.destination(from: d, bearing: 0, distance: 1_000)
+        let path = [a, b, c, d, e]
+        let s = SpeedSection(id: "hairpin", name: "髮夾彎", start: a, end: e,
+                             lengthMeters: 3_080, speedLimit: 40, startHeading: 90, path: path)
+        let tracker = SectionSpeedTracker(sections: [s])
+        var events: [SectionEvent] = []
+        for i in 0...280 {
+            let point = RoadSnapping.point(along: path, at: Double(i) * 10)
+            let ahead = RoadSnapping.point(along: path, at: Double(i) * 10 + 5)
+            let fix = VehicleFix(point: point, speedMps: 10, course: GeoMath.bearing(from: point, to: ahead),
+                                 timestamp: t0.addingTimeInterval(Double(i)))
+            events += tracker.process(fix).events
+        }
+        XCTAssertTrue(events.contains { if case .entered = $0 { return true }; return false })
+        XCTAssertFalse(events.contains { if case .aborted = $0 { return true }; return false })
+        XCTAssertTrue(tracker.isActive)
+    }
+
+    func testSingleAccurateGpsJumpDoesNotAbort() {
+        let tracker = SectionSpeedTracker(sections: [mappedSection()])
+        var fixes = straightTrack(from: origin, bearing: 0, speedKmh: 60, seconds: 100)
+        fixes[50].point = GeoMath.destination(from: fixes[49].point, bearing: 180, distance: 400)
+        fixes[50].course = 180
+        let events = runSections(tracker, fixes)
+        XCTAssertFalse(events.contains { if case .aborted = $0.event { return true }; return false })
+        XCTAssertTrue(tracker.isActive)
+    }
+
+    func testForwardHairpinNearStartAfterGpsGapDoesNotAbort() {
+        let a = origin
+        let b = GeoMath.destination(from: a, bearing: 0, distance: 600)
+        let c = GeoMath.destination(from: b, bearing: 90, distance: 15)
+        let d = GeoMath.destination(from: c, bearing: 180, distance: 900)
+        let e = GeoMath.destination(from: d, bearing: 90, distance: 600)
+        let path = [a, b, c, d, e]
+        let s = SpeedSection(id: "near-start-hairpin", name: "回到起點旁的髮夾彎", start: a, end: e,
+                             lengthMeters: 2_115, speedLimit: 40, startHeading: 0, path: path)
+        let tracker = SectionSpeedTracker(sections: [s])
+        _ = runSections(tracker, straightTrack(from: a, bearing: 0, speedKmh: 36, seconds: 60))
+        _ = tracker.tick(now: t0.addingTimeInterval(126))
+        for i in 0...8 {
+            let point = RoadSnapping.point(along: path, at: 1_265 + Double(i) * 10)
+            let result = tracker.process(VehicleFix(point: point, speedMps: 10, course: 180,
+                horizontalAccuracy: 5, timestamp: t0.addingTimeInterval(127 + Double(i))))
+            XCTAssertFalse(result.events.contains { if case .aborted = $0 { return true }; return false })
+        }
+        XCTAssertTrue(tracker.isActive)
+    }
+
+    func testUnreliableFixDoesNotAbortOrReplaceReliableHeading() {
+        let tracker = SectionSpeedTracker(sections: [mappedSection()])
+        let track = straightTrack(from: origin, bearing: 0, speedKmh: 60, seconds: 40)
+        _ = runSections(tracker, track)
+        let last = track.last!
+        for i in 1...8 {
+            let point = GeoMath.destination(from: last.point, bearing: 180, distance: Double(i) * 30)
+            let result = tracker.process(VehicleFix(point: point, speedMps: 16.7, course: 180,
+                horizontalAccuracy: 200, timestamp: last.timestamp.addingTimeInterval(Double(i))))
+            XCTAssertFalse(result.events.contains { if case .aborted = $0 { return true }; return false })
+        }
+        XCTAssertTrue(tracker.isActive)
+    }
+
+    func testGpsGapDoesNotContributeReverseEvidence() {
+        let tracker = SectionSpeedTracker(sections: [mappedSection()])
+        let track = straightTrack(from: origin, bearing: 0, speedKmh: 60, seconds: 40)
+        _ = runSections(tracker, track)
+        let last = track.last!
+        for i in 1...30 {
+            let result = tracker.tick(now: last.timestamp.addingTimeInterval(Double(i)))
+            XCTAssertFalse(result?.events.contains { if case .aborted = $0 { return true }; return false } ?? false)
+        }
+        let point = GeoMath.destination(from: last.point, bearing: 180, distance: 200)
+        let resumed = tracker.process(VehicleFix(point: point, speedMps: 16.7, course: 180,
+                                                 timestamp: last.timestamp.addingTimeInterval(31)))
+        XCTAssertFalse(resumed.events.contains { if case .aborted = $0 { return true }; return false })
+        XCTAssertTrue(tracker.isActive)
+    }
+
+    func testSnappedPathUpdatePreservesActiveCountdown() throws {
+        let s = mappedSection()
+        let tracker = SectionSpeedTracker(sections: [s])
+        var status: SectionStatus?
+        for f in straightTrack(from: origin, bearing: 0, speedKmh: 45, seconds: 40) {
+            status = tracker.process(f).status
+        }
+        let before = try XCTUnwrap(status)
+        let middle = GeoMath.destination(from: s.start, bearing: 0, distance: 1_500)
+        tracker.updatePath([s.start, middle, s.end], forSectionID: s.id)
+        let fix = VehicleFix(point: GeoMath.destination(from: origin, bearing: 0, distance: 512.5),
+                             speedMps: 12.5, course: 0, timestamp: t0.addingTimeInterval(41))
+        let after = try XCTUnwrap(tracker.process(fix).status)
+        XCTAssertEqual(after.startTime, before.startTime)
+        XCTAssertEqual(after.section.path, [s.start, middle, s.end])
+        XCTAssertLessThan(after.remainingSeconds, before.remainingSeconds)
+    }
+
+    func testFortyNineFiftyOneJitterKeepsIndependentVoiceAndBeepCooldowns() {
+        let tracker = SectionSpeedTracker(sections: [mappedSection(length: 5_000)])
+        var distance = 0.0
+        var events: [TimedEvent<SectionEvent>] = []
+        for i in 0...180 {
+            let speed = i.isMultiple(of: 2) ? 49.0 : 51.0
+            let fix = VehicleFix(point: GeoMath.destination(from: origin, bearing: 0, distance: distance),
+                                 speedMps: speed / 3.6, course: 0, timestamp: t0.addingTimeInterval(Double(i)))
+            let result = tracker.process(fix)
+            if let status = result.status { XCTAssertEqual(status.isOverspeed, speed > 50) }
+            events += result.events.map { TimedEvent(time: Double(i), event: $0) }
+            distance += speed / 3.6
+        }
+        let voices = events.filter { if case .overspeedStarted = $0.event { return true }; return false }
+        let beeps = events.filter { $0.event == .overspeedBeep }
+        XCTAssertGreaterThan(voices.count, 3)
+        XCTAssertGreaterThan(beeps.count, 8)
+        for (a, b) in zip(voices, voices.dropFirst()) { XCTAssertGreaterThanOrEqual(b.time - a.time, 30) }
+        for (a, b) in zip(beeps, beeps.dropFirst()) { XCTAssertGreaterThanOrEqual(b.time - a.time, 15) }
+    }
+
+    func testSectionBeepSettingDoesNotUseFixedCameraInterval() {
+        var settings = AlertSettings()
+        settings.sectionOverspeedBeepInterval = 20
+        settings.overspeedBeepInterval = 1
+        let events = runSections(SectionSpeedTracker(sections: [mappedSection()], settings: settings),
+                                 straightTrack(from: origin, bearing: 0, speedKmh: 60, seconds: 90))
+        let beeps = events.filter { $0.event == .overspeedBeep }
+        XCTAssertGreaterThan(beeps.count, 2)
+        for (a, b) in zip(beeps, beeps.dropFirst()) { XCTAssertEqual(b.time - a.time, 20, accuracy: 0.01) }
+    }
+
+    func testZeroWhileOverspeedEndsStateAndDoesNotRestartWhileContinuingForward() throws {
+        let s = mappedSection()
+        let tracker = SectionSpeedTracker(sections: [s])
+        let point = GeoMath.destination(from: s.start, bearing: 0, distance: 100)
+        let first = tracker.process(VehicleFix(point: point, speedMps: 60 / 3.6, course: 0, timestamp: t0))
+        let initial = try XCTUnwrap(first.status)
+        XCTAssertTrue(initial.isOverspeed)
+        let zeroTime = t0.addingTimeInterval(initial.remainingSeconds + 1)
+        let zero = tracker.process(VehicleFix(point: point, speedMps: 60 / 3.6, course: 0, timestamp: zeroTime))
+        XCTAssertTrue(zero.events.contains(.zeroReached))
+        XCTAssertTrue(zero.events.contains(.overspeedEnded))
+        XCTAssertFalse(zero.events.contains(.overspeedBeep))
+        XCTAssertEqual(zero.status?.isOverspeed, false)
+        for i in 1...30 {
+            let onward = GeoMath.destination(from: point, bearing: 0, distance: Double(i) * 60 / 3.6)
+            let result = tracker.process(VehicleFix(point: onward, speedMps: 60 / 3.6, course: 0,
+                                                    timestamp: zeroTime.addingTimeInterval(Double(i))))
+            XCTAssertFalse(result.events.contains { if case .overspeedStarted = $0 { return true }; return $0 == .overspeedBeep })
+            XCTAssertEqual(result.status?.isOverspeed, false)
+        }
+        let cameraPoint = GeoMath.destination(from: point, bearing: 0, distance: 200)
+        let camera = Camera(id: "fixed", type: .fixed, lat: cameraPoint.lat, lon: cameraPoint.lon,
+                            heading: 0, speedLimit: 50)
+        let fixed = CameraAlertEngine(index: SpatialIndex(cameras: [camera]))
+        XCTAssertEqual(fixed.process(VehicleFix(point: point, speedMps: 60 / 3.6, course: 0,
+                                               timestamp: zeroTime)).target?.isOverspeed, true)
+    }
+
+    func testTickZeroAlsoClearsOverspeed() throws {
+        let tracker = SectionSpeedTracker(sections: [mappedSection()])
+        let track = straightTrack(from: origin, bearing: 0, speedKmh: 60, seconds: 40)
+        var status: SectionStatus?
+        for fix in track { status = tracker.process(fix).status }
+        let before = try XCTUnwrap(status)
+        let result = try XCTUnwrap(tracker.tick(now: before.earliestExit.addingTimeInterval(1)))
+        XCTAssertTrue(result.events.contains(.zeroReached))
+        XCTAssertTrue(result.events.contains(.overspeedEnded))
+        XCTAssertEqual(result.status?.isOverspeed, false)
+        XCTAssertFalse(result.events.contains(.overspeedBeep))
+    }
+
+    func testOfficialGateCrossingStartsBothDirectionsWithinSixtyMeters() {
+        let gates: [(String, GeoPoint, GeoPoint, Double, Double)] = [
+            ("beiyi-2-f", GeoPoint(lat: 24.9504174, lon: 121.6477995), GeoPoint(lat: 24.9429879, lon: 121.6708659), 134, 5835.3),
+            ("beiyi-2-r", GeoPoint(lat: 24.9430715, lon: 121.6708954), GeoPoint(lat: 24.9503516, lon: 121.6478697), 15, 5830.5),
+        ]
+        for (id, start, end, heading, length) in gates {
+            let s = SpeedSection(id: id, name: "官方門架", start: start, end: end,
+                                 lengthMeters: length, speedLimit: 40, startHeading: heading)
+            let tracker = SectionSpeedTracker(sections: [s])
+            let before = GeoMath.destination(from: start, bearing: heading + 180, distance: 300)
+            var entered = 0
+            for fix in straightTrack(from: before, bearing: heading, speedKmh: 60, seconds: 35) {
+                for event in tracker.process(fix).events {
+                    if case let .entered(section, _) = event {
+                        entered += 1
+                        XCTAssertEqual(section.groupID, "beiyi-2")
+                        XCTAssertEqual(section.lengthMeters, length)
+                        XCTAssertLessThanOrEqual(GeoMath.distance(fix.point, start), 60)
+                    }
+                }
+            }
+            XCTAssertEqual(entered, 1, id)
+        }
     }
 }

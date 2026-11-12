@@ -3,7 +3,7 @@ import Foundation
 /// 提醒相關的所有可調整設定。預設值依照與使用者確認的規格：
 /// - 一般道路：預告 300 m、近距 100 m
 /// - 速限 ≥ 80 的道路（快速道路、高速公路）：預告 600 m、近距 200 m
-/// - 超速時每 3 秒嗶一聲
+/// - 固定照相超速每 3 秒、區間超速每 15 秒嗶一聲
 /// - 區間測速：每分鐘、最後 30 秒、最後 10 秒、歸零各提醒一次
 public struct AlertSettings: Codable, Equatable, Sendable {
     // MARK: 測速提醒距離
@@ -44,6 +44,10 @@ public struct AlertSettings: Codable, Equatable, Sendable {
     public var sectionToleranceKmh: Double = 10
     /// 個別區間的容許值（key 為 SpeedSection.groupID），沒有設定的區間使用上面的預設值。
     public var sectionToleranceOverrides: [String: Double] = [:]
+    /// 區間內超速嗶聲的獨立間隔；降速再加速也不重設冷卻。
+    public var sectionOverspeedBeepInterval: TimeInterval = 15
+    /// 區間超速語音的冷卻時間；持續超速不重複念全文。
+    public var sectionOverspeedVoiceInterval: TimeInterval = 30
     /// 區間容許值可設定的範圍。
     public static let sectionToleranceRange: ClosedRange<Double> = 0...20
     /// 進入或離開區間時，與起終點的判定距離。
@@ -109,6 +113,10 @@ public struct AlertSettings: Codable, Equatable, Sendable {
         sectionToleranceKmh = try c.decodeIfPresent(Double.self, forKey: .sectionToleranceKmh) ?? d.sectionToleranceKmh
         sectionToleranceOverrides = try c.decodeIfPresent([String: Double].self, forKey: .sectionToleranceOverrides)
             ?? d.sectionToleranceOverrides
+        sectionOverspeedBeepInterval = try c.decodeIfPresent(TimeInterval.self, forKey: .sectionOverspeedBeepInterval)
+            ?? d.sectionOverspeedBeepInterval
+        sectionOverspeedVoiceInterval = try c.decodeIfPresent(TimeInterval.self, forKey: .sectionOverspeedVoiceInterval)
+            ?? d.sectionOverspeedVoiceInterval
         sectionGateRadius = try c.decodeIfPresent(Double.self, forKey: .sectionGateRadius) ?? d.sectionGateRadius
         sectionFinalCountdown = try c.decodeIfPresent(Bool.self, forKey: .sectionFinalCountdown) ?? d.sectionFinalCountdown
         voiceEnabled = try c.decodeIfPresent(Bool.self, forKey: .voiceEnabled) ?? d.voiceEnabled

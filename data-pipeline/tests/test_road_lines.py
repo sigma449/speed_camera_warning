@@ -102,10 +102,21 @@ def test_dumps_is_valid_json_with_one_line_per_road():
     data = build([way("motorway", ref="1"), way("motorway", ref="3", points=((24.0, 120.0), (24.1, 120.0)))])
     text = road_lines.dumps(data)
     assert json.loads(text) == data
-    assert len(text.splitlines()) == 9
+    assert len(text.splitlines()) == 10
     empty = dict(data, freeways=[])
     assert json.loads(road_lines.dumps(empty))["freeways"] == []
 
 
 def test_line_length():
     assert abs(road_lines.line_length_km([(25.0, 121.0), (25.01, 121.0)]) - 1.1095) < 0.001
+
+
+def test_named_mainlines_keep_freeway_identity_and_ignore_surface_roads_and_ramps():
+    data = build([way("motorway", ref="1", name="中山高速公路"),
+                  way("trunk", name="水源快速道路"), way("trunk_link", name="水源入口匝道"),
+                  way("primary", name="水源路")])
+    roads = {r["name"]: r for r in data["namedRoads"]}
+    assert set(roads) == {"國道1號", "水源快速道路"}
+    assert roads["國道1號"]["freewayRef"] == "1"
+    assert "freewayRef" not in roads["水源快速道路"]
+    assert roads["水源快速道路"]["lines"] == [[[25.0, 121.0], [25.01, 121.0]]]

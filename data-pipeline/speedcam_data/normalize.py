@@ -223,6 +223,7 @@ class Camera:
     axis: Optional[float] = None
     # 高架（elevated）或平面（surface）；只在兩者可能混淆的地方標示
     level: Optional[str] = None
+    sectionGroupID: Optional[str] = None
 
     def to_json(self) -> dict:
         d = {
@@ -244,6 +245,8 @@ class Camera:
             d["district"] = self.district
         if self.level:
             d["level"] = self.level
+        if self.sectionGroupID:
+            d["sectionGroupID"] = self.sectionGroupID
         return d
 
 

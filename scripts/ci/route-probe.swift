@@ -199,6 +199,9 @@ struct ReplayLeg: Decodable {
     /// 在同一組提醒核心內沿去程折線折返；只是測試軌跡，不代表可合法迴轉的位置。
     let turnaroundAtMeters: Double?
     let waitAtTurnaroundSeconds: Int?
+    /// 同向停等後繼續，獨立驗證歸零政策，避免被折返中止掩蓋。
+    let pauseAtMeters: Double?
+    let pauseSeconds: Int?
 }
 
 /// 隧道裡沒有定位。模擬時在這些範圍內不給定位，只呼叫 tick（App 每秒做的事）。
@@ -243,10 +246,10 @@ func withActualDistance(_ event: CameraAlertEvent, at point: GeoPoint) -> String
 func describe(_ event: CameraAlertEvent) -> String? {
     switch event {
     case let .preAlert(c, d): return "【照相預告】id=\(c.id) \(Int(d)) m \(c.displayTypeName) 速限\(c.speedLimit ?? 0) \(c.address)"
-    case let .nearAlert(c, d, afterPre): return "【照相近距】id=\(c.id) \(Int(d)) m afterPre=\(afterPre) \(afterPre ? "只念距離" : "完整句子") \(c.address)"
+    case let .nearAlert(c, d, afterPre): return "【照相近距】id=\(c.id) \(Int(d)) m afterPre=\(afterPre) \(afterPre ? "已預告短句" : "完整句子") \(c.address)"
     case let .passed(c): return "【通過照相】id=\(c.id) \(c.address)"
     case let .overspeedStarted(limit, speed):
-        return "【照相超速開始】車速\(Int(speed)) 門檻\(limit)，語句：\(AnnouncementFormatter.overspeed(limit: limit))"
+        return "【照相超速開始】車速\(Int(speed)) 門檻\(limit)（語音見同批候選）"
     case .overspeedBeep: return "【照相超速嗶聲】"
     case .overspeedEnded: return "【照相超速結束】"
     }
@@ -261,18 +264,69 @@ func describe(_ event: SectionEvent) -> String? {
     case let .completed(s, avg, _): return "【通過區間終點】id=\(s.id) \(s.name) 均速 \(Int(avg))"
     case let .aborted(s): return "【中途離開區間】id=\(s.id) \(s.name)"
     case let .overspeedStarted(threshold):
-        return "【區間超速開始】門檻\(threshold)，語句：\(AnnouncementFormatter.sectionOverspeed(threshold: threshold))"
+        return "【區間超速開始】門檻\(threshold)（是否播報見結構化紀錄）"
     case .overspeedBeep: return "【區間超速嗶聲】"
     case .overspeedEnded: return "【區間超速結束】"
     }
 }
 
+func replayRecord(_ event: String, leg: String, second: Double, point: GeoPoint,
+                  fields: [String: Any] = [:]) {
+    var record = fields
+    record["schema"] = 1
+    record["event"] = event
+    record["case"] = leg
+    record["t"] = second
+    record["lat"] = point.lat
+    record["lon"] = point.lon
+    do {
+        let data = try JSONSerialization.data(withJSONObject: record, options: [.sortedKeys, .withoutEscapingSlashes])
+        print("REPLAY1108 " + String(decoding: data, as: UTF8.self))
+    } catch {
+        print("[錯誤] replay 結構化紀錄無法序列化：\(error)")
+        exit(65)
+    }
+}
+
 func logReplay(camera: CameraAlertResult?, section: SectionResult?, stamp: String,
-               point: GeoPoint, showStatus: Bool, estimated: Bool) {
+               point: GeoPoint, showStatus: Bool, estimated: Bool,
+               leg: String, second: Double, speedKmh: Double, settings: AlertSettings,
+               cameraTarget: inout CameraTarget?, sectionStatus: inout SectionStatus?) {
+    let previousSection = sectionStatus
+    if let camera { cameraTarget = camera.target }
+    if let section { sectionStatus = section.status }
+    let speeches = camera.map { CameraAnnouncementPolicy.speech(for: $0, speedKmh: speedKmh, settings: settings) } ?? []
     for event in camera?.events ?? [] {
         if let text = describe(event) {
             print(stamp + text + (estimated ? withActualDistance(event, at: point) : ""))
         }
+        var fields: [String: Any] = ["id": cameraTarget?.camera.id ?? "", "estimated": estimated]
+        let key: String
+        switch event {
+        case let .preAlert(c, distance), let .nearAlert(c, distance, _):
+            key = event.isReplayNear ? "camera_near" : "camera_pre"
+            let th = settings.thresholds(speedLimit: c.speedLimit, currentSpeedKmh: speedKmh)
+            let threshold = event.isReplayNear ? th.near : th.pre
+            fields["id"] = c.id
+            fields["address"] = c.address
+            fields["distance"] = distance
+            fields["announcedDistance"] = AnnouncementFormatter.announcedDistance(distance, threshold: threshold)
+            fields["threshold"] = threshold
+            fields["overspeed"] = cameraTarget?.camera.id == c.id && cameraTarget?.isOverspeed == true
+            fields["speeches"] = speeches.map(\.text)
+            if case let .nearAlert(_, _, afterPre) = event { fields["afterPre"] = afterPre }
+        case let .passed(c):
+            key = "camera_passed"
+            fields["id"] = c.id
+            fields["address"] = c.address
+        case .overspeedStarted: key = "camera_overspeed_started"
+        case .overspeedBeep: key = "camera_beep"
+        case .overspeedEnded: key = "camera_overspeed_ended"
+        }
+        replayRecord(key, leg: leg, second: second, point: point, fields: fields)
+    }
+    for speech in speeches {
+        print(stamp + "照相語音候選：" + speech.text)
     }
     if let camera, !camera.events.isEmpty, let target = camera.target {
         let c = target.camera
@@ -280,18 +334,85 @@ func logReplay(camera: CameraAlertResult?, section: SectionResult?, stamp: Strin
     }
     for event in section?.events ?? [] {
         if let text = describe(event) { print(stamp + text) }
+        var fields: [String: Any] = [
+            "id": sectionStatus?.section.id ?? previousSection?.section.id ?? "",
+            "remaining": sectionStatus?.remainingSeconds ?? previousSection?.remainingSeconds ?? 0,
+            "sectionOverspeed": sectionStatus?.isOverspeed == true,
+            "cameraOverspeed": cameraTarget?.isOverspeed == true,
+        ]
+        let key: String
+        let speech: String?
+        switch event {
+        case let .approaching(s, distance):
+            key = "section_approach"
+            fields["id"] = s.id
+            fields["distance"] = distance
+            speech = AnnouncementFormatter.sectionApproaching(section: s, announcedDistance:
+                AnnouncementFormatter.announcedDistance(distance, threshold: settings.thresholds(
+                    speedLimit: s.speedLimit, currentSpeedKmh: 0).pre))
+        case let .entered(s, seconds):
+            key = "section_entered"
+            fields["id"] = s.id
+            fields["length"] = s.lengthMeters
+            fields["gateLat"] = s.start.lat
+            fields["gateLon"] = s.start.lon
+            speech = AnnouncementFormatter.sectionEntered(section: s, minimumSeconds: seconds,
+                effectiveLimitKmh: settings.sectionEffectiveLimit(s.speedLimit, sectionID: s.groupID))
+        case let .completed(s, average, within):
+            key = "section_completed"
+            fields["id"] = s.id
+            fields["gateLat"] = s.end.lat
+            fields["gateLon"] = s.end.lon
+            speech = AnnouncementFormatter.sectionCompleted(averageKmh: average, withinLimit: within)
+        case let .aborted(s):
+            key = "section_aborted"
+            fields["id"] = s.id
+            speech = nil
+        case let .remaining(seconds):
+            key = "section_remaining"
+            speech = AnnouncementFormatter.sectionRemaining(seconds: seconds, suggestedKmh: sectionStatus?.suggestedWholeKmh)
+        case .zeroReached:
+            key = "section_zero"
+            speech = AnnouncementFormatter.sectionZero
+        case let .overspeedStarted(threshold):
+            key = "section_overspeed_started"
+            fields["threshold"] = threshold
+            speech = cameraTarget?.isOverspeed == true ? nil : AnnouncementFormatter.sectionOverspeed(threshold: threshold)
+        case .overspeedBeep:
+            key = "section_beep"
+            fields["audibleBeep"] = cameraTarget?.isOverspeed != true
+            speech = nil
+        case .overspeedEnded:
+            key = "section_overspeed_ended"
+            speech = nil
+        }
+        fields["speech"] = speech ?? ""
+        replayRecord(key, leg: leg, second: second, point: point, fields: fields)
     }
     if let section, let status = section.status, showStatus || !section.events.isEmpty {
         print(stamp + String(format: "區間狀態 id=%@ 經過=%.0f s 剩餘=%.1f s 累計=%.0f m 剩距=%.0f m 均速=%.1f 門檻=%.0f 相機超速=%@",
                              status.section.id, status.elapsed, status.remainingSeconds,
                              status.traveledMeters, status.remainingMeters, status.averageKmh,
                              status.effectiveLimitKmh, camera?.target?.isOverspeed == true ? "是" : "否"))
+        replayRecord("section_status", leg: leg, second: second, point: point, fields: [
+            "id": status.section.id, "remaining": status.remainingSeconds,
+            "sectionOverspeed": status.isOverspeed, "cameraOverspeed": cameraTarget?.isOverspeed == true,
+            "presentationOverspeed": status.isOverspeed || cameraTarget?.isOverspeed == true,
+        ])
+    }
+}
+
+extension CameraAlertEvent {
+    var isReplayNear: Bool {
+        if case .nearAlert = self { return true }
+        return false
     }
 }
 
 /// 沿著 Apple 規劃的路線模擬開一次，把 App 的核心程式會發出的提醒，連同當時的位置印出來。
 /// 同時檢查每個轉彎：開到動作點之前，畫面顯示的是不是這個動作。
-func runReplay(legs: [ReplayLeg], databasePath: String, rules: RouteRules?, output: FileHandle) async -> Int32 {
+func runReplay(legs: [ReplayLeg], databasePath: String, rules: RouteRules?,
+               resolver: RoadInstructionResolver, output: FileHandle) async -> Int32 {
     guard let data = try? Data(contentsOf: URL(fileURLWithPath: databasePath)),
           let db = try? CameraDatabase.decode(from: data) else {
         print("讀不了 \(databasePath)")
@@ -299,6 +420,9 @@ func runReplay(legs: [ReplayLeg], databasePath: String, rules: RouteRules?, outp
     }
     print("資料：版本 \(db.version)，產生時間 \(db.generatedAt)，照相點 \(db.cameras.count) 處，區間 \(db.sections.count) 段")
     print("每段重新建立核心；折返案例的去回程共用核心。事件不等於實際播放：App 會抑制重複嗶聲，緊急語音會打斷前句。")
+    replayRecord("run_start", leg: "", second: 0, point: GeoPoint(lat: 0, lon: 0),
+                 fields: ["dataVersion": db.version, "dataGeneratedAt": db.generatedAt,
+                          "cameras": db.cameras.count, "sections": db.sections.count])
     var totalManeuvers = 0
     var correctManeuvers = 0
     var succeeded = 0
@@ -352,10 +476,15 @@ func runReplay(legs: [ReplayLeg], databasePath: String, rules: RouteRules?, outp
         let tunnelFactor = leg.tunnelSpeedFactor ?? 1
         let turn = leg.turnaroundAtMeters ?? total
         let waitSeconds = leg.waitAtTurnaroundSeconds ?? 0
+        let pauseAt = leg.pauseAtMeters ?? total
+        let pauseSeconds = leg.pauseSeconds ?? 0
         guard polyline.count >= 2, total.isFinite, total > 0,
               speed.isFinite, speed > 0, tunnelFactor.isFinite, tunnelFactor > 0,
               turn.isFinite, turn > 0, turn <= total, waitSeconds >= 0,
-              leg.turnaroundAtMeters != nil || waitSeconds == 0 else {
+              leg.turnaroundAtMeters != nil || waitSeconds == 0,
+              pauseAt.isFinite, pauseAt > 0, pauseAt <= total, pauseSeconds >= 0,
+              leg.pauseAtMeters != nil || pauseSeconds == 0,
+              leg.turnaroundAtMeters == nil || leg.pauseAtMeters == nil else {
             print("案例參數或路線折線無效：\(leg.name)")
             return 65
         }
@@ -364,26 +493,32 @@ func runReplay(legs: [ReplayLeg], databasePath: String, rules: RouteRules?, outp
 
         // 步驟：Apple 的距離、折線實際長度、終點座標
         var maneuvers: [(position: Double, text: String)] = []
+        let stepInfos = MapItems.stepInfos(of: route, resolver: resolver)
         var acc = 0.0
         for (i, step) in route.steps.enumerated() {
             let points = MapItems.coordinates(of: step.polyline)
             var length = 0.0
             for (a, b) in zip(points, points.dropFirst()) { length += GeoMath.distance(a, b) }
             acc += length
-            if !step.instructions.isEmpty { maneuvers.append((acc, step.instructions)) }
+            let instruction = stepInfos[i].instruction
+            if !instruction.isEmpty { maneuvers.append((acc, instruction)) }
             let end = points.last ?? GeoPoint(lat: 0, lon: 0)
             print(String(format: "  步驟%2d Apple %6.0f m／折線 %6.0f m，累計 %7.0f m，終點 %.5f,%.5f  ", i, step.distance, length, acc, end.lat, end.lon)
-                  + step.instructions + "；短句：" + ManeuverText.short(step.instructions)
+                  + step.instructions + "；校正：" + instruction + "；短句：" + ManeuverText.short(instruction)
                   + "；notice：" + (step.notice ?? "無"))
         }
         print(String(format: "  路線折線總長 %.0f m，步驟折線加總 %.0f m，Apple 距離 %.0f m", total, acc, route.distance))
 
-        let nav = RouteProgressTracker(polyline: polyline, steps: MapItems.stepInfos(of: route))
+        let nav = RouteProgressTracker(polyline: polyline, steps: stepInfos)
         var settings = AlertSettings()
         if let mode = leg.vehicleMode { settings.vehicleMode = mode }
         let engine = CameraAlertEngine(index: SpatialIndex(cameras: db.cameras), settings: settings)
         engine.sections = db.sections
         let sections = SectionSpeedTracker(sections: db.sections, settings: settings)
+        replayRecord("case_start", leg: leg.name, second: 0, point: polyline[0], fields: [
+            "sectionBeepInterval": settings.sectionOverspeedBeepInterval,
+            "sectionVoiceInterval": settings.sectionOverspeedVoiceInterval,
+        ])
 
         print(String(format: "  模擬車速 %.0f km/h", speedKmh))
         if roundTrip {
@@ -399,9 +534,13 @@ func runReplay(legs: [ReplayLeg], databasePath: String, rules: RouteRules?, outp
         var inTunnel = false
         var waited = 0
         var didTurn = false
+        var cameraTarget: CameraTarget?
+        var sectionStatus: SectionStatus?
         while traveled < tripDistance {
             let returning = roundTrip && traveled >= turn
-            let waiting = returning && waited < waitSeconds
+            let waiting = (returning && waited < waitSeconds)
+                || (!roundTrip && traveled >= pauseAt && waited < pauseSeconds)
+            let nextStop = !roundTrip && traveled < pauseAt ? pauseAt : (returning ? tripDistance : turn)
             let position = returning ? max(0, 2 * turn - traveled) : traveled
             while segment > 0 && cumulative[segment] > position { segment -= 1 }
             while segment < polyline.count - 2 && cumulative[segment + 1] <= position { segment += 1 }
@@ -429,8 +568,10 @@ func runReplay(legs: [ReplayLeg], databasePath: String, rules: RouteRules?, outp
             }
             if tunnelNow {
                 logReplay(camera: engine.tick(now: now), section: sections.tick(now: now), stamp: stamp,
-                          point: point, showStatus: Int(second) % 30 == 0, estimated: true)
-                traveled = min(returning ? tripDistance : turn, traveled + actualSpeed * tunnelFactor)
+                          point: point, showStatus: Int(second) % 30 == 0, estimated: true,
+                          leg: leg.name, second: second, speedKmh: actualSpeed * 3.6, settings: settings,
+                          cameraTarget: &cameraTarget, sectionStatus: &sectionStatus)
+                traveled = min(nextStop, traveled + actualSpeed * tunnelFactor)
                 if waiting { waited += 1 }
                 second += 1
                 continue
@@ -443,18 +584,24 @@ func runReplay(legs: [ReplayLeg], databasePath: String, rules: RouteRules?, outp
                     displayed = progress.nextInstruction
                     print(stamp + String(format: "畫面下一步（%.0f m 後）：", progress.distanceToNextManeuver)
                           + ManeuverText.short(displayed) + "；原文：" + displayed)
+                    replayRecord("nav_display", leg: leg.name, second: second, point: point,
+                                 fields: ["text": ManeuverText.short(displayed), "instruction": displayed])
                 }
                 for event in navResult.events {
                     if case let .announce(_, text, distance) = event {
                         print(stamp + "語音：" + AnnouncementFormatter.maneuver(instruction: text, distance: distance))
+                        replayRecord("nav_speech", leg: leg.name, second: second, point: point,
+                            fields: ["text": AnnouncementFormatter.maneuver(instruction: text, distance: distance)])
                     }
                 }
             }
             logReplay(camera: engine.process(fix), section: sections.process(fix), stamp: stamp,
-                      point: point, showStatus: Int(second) % 30 == 0, estimated: false)
+                      point: point, showStatus: Int(second) % 30 == 0, estimated: false,
+                      leg: leg.name, second: second, speedKmh: actualSpeed * 3.6, settings: settings,
+                      cameraTarget: &cameraTarget, sectionStatus: &sectionStatus)
 
             // 開到動作點之前，畫面應該正在顯示這個動作（這一秒剛好經過動作點時，看換之前顯示的）
-            while !returning && nextManeuver < maneuvers.count && maneuvers[nextManeuver].position <= min(turn, position + speed) {
+            while !returning && nextManeuver < maneuvers.count && maneuvers[nextManeuver].position <= min(turn, position + actualSpeed) {
                 let expected = maneuvers[nextManeuver].text
                 totalManeuvers += 1
                 if displayed == expected || previousDisplayed == expected {
@@ -464,20 +611,26 @@ func runReplay(legs: [ReplayLeg], databasePath: String, rules: RouteRules?, outp
                 }
                 nextManeuver += 1
             }
-            traveled = min(returning ? tripDistance : turn, traveled + actualSpeed)
+            traveled = min(nextStop, traveled + actualSpeed)
             if waiting { waited += 1 }
             second += 1
         }
         succeeded += 1
         print("  案例結束：模擬 \(Int(second)) 秒，區間仍在追蹤=\(sections.isActive)")
+        replayRecord("case_end", leg: leg.name, second: second, point: roundTrip ? polyline[0] : polyline.last!,
+                     fields: ["sectionStillActive": sections.isActive])
         write(["leg": leg.name, "route": summary(of: route), "vehicleMode": leg.vehicleMode?.rawValue ?? "舊版汽車請求",
                "dataVersion": db.version, "dataGeneratedAt": db.generatedAt,
                "turnaroundAtMeters": leg.turnaroundAtMeters ?? 0, "waitAtTurnaroundSeconds": waitSeconds,
+               "pauseAtMeters": leg.pauseAtMeters ?? 0, "pauseSeconds": pauseSeconds,
                "sectionStillActive": sections.isActive], to: output)
     }
     print("")
     print("轉彎指示和實際動作點相符：\(correctManeuvers)／\(totalManeuvers)")
     print("案例完成：成功 \(succeeded)，失敗 \(failed)")
+    replayRecord("run_end", leg: "", second: 0, point: GeoPoint(lat: 0, lon: 0),
+                 fields: ["succeeded": succeeded, "failed": failed,
+                          "correctManeuvers": correctManeuvers, "totalManeuvers": totalManeuvers])
     return succeeded > 0 && failed == 0 ? 0 : 1
 }
 
@@ -495,16 +648,13 @@ func run() async -> Int32 {
         }
         FileManager.default.createFile(atPath: CommandLine.arguments[3], contents: nil)
         guard let output = FileHandle(forWritingAtPath: CommandLine.arguments[3]) else { return 73 }
-        var rules: RouteRules?
-        if legs.contains(where: { $0.vehicleMode != nil }) {
-            guard let data = try? Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[4])),
-                  let lines = try? RoadLineData.decode(from: data) else {
-                print("讀不了 road_lines.json，不能依指定車種選路")
-                return 66
-            }
-            rules = RouteRules(data: lines)
+        guard let roadData = try? Data(contentsOf: URL(fileURLWithPath: CommandLine.arguments[4])),
+              let lines = try? RoadLineData.decode(from: roadData) else {
+            print("讀不了 road_lines.json，不能依指定車種選路或校正道路名稱")
+            return 66
         }
-        return await runReplay(legs: legs, databasePath: CommandLine.arguments[5], rules: rules, output: output)
+        return await runReplay(legs: legs, databasePath: CommandLine.arguments[5], rules: RouteRules(data: lines),
+            resolver: RoadInstructionResolver(freeways: lines.freeways, namedRoads: lines.namedRoads), output: output)
     }
     let cases: [ProbeCase]
     do {

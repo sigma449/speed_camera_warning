@@ -76,6 +76,45 @@ final class AnnouncementFormatterTests: XCTestCase {
     }
 }
 
+final class CameraAnnouncementPolicyTests: XCTestCase {
+    private func speech(distance: Double, afterPre: Bool = true, over: Bool = true, limit: Int? = 50,
+                        started: Bool = false, targetID: String = "cam", type: CameraType = .fixed) -> [SpokenAnnouncement] {
+        let camera = Camera(id: "cam", type: type, lat: origin.lat, lon: origin.lon, speedLimit: limit)
+        var target = camera
+        target.id = targetID
+        var events: [CameraAlertEvent] = [.nearAlert(camera: camera, distance: distance, afterPre: afterPre)]
+        if started { events.append(.overspeedStarted(limit: limit ?? 50, speedKmh: 90)) }
+        let result = CameraAlertResult(events: events,
+            target: CameraTarget(camera: target, distance: distance, phase: .near, isOverspeed: over))
+        return CameraAnnouncementPolicy.speech(for: result, speedKmh: 90, settings: AlertSettings())
+    }
+
+    func testOngoingOverspeedWithoutNewStartedEventIsIncludedInNearSpeech() {
+        XCTAssertEqual(speech(distance: 89), [SpokenAnnouncement(text: "100公尺，超速", urgent: true)])
+    }
+
+    func testSimultaneousNearAndOverspeedHaveOnlyOneUrgentSentence() {
+        XCTAssertEqual(speech(distance: 89, started: true), [SpokenAnnouncement(text: "100公尺，超速", urgent: true)])
+    }
+
+    func testFirstNearStillKeepsFullSentenceAndSeparateOverspeed() {
+        XCTAssertEqual(speech(distance: 91, afterPre: false, started: true).map(\.text),
+                       ["前方100公尺，測速照相，速限50", "您已超速，速限50"])
+    }
+
+    func testNearUsesActualFastThresholdAndShortDistance() {
+        XCTAssertEqual(speech(distance: 184, limit: 80).first?.text, "200公尺，超速")
+        XCTAssertEqual(speech(distance: 25).first?.text, "30公尺，超速")
+        XCTAssertEqual(speech(distance: 89, over: false).first?.text, "100公尺")
+    }
+
+    func testAnotherTargetOrNonSpeedCameraCannotSupplyOverspeed() {
+        XCTAssertEqual(speech(distance: 89, targetID: "other").first?.text, "100公尺")
+        XCTAssertEqual(speech(distance: 184, limit: nil).first?.text, "200公尺")
+        XCTAssertEqual(speech(distance: 89, type: .redLight).first?.text, "100公尺")
+    }
+}
+
 final class ToneGeneratorTests: XCTestCase {
     func testWavHeaderAndLength() {
         let data = ToneGenerator.wavData(frequency: 1_000, duration: 0.1, sampleRate: 8_000)
@@ -146,6 +185,8 @@ final class DatabaseTests: XCTestCase {
         XCTAssertEqual(s.vehicleMode, .motorcycleWhite)
         XCTAssertEqual(s.fastPreDistance, 600)
         XCTAssertEqual(s.overspeedBeepInterval, 3)
+        XCTAssertEqual(s.sectionOverspeedBeepInterval, 15)
+        XCTAssertEqual(s.sectionOverspeedVoiceInterval, 30)
         XCTAssertEqual(s.sectionToleranceKmh, 10)
         XCTAssertEqual(s.sectionEffectiveLimit(40), 50)
         XCTAssertEqual(s.sectionToleranceOverrides, [:])

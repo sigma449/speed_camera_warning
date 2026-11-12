@@ -8,18 +8,22 @@ enum RoadLineStore {
     static let attribution = "國道線形：© OpenStreetMap 貢獻者（ODbL，openstreetmap.org/copyright）"
 
     /// 第一次用到才載入。讀檔和建索引要一點時間，所以用 `loadRules()` 在背景取得。
-    private static let rules: RouteRules = {
+    private static let content: (rules: RouteRules, resolver: RoadInstructionResolver) = {
         let log = Logger(subsystem: "tw.speedcammap.app", category: "route")
         guard let url = Bundle.main.url(forResource: "road_lines", withExtension: "json"),
               let data = try? Data(contentsOf: url),
               let lines = try? RoadLineData.decode(from: data) else {
             log.error("road_lines.json 載入失敗，紅黃牌路線改成只走平面道路")
-            return .noData
+            return (.noData, .empty)
         }
-        return RouteRules(data: lines)
+        return (RouteRules(data: lines), RoadInstructionResolver(freeways: lines.freeways, namedRoads: lines.namedRoads))
     }()
 
     static func loadRules() async -> RouteRules {
-        await Task.detached(priority: .userInitiated) { RoadLineStore.rules }.value
+        await Task.detached(priority: .userInitiated) { RoadLineStore.content.rules }.value
+    }
+
+    static func loadInstructionResolver() async -> RoadInstructionResolver {
+        await Task.detached(priority: .userInitiated) { RoadLineStore.content.resolver }.value
     }
 }

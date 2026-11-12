@@ -60,6 +60,23 @@ def haversine(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * R * math.asin(min(1.0, math.sqrt(a)))
 
 
+def project_path(point: tuple, path: list) -> tuple[float, float]:
+    """回傳最近投影的沿路公尺數、側向距離。"""
+    lat, lon = point
+    scale_y, scale_x = math.pi * R / 180, math.pi * R / 180 * math.cos(math.radians(lat))
+    best_along, best_distance, walked = 0.0, math.inf, 0.0
+    for a, b in zip(path, path[1:]):
+        ax, ay = (a[1] - lon) * scale_x, (a[0] - lat) * scale_y
+        dx, dy = (b[1] - a[1]) * scale_x, (b[0] - a[0]) * scale_y
+        t = max(0, min(1, -(ax * dx + ay * dy) / (dx * dx + dy * dy))) if dx or dy else 0
+        lateral = math.hypot(ax + t * dx, ay + t * dy)
+        length = haversine(*a, *b)
+        if lateral < best_distance:
+            best_along, best_distance = walked + t * length, lateral
+        walked += length
+    return best_along, best_distance
+
+
 def simplify_path(points: list[tuple[float, float]], tolerance_m: float = 6.0) -> list[tuple[float, float]]:
     """Douglas–Peucker 簡化：直路上多餘的點拿掉，彎道保留（偏差不超過 tolerance_m 公尺）。"""
     if len(points) <= 2:
@@ -95,7 +112,7 @@ def attach_paths(sections: list[dict], path_lookup, log=print) -> int:
     """替有省道里程的區間加上沿路座標（"path": [[緯度, 經度], ...]），回傳成功的段數。
 
     path_lookup(道路, 起點里程, 終點里程) → 座標清單或 None。
-    起訖點換成區間本身的座標（人工資料可能有微調），中間用里程牌。
+    先裁掉官方門架之外的里程牌點，再換成區間本身的起終點，避免往回接線。
     """
     done = 0
     candidates = [s for s in sections if s.get("road") and s.get("startKm") is not None and s.get("endKm") is not None]
@@ -107,9 +124,24 @@ def attach_paths(sections: list[dict], path_lookup, log=print) -> int:
             pts = None
         if not pts or len(pts) < 2:
             continue
-        pts = [(s["start"]["lat"], s["start"]["lon"])] + list(pts[1:-1]) + [(s["end"]["lat"], s["end"]["lon"])]
+        start, end = (s["start"]["lat"], s["start"]["lon"]), (s["end"]["lat"], s["end"]["lon"])
+        cumulative = [0.0]
+        for a, b in zip(pts, pts[1:]):
+            cumulative.append(cumulative[-1] + haversine(*a, *b))
+        # 只在兩端附近投影，山路回到起點旁時不能吸到另一個髮夾彎。
+        front = next((i for i, d in enumerate(cumulative) if d >= 300), len(pts) - 1)
+        back = max((i for i, d in enumerate(cumulative) if d <= cumulative[-1] - 300), default=0)
+        start_along, start_lateral = project_path(start, pts[:front + 1])
+        end_along, end_lateral = project_path(end, pts[back:])
+        end_along += cumulative[back]
+        if start_lateral > 150 or end_lateral > 150 or start_along >= end_along:
+            log(f"  [警告] {s['id']} 門架與里程牌路形無法可靠銜接，不套用此路形，維持原路形或起終點連線待貼齊")
+            continue
+        pts = [start] + [p for p, d in zip(pts, cumulative) if start_along <= d <= end_along] + [end]
         pts = simplify_path(pts)
         s["path"] = [[round(lat, 5), round(lon, 5)] for lat, lon in pts]
+        ahead = next((p for p in pts[1:] if haversine(*pts[0], *p) >= 30), pts[-1])
+        s["startHeading"] = round(bearing(*pts[0], *ahead), 1)
         done += 1
     log(f"區間路形：{done}／{len(candidates)} 段有沿路座標（其餘在地圖上畫直線）")
     return done

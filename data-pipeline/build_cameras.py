@@ -26,12 +26,16 @@ from speedcam_data.sections import (  # noqa: E402
     apply_official_lengths, attach_paths, load_sections, manual_range_keys, uses_mileposts,
 )
 from speedcam_data import section_text  # noqa: E402
+from speedcam_data import official  # noqa: E402
 
 DEFAULT_OUTPUT = os.path.join(HERE, "..", "SpeedCam", "Resources", "cameras.json")
 DEFAULT_SECTIONS = os.path.join(HERE, "manual", "sections.csv")
 DEFAULT_EXTRA = os.path.join(HERE, "manual", "cameras_extra.csv")
 DEFAULT_SECTIONS_TEXT = os.path.join(HERE, "manual", "sections_text.csv")
 DEFAULT_SECTION_LENGTHS = os.path.join(HERE, "manual", "section_lengths.csv")
+DEFAULT_FREEWAY_SNAPSHOT = os.path.join(HERE, "manual", "freeway_cameras_13940.csv")
+DEFAULT_NTPC_SNAPSHOT = os.path.join(HERE, "manual", "ntpc_sections_126156.csv")
+DEFAULT_ROAD_LINES = os.path.join(HERE, "..", "SpeedCam", "Resources", "road_lines.json")
 TEXT_SOURCE_ATTRIBUTION = "立法院議事附件：全國測速取締設置點清單（2026-05），補充開放資料未收錄的區間測速"
 LENGTHS_ATTRIBUTION = "新北市政府警察局「區間平均速率執法設備設置地點一覽表」（1140919 修訂）：區間範圍與偵測長度"
 TUNNEL_ATTRIBUTION = "隧道區間的位置：© OpenStreetMap 貢獻者（ODbL）"
@@ -85,10 +89,11 @@ def add_paths(sections: list[dict], fetch_index, log=print) -> None:
 
 
 def build(rows: list[dict], sections: list[dict], now: dt.datetime | None = None,
-          extra_sources: tuple = ()) -> tuple[dict, NormalizeReport]:
+          extra_sources: tuple = (), road_data: dict | None = None, log=print) -> tuple[dict, NormalizeReport]:
     now = now or dt.datetime.now(dt.timezone.utc)
     report = NormalizeReport()
     cameras = normalize_rows(rows, report)
+    official.audit_cameras(cameras, sections, road_data or {}, log=log)
     db = {
         "version": now.strftime("%Y-%m-%d"),
         "generatedAt": now.replace(microsecond=0).isoformat().replace("+00:00", "Z"),
@@ -119,6 +124,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--sections-text", default=DEFAULT_SECTIONS_TEXT,
                     help="補充的區間測速文字清單（只用來產生區間，不當作照相點）")
     ap.add_argument("--section-lengths", default=DEFAULT_SECTION_LENGTHS, help="警方公告的區間偵測長度")
+    ap.add_argument("--freeway-input", help="13940 本機 CSV／ZIP（--input 離線建置時可另外指定）")
+    ap.add_argument("--ntpc-input", help="126156 本機 CSV（--input 離線建置時可另外指定）")
     ap.add_argument("--no-auto-sections", action="store_true", help="不從文字自動產生區間")
     ap.add_argument("--min-count", type=int, default=0,
                     help="照相點少於這個數量就視為失敗（避免把空資料打包進 App）")
@@ -133,6 +140,24 @@ def main(argv: list[str] | None = None) -> int:
         print(f"人工補充照相點 {len(extra)} 筆")
         rows += extra
 
+    freeway_rows = []
+    ntpc_rows = []
+    if args.freeway_input:
+        freeway_rows = sources.read_local_rows([args.freeway_input])
+        official.validate_freeway_rows(freeway_rows)
+    elif not args.input:
+        freeway_rows = sources.fetch_official_rows("13940", DEFAULT_FREEWAY_SNAPSHOT,
+                                                   official.validate_freeway_rows)
+    if args.ntpc_input:
+        ntpc_rows = sources.read_local_rows([args.ntpc_input])
+        official.validate_ntpc_rows(ntpc_rows)
+    elif not args.input:
+        ntpc_rows = sources.fetch_official_rows("126156", DEFAULT_NTPC_SNAPSHOT,
+                                                official.validate_ntpc_rows,
+                                                fallback_urls=(sources.NTPC_SECTION_URL,))
+    if freeway_rows:
+        rows = official.apply_freeway_coordinates(rows, freeway_rows)
+
     fetch_index = CachedMilepostIndex()
     sections = load_sections(args.sections, fetch_index=fetch_index)
     manual_count = len(sections)
@@ -143,23 +168,36 @@ def main(argv: list[str] | None = None) -> int:
             text_rows = sources.read_local_rows([args.sections_text])
         auto = auto_sections(rows, text_rows, args.sections, fetch_index)
         sections = sections + auto
+    lengths_applied = apply_official_lengths(sections, args.section_lengths)
+    before_official = len(sections)
+    sections = official.apply_ntpc_sections(sections, ntpc_rows)
+    official_added = len(sections) - before_official
     add_paths(sections, fetch_index)
-    official = apply_official_lengths(sections, args.section_lengths)
     extra: tuple = ()
     if sections and (auto or uses_mileposts(args.sections)):
         extra += (mileposts.ATTRIBUTION,)
     if any(s["id"].startswith("auto-") for s in auto) and text_rows:
         extra += (TEXT_SOURCE_ATTRIBUTION,)
-    if official:
+    if lengths_applied:
         extra += (LENGTHS_ATTRIBUTION,)
+    if freeway_rows:
+        extra += (sources.FREEWAY_ATTRIBUTION,)
+    if ntpc_rows:
+        extra += (sources.NTPC_ATTRIBUTION,)
     if any("tunnel" in s["id"] for s in sections):
         extra += (TUNNEL_ATTRIBUTION,)
-    db, report = build(rows, sections, extra_sources=extra)
+    try:
+        with open(DEFAULT_ROAD_LINES, encoding="utf-8") as f:
+            road_data = json.load(f)
+    except (OSError, ValueError) as exc:
+        print(f"[警告] 道路線形讀取失敗，無法稽核國道座標：{exc}")
+        road_data = {}
+    db, report = build(rows, sections, extra_sources=extra, road_data=road_data)
     print(report.summary())
     diag = report.diagnostics()
     if diag:
         print(diag)
-    print(f"區間測速 {len(sections)} 段（人工 {manual_count}、自動 {len(sections) - manual_count}）")
+    print(f"區間測速 {len(sections)} 段（人工 {manual_count}、自動 {len(auto)}、官方新增 {official_added}）")
 
     if len(db["cameras"]) < args.min_count:
         print(f"[錯誤] 照相點只有 {len(db['cameras'])} 筆，少於 --min-count={args.min_count}", file=sys.stderr)

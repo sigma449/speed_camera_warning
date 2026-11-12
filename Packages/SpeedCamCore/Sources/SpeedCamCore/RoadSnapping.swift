@@ -6,6 +6,12 @@ import Foundation
 /// App 會用 Apple 地圖的路線規劃（MKDirections）沿著這條路形重新規劃，畫出來就跟地圖上的道路一致；
 /// 這裡負責取中途點、判斷規劃出來的路線是不是同一條路（沒有繞到別條路）、簡化線條。
 public enum RoadSnapping {
+    /// 快取依方向別 ID 與精確門架配對；groupID 只用於共用容許值，不可共用路形。
+    public static func cacheSignature(for section: SpeedSection) -> String {
+        String(format: "%@|%.7f,%.7f>%.7f,%.7f", section.id,
+               section.start.lat, section.start.lon, section.end.lat, section.end.lon)
+    }
+
     /// 點到折線的最短距離（公尺）。
     public static func distance(from p: GeoPoint, to line: [GeoPoint]) -> Double {
         guard let first = line.first else { return .infinity }

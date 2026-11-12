@@ -14,7 +14,7 @@ public enum SectionEvent: Equatable, Sendable {
     case completed(section: SpeedSection, averageKmh: Double, withinLimit: Bool)
     /// 中途離開區間（例如下交流道），停止追蹤。
     case aborted(section: SpeedSection)
-    /// 區間內車速超過「速限＋區間容許值」（播一次語音加嗶聲）。
+    /// 區間超速語音（再次超速仍受語音冷卻限制）；嗶聲由 overspeedBeep 獨立處理。
     case overspeedStarted(threshold: Int)
     /// 持續超速，每隔設定秒數嗶一聲。
     case overspeedBeep
@@ -41,10 +41,13 @@ public struct SectionStatus: Equatable, Sendable {
     public var suggestedMaxKmh: Double
     /// 計算用的時速（速限＋區間容許值）。
     public var effectiveLimitKmh: Double
+    /// 與聲音共用的超速狀態；歸零或定位中斷太久後為 false。
+    public var isOverspeed: Bool
 
     public init(section: SpeedSection, startTime: Date, elapsed: TimeInterval, minimumSeconds: Double,
                 remainingSeconds: Double, earliestExit: Date, traveledMeters: Double, remainingMeters: Double,
-                averageKmh: Double, suggestedMaxKmh: Double, effectiveLimitKmh: Double) {
+                averageKmh: Double, suggestedMaxKmh: Double, effectiveLimitKmh: Double,
+                isOverspeed: Bool = false) {
         self.section = section
         self.startTime = startTime
         self.elapsed = elapsed
@@ -56,6 +59,7 @@ public struct SectionStatus: Equatable, Sendable {
         self.averageKmh = averageKmh
         self.suggestedMaxKmh = suggestedMaxKmh
         self.effectiveLimitKmh = effectiveLimitKmh
+        self.isOverspeed = isOverspeed
     }
 
     /// 倒數秒數（無條件進位成整數，畫面顯示用）。
@@ -125,6 +129,17 @@ public final class SectionSpeedTracker {
         var minEndTime: Date?
         var isOverspeed = false
         var lastBeep: Date?
+        var lastOverspeedVoice: Date?
+        var progress: ProgressSample?
+        var reverseSince: Date?
+        var reverseFrom = 0.0
+        var reverseSamples = 0
+    }
+
+    private struct ProgressSample {
+        var along: Double
+        var point: GeoPoint
+        var time: Date
     }
 
     /// 進入起點範圍後，等到「最接近起點」的那一刻才開始計時（和照相點位置一致），
@@ -151,6 +166,7 @@ public final class SectionSpeedTracker {
     private var recentlyFinished: [String: Date] = [:]
     /// 已經預告過的區間，同一段不重複預告。
     private var announcedApproach: [String: Date] = [:]
+    private var requiresGateReentry: Set<String> = []
 
     public init(sections: [SpeedSection], settings: AlertSettings = AlertSettings()) {
         self.sections = sections
@@ -162,6 +178,20 @@ public final class SectionSpeedTracker {
         reset()
     }
 
+    /// 貼齊後的路形也交給追蹤器，但不重設正在進行的倒數。
+    public func updatePath(_ path: [GeoPoint], forSectionID id: String) {
+        guard path.count >= 2 else { return }
+        for i in sections.indices where sections[i].id == id { sections[i].path = path }
+        if active?.section.id == id {
+            active?.section.path = path
+            active?.progress = nil
+            active?.reverseSince = nil
+            active?.reverseSamples = 0
+        }
+        if arming?.section.id == id { arming?.section.path = path }
+        if approaching?.section.id == id { approaching?.section.path = path }
+    }
+
     public func reset() {
         active = nil
         arming = nil
@@ -170,6 +200,7 @@ public final class SectionSpeedTracker {
         lastFix = nil
         recentlyFinished.removeAll()
         announcedApproach.removeAll()
+        requiresGateReentry.removeAll()
     }
 
     public var isActive: Bool { active != nil }
@@ -193,6 +224,11 @@ public final class SectionSpeedTracker {
     }
 
     public func process(_ fix: VehicleFix) -> SectionResult {
+        guard fix.isReliable else {
+            return tick(now: fix.timestamp)
+                ?? SectionResult(events: [], status: active.map { makeStatus($0, now: fix.timestamp) },
+                                 approach: currentApproach)
+        }
         if let course = fix.course, course >= 0, fix.speedKmh >= settings.minimumSpeedForCourse {
             lastCourse = GeoMath.normalize(course)
         }
@@ -229,6 +265,12 @@ public final class SectionSpeedTracker {
         }
         if var a = active {
             updateCountdown(&a, now: now, events: &events)
+            if a.isOverspeed, now.timeIntervalSince(last.timestamp) >= 10 {
+                a.isOverspeed = false
+                events.append(.overspeedEnded)
+            }
+            a.reverseSince = nil
+            a.reverseSamples = 0
             active = a
             return SectionResult(events: events, status: makeStatus(a, now: now, assumedSpeed: last.speedMps))
         }
@@ -247,6 +289,7 @@ public final class SectionSpeedTracker {
     }
 
     private func begin(_ entered: Active, events: inout [SectionEvent]) {
+        requiresGateReentry.remove(entered.section.id)
         active = entered
         arming = nil
         approaching = nil
@@ -312,7 +355,7 @@ public final class SectionSpeedTracker {
     /// 一樣算進入，開始時間依目前車速往回推，倒數才不會偏長。
     private func lateEntry(_ fix: VehicleFix) -> Active? {
         guard arming == nil, let heading = lastCourse, fix.speedKmh >= settings.minimumSpeedForCourse else { return nil }
-        for s in sections where recentlyFinished[s.id] == nil {
+        for s in sections where recentlyFinished[s.id] == nil && !requiresGateReentry.contains(s.id) {
             guard let spot = locateNearStart(of: s, point: fix.point),
                   spot.lateral <= onPathDistance,
                   GeoMath.angleDifference(heading, spot.bearing) <= 45 else { continue }
@@ -396,6 +439,15 @@ public final class SectionSpeedTracker {
     private func advance(fix: VehicleFix, events: inout [SectionEvent]) {
         guard var a = active else { return }
 
+        if hasReversed(&a, fix: fix) {
+            if a.isOverspeed { events.append(.overspeedEnded) }
+            events.append(.aborted(section: a.section))
+            requiresGateReentry.insert(a.section.id)
+            announcedApproach[a.section.id] = nil
+            active = nil
+            return
+        }
+
         // 累計行駛距離；過濾掉不合理的 GPS 跳點。
         let step = GeoMath.distance(a.lastPoint, fix.point)
         let dt = max(0.1, fix.timestamp.timeIntervalSince(a.lastTime))
@@ -409,18 +461,20 @@ public final class SectionSpeedTracker {
 
         // 區間內超速警示（以瞬間車速判斷）
         let threshold = settings.sectionEffectiveLimit(a.section.speedLimit, sectionID: a.section.groupID)
-        let over = fix.speedKmh > threshold
+        let over = !a.zeroAnnounced && fix.speedKmh > threshold
         if over && !a.isOverspeed {
             a.isOverspeed = true
-            a.lastBeep = fix.timestamp
-            events.append(.overspeedStarted(threshold: Int(threshold.rounded())))
-        } else if over, let last = a.lastBeep,
-                  fix.timestamp.timeIntervalSince(last) >= settings.overspeedBeepInterval {
-            a.lastBeep = fix.timestamp
-            events.append(.overspeedBeep)
+            if a.lastOverspeedVoice.map({ fix.timestamp.timeIntervalSince($0) >= settings.sectionOverspeedVoiceInterval }) ?? true {
+                a.lastOverspeedVoice = fix.timestamp
+                events.append(.overspeedStarted(threshold: Int(threshold.rounded())))
+            }
         } else if !over && a.isOverspeed {
             a.isOverspeed = false
             events.append(.overspeedEnded)
+        }
+        if over, a.lastBeep.map({ fix.timestamp.timeIntervalSince($0) >= settings.sectionOverspeedBeepInterval }) ?? true {
+            a.lastBeep = fix.timestamp
+            events.append(.overspeedBeep)
         }
 
         // 終點判定：進入終點範圍後開始遠離，或行駛距離明顯超過區間長度。
@@ -461,6 +515,70 @@ public final class SectionSpeedTracker {
         active = a
     }
 
+    /// 只接受精確、連續且物理上合理的沿路後退；不能用起點方位判山路髮夾彎。
+    private func hasReversed(_ a: inout Active, fix: VehicleFix) -> Bool {
+        guard fix.horizontalAccuracy <= 30, let course = fix.course, course >= 0 else {
+            a.progress = nil
+            a.reverseSince = nil
+            a.reverseSamples = 0
+            return false
+        }
+        let previous = a.progress
+        let dt = previous.map { fix.timestamp.timeIntervalSince($0.time) } ?? .infinity
+        let continuous = dt > 0 && dt < gpsGapSeconds
+        let maxStep = max(40, fix.speedMps * max(0, dt) * 1.8) + fix.horizontalAccuracy * 2
+        let path = a.section.displayPath
+        var best: (along: Double, lateral: Double, bearing: Double)?
+        var walked = 0.0
+        for (start, end) in zip(path, path.dropFirst()) {
+            let length = GeoMath.distance(start, end)
+            let projection = GeoMath.project(fix.point, ontoSegment: start, end)
+            let along = walked + projection.t * length
+            walked += length
+            guard length > 0, projection.distance <= onPathDistance,
+                  !continuous || abs(along - (previous?.along ?? along)) <= maxStep else { continue }
+            if projection.distance < (best?.lateral ?? .infinity) {
+                best = (along, projection.distance, GeoMath.bearing(from: start, to: end))
+            }
+        }
+        // 折線投影會夾在起點；加一小段起點後方的延伸線，才能辨識退回門架之前。
+        let behind = GeoMath.destination(from: a.section.start, bearing: a.section.entryHeading + 180,
+                                          distance: 150)
+        let beforeStart = GeoMath.project(fix.point, ontoSegment: behind, a.section.start)
+        if beforeStart.t < 1, beforeStart.distance <= onPathDistance,
+           beforeStart.distance < (best?.lateral ?? .infinity),
+           GeoMath.distance(fix.point, a.section.start) <= 150 {
+            let along = (beforeStart.t - 1) * 150
+            if !continuous || abs(along - (previous?.along ?? along)) <= maxStep {
+                best = (along, beforeStart.distance, a.section.entryHeading)
+            }
+        }
+        guard let spot = best,
+              !continuous || previous.map({ GeoMath.distance($0.point, fix.point) <= maxStep }) == true else {
+            a.reverseSince = nil
+            a.reverseSamples = 0
+            return false
+        }
+        a.progress = ProgressSample(along: spot.along, point: fix.point, time: fix.timestamp)
+        guard continuous, let previous, spot.along < previous.along - 1.5,
+              fix.speedKmh >= settings.minimumSpeedForCourse,
+              GeoMath.angleDifference(course, spot.bearing) > 120 else {
+            a.reverseSince = nil
+            a.reverseSamples = 0
+            return false
+        }
+        if a.reverseSince == nil {
+            a.reverseSince = previous.time
+            a.reverseFrom = previous.along
+        }
+        a.reverseSamples += 1
+        let duration = fix.timestamp.timeIntervalSince(a.reverseSince ?? fix.timestamp)
+        let retreat = a.reverseFrom - spot.along
+        let sustainedRetreat = a.section.path != nil && duration >= 5 && retreat >= 60
+        let pastStart = spot.along < -settings.sectionGateRadius && duration >= 3
+        return a.reverseSamples >= 3 && (sustainedRetreat || pastStart)
+    }
+
     /// 倒數提醒：跨過多個時間點時（例如 GPS 中斷），只報最新的那一個。
     private func updateCountdown(_ a: inout Active, now: Date, events: inout [SectionEvent]) {
         let remaining = max(0, a.minimumSeconds - now.timeIntervalSince(a.startTime))
@@ -472,6 +590,10 @@ public final class SectionSpeedTracker {
             }
         }
         if remaining <= 0 && !a.zeroAnnounced {
+            if a.isOverspeed {
+                a.isOverspeed = false
+                events.append(.overspeedEnded)
+            }
             a.zeroAnnounced = true
             events.append(.zeroReached)
         }
@@ -494,6 +616,6 @@ public final class SectionSpeedTracker {
                              earliestExit: a.startTime.addingTimeInterval(a.minimumSeconds),
                              traveledMeters: traveled, remainingMeters: remainingMeters,
                              averageKmh: avg, suggestedMaxKmh: suggested,
-                             effectiveLimitKmh: limit)
+                             effectiveLimitKmh: limit, isOverspeed: a.isOverspeed)
     }
 }

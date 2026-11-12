@@ -111,6 +111,7 @@ def build_road_lines(elements: list[dict], restricted_names: set[str], generated
                      tolerance_m: float = 3.0, log=print) -> dict:
     """tolerance_m 要遠小於 App 判斷「貼著線形」的 10 m（RoadMatcher.closeOffset），不然簡化本身就會造成偏差。"""
     freeways, restricted = [], []
+    named: dict[tuple[str, str | None], list] = {}
     found_names = set()
     for el in elements:
         if el.get("type") != "way":
@@ -122,6 +123,12 @@ def build_road_lines(elements: list[dict], restricted_names: set[str], generated
         elif is_restricted(tags, restricted_names):
             found_names.add(tags["name"])
             restricted.append(points)
+        if len(points) >= 2:
+            if is_freeway(tags):
+                ref = tags["ref"].strip()
+                named.setdefault((f"國道{ref}號", ref), []).append(points)
+            elif tags.get("name") and tags.get("highway") in ("motorway", "trunk"):
+                named.setdefault((tags["name"], None), []).append(points)
 
     missing = restricted_names - found_names
     if missing:
@@ -135,6 +142,8 @@ def build_road_lines(elements: list[dict], restricted_names: set[str], generated
         "attribution": ATTRIBUTION,
         "freeways": finish(freeways),
         "whitePlateRestricted": finish(restricted),
+        "namedRoads": [dict(name=name, lines=finish(lines), **({"freewayRef": ref} if ref else {}))
+                       for (name, ref), lines in sorted(named.items(), key=lambda item: (item[0][0], item[0][1] or ""))],
     }
     freeway_km = sum(line_length_km([tuple(p) for p in line]) for line in result["freeways"])
     restricted_km = sum(line_length_km([tuple(p) for p in line]) for line in result["whitePlateRestricted"])
@@ -158,6 +167,7 @@ def dumps(data: dict) -> str:
         f' "generatedAt": {json.dumps(data["generatedAt"])},\n'
         f' "attribution": {json.dumps(data["attribution"], ensure_ascii=False)},\n'
         f' "freeways": {lines_json(data["freeways"])},\n'
-        f' "whitePlateRestricted": {lines_json(data["whitePlateRestricted"])}\n'
+        f' "whitePlateRestricted": {lines_json(data["whitePlateRestricted"])},\n'
+        f' "namedRoads": {json.dumps(data["namedRoads"], ensure_ascii=False, separators=(",", ":"))}\n'
         "}\n"
     )

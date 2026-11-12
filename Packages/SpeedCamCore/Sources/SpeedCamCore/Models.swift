@@ -76,11 +76,13 @@ public struct Camera: Codable, Hashable, Identifiable, Sendable {
     public var district: String?
     /// 高架或平面。App 分不出使用者在哪一層，所以提醒時念出來讓駕駛判斷。
     public var level: RoadLevel?
+    /// 已人工核實的區間關聯（例如中仁隧道的相機離起終點直線超過 300 m）。
+    public var sectionGroupID: String?
 
     public init(id: String, type: CameraType, lat: Double, lon: Double,
                 heading: Double? = nil, speedLimit: Int? = nil,
                 address: String = "", city: String? = nil, district: String? = nil,
-                axis: Double? = nil, level: RoadLevel? = nil) {
+                axis: Double? = nil, level: RoadLevel? = nil, sectionGroupID: String? = nil) {
         self.id = id
         self.type = type
         self.lat = lat
@@ -92,6 +94,7 @@ public struct Camera: Codable, Hashable, Identifiable, Sendable {
         self.city = city
         self.district = district
         self.level = level
+        self.sectionGroupID = sectionGroupID
     }
 
     public var point: GeoPoint { GeoPoint(lat: lat, lon: lon) }

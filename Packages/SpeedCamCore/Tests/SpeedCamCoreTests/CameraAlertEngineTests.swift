@@ -29,6 +29,49 @@ final class CameraAlertEngineTests: XCTestCase {
         XCTAssertFalse(events.contains { $0.event.isOverspeedStarted || $0.event.isBeep })
     }
 
+    func testCorrected279KDoesNotAlertInTaipei() {
+        let camera = Camera(id: "13940-279", type: .fixed, lat: 23.373209, lon: 120.350715,
+                            heading: 180, speedLimit: 110, address: "國道一號南向279公里")
+        let track = straightTrack(from: GeoPoint(lat: 25.046651, lon: 121.536622),
+                                  bearing: 181.6, speedKmh: 60, seconds: 100)
+        XCTAssertTrue(runAlerts(engine([camera]), track).isEmpty)
+    }
+
+    func testCorrected279KAndRealYuanshanStillAlertSouthbound() {
+        let cameras = [
+            Camera(id: "279", type: .fixed, lat: 23.373209, lon: 120.350715,
+                   heading: 180, speedLimit: 110, address: "國道一號南向279公里"),
+            Camera(id: "22.7", type: .fixed, lat: 25.07305, lon: 121.536862,
+                   heading: 180, speedLimit: 100, address: "國道一號南向22.7公里"),
+        ]
+        for camera in cameras {
+            let before = GeoMath.destination(from: camera.point, bearing: 0, distance: 1_000)
+            let events = runAlerts(engine([camera]), straightTrack(from: before, bearing: 180, speedKmh: 100, seconds: 60))
+            XCTAssertEqual(events.filter { $0.event.isPre }.count, 1, camera.address)
+            XCTAssertEqual(events.filter { $0.event.isNear }.count, 1, camera.address)
+        }
+    }
+
+    func testOfficialSectionAssociationCoversZhongrenButNotParallelCamera() throws {
+        let start = GeoMath.destination(from: origin, bearing: 0, distance: 200)
+        let section = SpeedSection(id: "zhongren-tunnel-f", name: "中仁隧道", start: start,
+            end: GeoMath.destination(from: start, bearing: 0, distance: 4_831), lengthMeters: 4_831, speedLimit: 70)
+        let middle = GeoMath.destination(from: start, bearing: 0, distance: 2_000)
+        let curved = GeoMath.destination(from: middle, bearing: 90, distance: 640)
+        let linked = Camera(id: "zhongren", type: .section, lat: curved.lat, lon: curved.lon,
+                            speedLimit: 70, address: "蘇花改中仁隧道", sectionGroupID: "zhongren-tunnel")
+        let parallel = Camera(id: "parallel", type: .section, lat: curved.lat, lon: curved.lon,
+                              speedLimit: 70, address: "旁邊沒有查核雙端的道路")
+        let engine = engine([linked, parallel])
+        engine.sections = [section]
+        XCTAssertTrue(engine.isCoveredBySection(linked))
+        XCTAssertFalse(engine.isCoveredBySection(parallel))
+        XCTAssertEqual(try JSONDecoder().decode(Camera.self, from: JSONEncoder().encode(linked)).sectionGroupID,
+                       "zhongren-tunnel")
+        engine.sections = []
+        XCTAssertFalse(engine.isCoveredBySection(linked), "關聯的區間真的存在時才可取代固定提醒")
+    }
+
     func testFastRoadUsesLongerThresholds() {
         let cam = camera(north: 3_000, limit: 100)
         let events = runAlerts(engine([cam]), straightTrack(from: origin, bearing: 0, speedKmh: 90, seconds: 140))

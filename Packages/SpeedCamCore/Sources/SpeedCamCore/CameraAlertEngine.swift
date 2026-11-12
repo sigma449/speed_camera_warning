@@ -16,7 +16,7 @@ public enum AlertPhase: Int, Comparable, Sendable {
 public enum CameraAlertEvent: Equatable, Sendable {
     /// 預告（例如 300 m）
     case preAlert(camera: Camera, distance: Double)
-    /// 近距（例如 100 m）。afterPre：這支已經預告過，語音只要念距離。
+    /// 近距（例如 100 m）。afterPre：這支已預告過，語音念距離，超速時再加「超速」。
     case nearAlert(camera: Camera, distance: Double, afterPre: Bool = true)
     /// 通過照相點
     case passed(camera: Camera)
@@ -330,6 +330,7 @@ public final class CameraAlertEngine {
         guard camera.type == .section else { return false }
         if let known = coveredBySection[camera.id] { return known }
         let covered = sections.contains { section in
+            if camera.sectionGroupID == section.groupID { return true }
             let path = section.displayPath
             return zip(path, path.dropFirst()).contains { a, b in
                 GeoMath.project(camera.point, ontoSegment: a, b).distance <= sectionCameraCoverage
