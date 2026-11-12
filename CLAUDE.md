@@ -34,6 +34,11 @@ Live Activity 在 iOS 26 會出現在 CarPlay 儀表板，**不需要 entitlemen
 - **兩段提醒**（每段只提醒一次）：一般道路預告 300 m、近距 100 m；照相點速限 ≥ 80 時預告 600 m、近距 200 m。距離依法規標示的設置距離決定，使用者認為 1,000 m 太遠。
 - **近距語音**（11/08 第二階段 A 已核准）：已預告過的照相點，當下同目標超速時念「100公尺，超速」，沒有超速只念「100公尺」；高速門檻照實際設定念「200公尺」，太近則念實距。讀目前超速狀態，不依賴同秒的開始事件；合句時不另念一則超速語音。第一次提醒已在近距內時仍保留完整句子與既有超速語音，這個分支等使用者決定。
 - **超速警示**：接近照相點時超速，每 3 秒嗶一聲，直到降速或通過。一般照相的超速容許值預設 0。
+- **多來源與新提醒類型（第二階段 D，第 13 項已核准）**：接受官方及 OSM，使用者回報功能先不做；不碰商業私有庫。
+  - `mobile` 是「常見移動測速」，橫幅補「公告熱點・非即時執法」；`noise` 是「聲音照相」；`tech` 是「路口科技執法」，保留取締項目與適用條件。
+  - 熱點、聲音照相與非測速類型只預告一次，沒有近距第二次或超速嗶聲。科技明列「超速／測速」才走測速兩段；有可靠一般速限才嗶，未知／條件速限只提醒。既有測速距離、3 秒嗶聲及區間規格不變。
+  - 設定「提醒類型」的「移動式熱點」「科技執法（非測速）」「聲音照相」各自預設開啟（`mobileHotspotsEnabled`、`nonSpeedTechEnabled`、`noiseCamerasEnabled`）；含測速科技不受非測速開關影響。關閉時不顯示地圖點／核心目標，不重設其他測速或區間狀態。
+  - 三類接近狀態用黃色，圖示分別為望遠鏡／錄影／喇叭，沒有可靠測速門檻時不畫速限牌。手機顯示完整取締細項；Live Activity 放不下時先縮為第一項「取締：闖紅燈等」，仍放不下才只顯類型，超速與近距導航優先不變。
 - **方向判斷**：只提醒取締自己行車方向的照相點。開放資料的「雙向」照相點有軸向（南北／東西），兩個方向都提醒，橫向道路不提醒。
 - **區間預告**（2026-11-07 使用者要求，實測進去之後才提醒太晚）：接近起點時預告一次，距離和照相點相同（區間速限 ≥ 80 為 600 m，其他 300 m）。
   語音「前方300公尺，進入區間測速，速限70」，橫幅和 Live Activity 沿用照相點的版面（`SectionApproach.asCameraTarget`）。
@@ -186,6 +191,7 @@ App 的啟動參數（CI 截圖用）：
 - `-gallery -galleryBanners`：手機橫幅預覽頁，用真實資料裡最長的文字（可再加 `-galleryBottom`）
 - `-gallery -galleryBanners -galleryBannerPair camera|section|zero|rerouting -galleryWidth 375|390`：固定顯示導航＋照相／區間／歸零，或重新規劃＋照相；用最長路名及類型，CI 新增 `29`～`34` 同屏／放大字截圖
 - `-gallery -galleryBanners -galleryHints`：內建人工提示的手機橫幅及 170×78 pt 導航／照相＋navHint 預覽；可加 `-galleryBottom`，本輪尚未取得截圖
+- `-gallery -galleryTypes mobile|tech|noise`：三種新提醒的 CarPlay 三尺寸、鎖定畫面及動態島展開示例；加 `-galleryBanners -galleryWidth 375` 看手機橫幅／詳細卡。CI 新增 `45-reminder-banner-*`、`46-reminder-activity-*` 共 6 張；純固定示例、不依賴外部服務，不代表真實已收點或已取得截圖
 - `-gallery -galleryLock`：鎖定畫面和動態島展開的預覽頁，動態島外框是示意（可再加 `-galleryBottom`）
 - `-gallery -galleryStale`：已停止更新的 `.small` 三種尺寸；再加 `-galleryLock` 顯示鎖定畫面及動態島。CI 新增 `27-stale-activity-lock.png`、`28-stale-activity-small.png`，尚待截圖驗收
 - `-gallery -galleryPlaces`：375 pt 選點卡版面示例，含長名稱／地址、反查中、反查失敗；加 `-galleryBottom` 拍下半部。這是狀態預覽，不代表已操作 POI 或長按
@@ -203,8 +209,8 @@ App 的啟動參數（CI 截圖用）：
 
 ## 建置與測試
 
-- **Swift 核心邏輯**（206 個測試）：本機既有入口 `python -I -X utf8 build\swift_test.py`。Docker 必須同時唯讀掛載 `SpeedCam\Resources` 到 `/SpeedCam/Resources`，不能只掛套件而讓真實道路或人工提示測試跳過；第二階段 B 的 206 項全通過，0 跳過。CI／原生 Swift 用 `swift test --package-path Packages/SpeedCamCore`。
-- **Python 資料處理與 replay 檢查器**（316 個測試）：`python -m pytest -q data-pipeline`，第二階段 B 第二次退回修正全通過，0 跳過。
+- **Swift 核心邏輯**（217 個測試）：本機既有入口 `python -I -X utf8 build\swift_test.py`。Docker 必須同時唯讀掛載 `SpeedCam\Resources` 到 `/SpeedCam/Resources`，不能只掛套件而讓真實道路或人工提示測試跳過；第二階段 D 的 217 項全通過，0 跳過，紀錄 `build\stage-d\swift.log`。CI／原生 Swift 用 `swift test --package-path Packages/SpeedCamCore`。
+- **Python 資料處理與 replay 檢查器**（372 個測試）：`python -m pytest -q data-pipeline`，第二階段 D 全通過，0 跳過，紀錄 `build\stage-d\pytest.log`。既有 assertions 未刪除／放寬，production build 測試僅補新來源失聯 mock 與回退檢查。
 - **iOS App** 只能在 GitHub Actions 編譯：
   - `CI`（每次 push）：Swift 測試、pytest、iOS 模擬器建置和截圖。截圖會以 base64 印在 log 裡（`scripts/ci/print-screenshots.sh`），因為雲端 session 下載不了 artifact。
   - `Build IPA`（手動）：`gh workflow run build-ipa.yml --repo sigma449/speed_camera_warning --ref main`。會下載最新資料、編譯未簽署的 IPA（artifact `SpeedCam-ipa`，保留 30 天）。
@@ -216,7 +222,7 @@ App 的啟動參數（CI 截圖用）：
     **11/08 驗收**：`route-replay-1108.json` 現為 29 案，原 24 案及起終點完整保留。補測 05 從舊實際回放去程 02 的 t103 位置（沿路距水源匝道約 470 m）到水源南向主線，專測第 2 項；補測 06／07 分別隔離 IKEA 雙向生命週期，補測 08 隔離北宜路 246 號已預告近距，補測 09 隔離市區相機預告／通過，避免正向事件只能依賴長段當天的走法。北宜 1～4 雙向仍各自隔離，折返／歸零仍用原 1,400 m／350 秒情境。所有非折返案例不准中途離開、生命週期、全案例數、全案例節流、北宜 2 四個官方門架獨立比對等不變性保留。不中斷補測 01／02 仍搜尋「台北市中山區長春路128號」及「坪林 7-ELEVEN」，快取同一對結果反向；搜尋失敗直接失敗、不用搜尋中心冒充。
     `REPLAY1108 ` 新增每案唯一 `route_geometry`（點數、分段數、Apple 原文／校正及動作點）與有編號的 `route_geometry_part`（每段最多 400 點），完整折線亦照常寫入 JSONL。檢查器獨立投影，核對有序門架、相機行向、提示點與後續分支，不拿核心 `matched=false` 自證沒經過。所有長短案例都可將確實未經過／不同分支列資訊；經過卻缺事件、文字、語音或 navHint 仍失敗，每個必驗項目與六點均須至少一案實際驗到，缺全域覆蓋仍失敗，不能全跳過。
     `hint_check` 的六點最近距離、Apple 前後步驟、前後 300 m 實際語音／navHint、手機與 Live Activity 短句、不重播及短段起點至少 500 m 的要求保留。水源校正只比對同一個入口動作點的原文、畫面與語音，不再禁止整案其他道路保留「上高速公路」；Apple 未提供該原文只列未驗到，不冒稱校正通過，仍須別案補足。
-    下一輪將新完整回放存為 `build\replay-1108-r6.log`，執行 `python -I -X utf8 scripts\ci\check-replay-1108.py build\replay-1108-r6.log`，支援 UTF-16 BOM。新 29 案及完整分段證據尚待 macOS 重跑；r5 缺新增五案與路線證據，檢查器明確拒絕，不改寫舊 log，人工 log 單測不能充當驗收。**舊 `build\replay-1108-fixed.log` 另有北宜 4 回程誤中止，仍不能當成通過。**
+    分支起點 `8e8e907` 已有完整 `build\replay-1108-r6.log`；D 用 `python -I -X utf8 scripts\ci\check-replay-1108.py build\replay-1108-r6.log` 重驗仍通過，支援 UTF-16 BOM，但不是以新多來源資料重跑 MapKit。IKEA 只豁免型別明確且非測速的 mobile／noise／tech；原固定 ID、測速科技或缺證據仍拒絕。r5 缺新增五案與路線證據，不改寫舊 log，人工單測不能充當實測。**舊 `build\replay-1108-fixed.log` 有北宜 4 回程誤中止，不能當成通過。**
   - `iOS 15 實際執行`（手動，約 20 分鐘）：`gh workflow run ios15-test.yml --repo sigma449/speed_camera_warning --ref main`。從 Apple 官方 CDN 安裝 iOS 15.5 模擬器（不用登入），在 iPhone 7 模擬器上實際開啟 App 並截圖。改了舊系統的程式就跑一次。截圖一樣在 log 裡。
 - 用 `gh run watch <id> --exit-status` 等結果，`gh run view <id> --log` 讀 log。
 - 環境：runner `macos-26`、Xcode 26.6、App 最低 iOS 15.0、Widget 最低 iOS 26.0、`SWIFT_VERSION 5.0`、`SWIFT_STRICT_CONCURRENCY minimal`。
@@ -226,10 +232,15 @@ App 的啟動參數（CI 截圖用）：
 
 - **照相點**：內政部警政署「測速執法設置點」（data.gov.tw 資料集 **7320**，從 opdadm.moi.gov.tw 下載），整理後約 **1,900 處**（11/12 原始資料離線核對為 1,901，舊 IPA 為 1,887）。
   欄位：CityName、RegionName、Address、DeptNm、BranchNm、Longitude、Latitude、direct、limit。
+- **地方官方多來源（D）**：178144 新竹含超速科技、164507 新北科技，及 123740、52544、83881、172940、130111、27969、178358、156415、38357、178119、172905、178357 固定／科技適配。實際列數、淨貢獻及版本例外見 `data-pipeline\README.md`。178144 CSV／JSON 主站 TLS 逾時，使用已核對欄位的官方科技 HTML 表 34 列，只採 3 列含超速，**未核與 CSV 同版**；不把科技授權擴及移動表。
+- **OSM 測速設備（D）**：六區四區 Overpass 成功，南部／金門回退公開 Geofabrik 臺灣 PBF（2026-11-11T21:22:47Z、MD5 已核）。950 個 speed_camera 物件＋129 個 enforcement relation 解析為 952 提醒點，82 有可核車行向（80 兼有速限）；官方 100 m＋行向比對為 25 確定相符、475 距離重疊但方向不足、452 候選淨增，其中 55 有可核車行向與速限。`direction` 是設備面向，缺前／後方拍攝資訊不一律反轉當車行向，只採可核 from→to；其餘沿用未知方向／前方規則，不猜 forward／backward 或 way 中心。
+  - `source=osm`、原物件 ID／URL 與定位方式保留。與官方去重但不覆寫其速限／行向；不同 OSM 設備彼此只用 5 m，明確不同高架／平面分開。至善路一段真實路形、國安局 `(25.1073,121.5360)`、銀河 `(24.95557,121.56987)` 100 m 內都沒有對應 OSM 設備，不能宣稱補到了這三支。
+  - `snapshots` 保存原檔／雜湊／來源／授權，逐源／逐區失聯、格式異常或筆數縮減會警告後回退；快照也壞僅略過該新增源。OSM 與融合衍生資料庫依 ODbL 分享，設定與 JSON `sources` 署名；Build IPA 先提供完整機讀資料／來源／程式的 `SpeedCam-data`，再提供 IPA。本輪未發布新 IPA。
+- **公告熱點／聲音照相（D）**：新北移動公告實讀 717 列、607 個唯一地區／地點，依網站開放宣告使用；只取明確單一里程或唯一既有官方路口，不造路段中心。同方向熱點 150 m 合併，和固定測速重疊固定優先。本機唯一可定位的溪城路／金門街 369 巷口與既有固定點重疊，淨增 0；7040 缺資料的其餘點逐筆列報告。高雄 169075 原始 182 列、95 有效路段無座標，113 年公告現行性亦未核；新竹移動 73 方向列授權宣告 403 且頁尾限制再利用，不接。173697 彰化聲音 9 列、156743 臺南聲音 324 列都無座標，未發布位置，不能說已接入 333 點。
 - **國道座標優先來源**：國道警方 **13940**，repo 快照 `manual/freeway_cameras_13940.csv`（2026-11-12 下載，177 列）。以正規化地址及行向校正同名國道點，不新增別的取締類型或刪掉未匹配相機；同名多組／無效座標明確警告。下載失敗或筆數縮減用已驗證快照並印警告；快照也失效則明列未套用、保留原主來源。依國道編號和 OSM 主線稽核距離 >150 m 的點，全列建置報告；13940 本身也可能有錯，不自動刪除。
 - **里程牌**：公路局「省道里程坐標」（資料集 **7040**，約 27,000 處），把「台9線 19K」這類里程換算成座標和進入方向。
   經緯度欄位是「坐標-E-WGS84」「坐標-N-WGS84」。
-- **區間測速**（舊 IPA **79 段**；本輪離線保留這 79 段並加 3 個方向為 **82 段**，完整線上數量待 CI 確認）：
+- **區間測速**（舊 IPA **79 段**；前輪利用舊區間離線保留並加 3 個方向為 **82 段**。D 正式 CLI 因 7040 失聯只有 **19 段**，不是已重建完整資料）：
   - **126156** 新北市方向別雙端及長度，repo 快照 `manual/ntpc_sections_126156.csv`（2026-11-12 下載，14 列）；本輪核實套用北宜 1～3 各雙向、新店環河路中央路至白馬寺雙向、新莊壽山路往新莊，共 9 個方向。各方向端點不能單純反轉；來源失聯同 13940 明確回退。
   - `data-pipeline/manual/sections.csv`：人工維護。北宜（座標寫回 CSV）；台64 中和段（兩個方向範圍不同，分成兩個群組）；自強、辛亥、中仁、仁水隧道（座標是 OSM 的隧道兩端，實際照相位置沒有公告；長度見 CSV 註解）。
   - `manual/section_lengths.csv`：警方公告的偵測長度，依行駛方向（from_km → to_km）蓋過里程差。來源是新北市警局「區間平均速率執法設備設置地點一覽表」（1140919 修訂，`traffic.police.ntpc.gov.tw`）。**開放資料的範圍可能是錯的**：台64 寫「25.2k至28.2k（雙向）」，公告往西只有 28.2K→26.6K。其他縣市的公告還沒查。
@@ -238,7 +249,7 @@ App 的啟動參數（CI 截圖用）：
   - `manual/sections_text.csv`：開放資料沒有、但立法院附件清單（2026-05）有的區間。
   - **還沒有可驗證雙端的**：例如鳳鼻隧道、金門大橋、市道 182、瑪陵隧道、青山路、萬壽路；仍保留單點提醒，不猜終點。11/12 原始資料＋舊區間離線稽核剩 12 處，實際清單每次建置重算。
 - **具名接續道路**：`road_lines.json` 新增 `namedRoads`，2026-11-12 OSM 重建為 10 個國道編號、134 筆具名非國道主線（含橋隧）；涵蓋水源、信義、環河、建國、市民、新生、基隆路、洲美等，以及台61／62／64／65／66／68／72／74／76／78／82／84／86／88 有名稱的部分。只取 motorway／trunk 主線，不取 link／一般平面路；不是完整禁行法規清單。完整範圍和限制見 `data-pipeline/README.md`。
-- **人工相機與導航提示**：銀河附近新點為使用者街景位置 `(24.9555732,121.5698732)`，約 20 m 誤差、非精確設備座標；OSM way 655367014 北宜路三段局部往新店為 **240.6°**，速限留空待詢，不和 348 號那支合併。導航接續依 2026-11-12 已下載的 Overpass 原始快照，各 CSV 列附 way ID／URL；地下道入口三車道中間等 OSM 未提供的資訊明列依使用者實測。資源與測試 fixture 的 OSM 衍生資料依 ODbL，設定頁附出處。
+- **人工相機與導航提示**：銀河附近新點為使用者街景位置 `(24.9555732,121.5698732)`，約 20 m 誤差、非精確設備座標；OSM way 655367014 北宜路三段局部往新店為 **240.6°**，沿用既有 CSV 速限 **40**（D 未重新現場核實、不改回空白），不和 348 號那支合併。導航接續依 2026-11-12 已下載的 Overpass 原始快照，各 CSV 列附 way ID／URL；地下道入口三車道中間等 OSM 未提供的資訊明列依使用者實測。資源與測試 fixture 的 OSM 衍生資料依 ODbL，設定頁附出處。
 - **其他清單**（查照相點有沒有漏時用）：臺北市警察局「固定式違規照相設備及區間測速裝置設置地點一覽表」（資料集 **130111**，約 143 處，有座標和方向）；立法院附件全國清單（`ppg.ly.gov.tw`，2026-05）。PDF 用 `pdftotext -enc UTF-8 -layout`。
 
 ## 容易踩到的坑
@@ -282,10 +293,19 @@ App 的啟動參數（CI 截圖用）：
 ## Git
 
 - 單人專案，直接 commit 到 `main` 再 push。`Build IPA` 是手動觸發的 workflow，要在預設分支上才會出現在 Actions 頁面。
-- **本輪例外**：11/08 第二階段 B（接續 A／C）只在本機 `copilot/test2-1108` commit，一項一個 commit，不 push、不觸發 workflow、不動 main；`docs/speed_camera_detector_test2_1108.docx`、`docs/copilot_review.md` 不加入 git。
+- **本輪例外**：11/08 第二階段 D（接續 A／B／C）只在本機 `copilot/test2-1108` 分成有意義的繁體中文 commit，不 push、不觸發 workflow、不動 main；`docs/speed_camera_detector_test2_1108.docx`、`docs/copilot_review.md` 不加入 git。B 的一項一 commit 是前輪規則；D 是第 13 項的分層提交。
 - commit 訊息用繁體中文：第一行寫做了什麼，內文寫原因。
 
 ## 目前進度和下一步（2026-11-12 更新；IPA 仍是 11/07 版本）
+
+**第二階段 D（第 13 項）**：多來源／OSM、來源快照與完整衝突報告、單次熱點／非測速科技／聲音提醒、三開關、
+手機／新舊地圖／Live Activity 與 6 張 gallery 入口已接線；不做使用者回報。Swift **217**／Python **372** 全通過，均 0 跳過。
+正式 CLI 本機快照建置為 **2,656 點、淨增 754（地方 302＋OSM 452）**，ID 全唯一；類型 fixed 2,253、section 52、
+redLightSpeed 26、redLight 114、tech 211、mobile 0、noise 0。600 筆來源衝突、1,970 筆異常／未採用／未定位記錄完整保留。
+熱點已接定位流程但本機淨增 0；聲音只有型別／提醒支援，沒有虛構位置。7040 回 HTML，區間只有 19 段，不能當完整建置。
+既有 r6 用新檢查器通過，但沒有以新資料重跑真 MapKit。本輪沒有 iOS SDK；窮舉 switch、iOS 15 Form、
+共享檔與 API 已逐行靜態檢查，**App／Widget／RouteProbe 未編譯，新圖未取得，macOS 完整資料建置未驗證**。
+只在本機分支提交，不 push、不 workflow、不更新 IPA。詳見 `docs\test2_1108_analysis.md` 第 13 節與 `data-pipeline\README.md`。
 
 **11/08 第二階段 B 第二次退回（固定樣式截圖）**：驗收者提供 r5：iOS 15 建置／執行與 iOS 26 編譯已通過，
 截圖在 `35-route-preview-current-muted` 之後因 Apple 改變路線幾何而停止。已改用內建示意折線，
@@ -351,6 +371,8 @@ Swift **206**／Python **290** 全通過、均 0 跳過；新 24 案的 MapKit �
    - 不在 Dashboard 頁面時，接近照相點會不會跳底部通知；提示音和語音有沒有重疊。
      CI 驗證不到這些。沒有跳通知的話，先查通知權限：App 目前沒有要求，Apple 文件也沒說需不需要。
 4. **已知問題／待辦**：
+   - 第 13 項：三處實測漏點的 OSM 都沒有；不能用淨增 754 宣稱已補齊。新竹 178144 原檔／HTML 未核同版，快照不是即時；新竹移動授權、無座標聲音與高雄路段、完整 7040 熱點定位及 Mac 建置仍未解決。不碰私庫、不用路段中心湊點。
+   - 新提醒的 375 pt 手機、170×78 等 Live Activity／Widget 圖與 iOS 15 設定尚未實看；新增 gallery 只提供固定示例，不能代替截圖或實播。ODbL 資料庫下載須隨 IPA 維持可取得。
    - 北宜第 4 段 56.6–68.6K 未取得方向別官方門架；126156 沒有這段，保留原端點。其他縣市無雙端者也不補假終點。
    - 本輪國道稽核仍有 8 處異常（其中一處地址是匝道，距主線遠可能合理）；只報告，不自動移除。官方快照回退不是即時更新。
    - 反向中止依賴可靠路形；沒有 path 的區間在貼齊完成前，只能等退回起點確認。部分具名路的入口太短／名稱多義時保留「上高速公路」，不為了改字而猜路。

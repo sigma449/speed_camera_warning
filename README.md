@@ -23,6 +23,8 @@ CarPlay 先用 iOS 26 的 Live Activity 顯示大字提醒；之後申請 CarPla
 | 車種模式 | 汽車／紅黃牌機車（避開國道和收費道路，可走快速道路和市區高架）／白牌機車（只走平面道路）。機車路線仍是用汽車的路網規劃，不知道哪些路段禁行機車 |
 | 兩段提醒 | 一般道路：預告 300 m、近距 100 m；速限 ≥ 80 的道路：預告 600 m、近距 200 m（皆可調整）；已預告且仍超速時近距念「100公尺，超速」，沒超速只念距離，首次近距仍完整播報 |
 | 超速警示 | 接近照相點時超速，每 3 秒嗶一聲，直到降速或通過 |
+| 移動式熱點 | 「常見移動測速」，明示公告熱點、非即時執法；只預告一次，不做近距提醒或超速嗶聲 |
+| 科技／聲音照相 | 科技執法顯示取締項目；有速限且明列測速功能才嗶聲，非測速科技與聲音照相只預告一次。三種類型可在設定各自關閉，預設開啟 |
 | 方向判斷 | 只提醒取締你這個行車方向的照相點 |
 | 區間測速 | 接近起點時預告；顯示倒數、均速、建議車速上限；每分鐘報一次，最後 30 秒、10 秒再各報一次，歸零時提醒；區間超速嗶聲每 15 秒、語音 30 秒內不重複，歸零後停止區間超速提醒（固定照相仍 3 秒）；可靠沿路反向／退回起點會中止，之後可重新進入；隧道裡沒有定位時依時間繼續倒數，固定照相也依時間提醒 |
 | Live Activity | 鎖定畫面、動態島，以及 **CarPlay 儀表板**（自訂大字版面） |
@@ -64,7 +66,7 @@ data-pipeline/              Python：下載政府開放資料 → cameras.json
 | Workflow | 何時執行 | 做什麼 |
 |---|---|---|
 | **CI** | 每次 push | 核心邏輯測試（Swift）、資料處理測試（Python）、iOS 模擬器建置與截圖（Artifacts → `screenshots`） |
-| **Build IPA** | 手動 | 下載最新測速資料 → 編譯未簽署的 IPA，給 SideStore／AltStore 側載（Artifacts → `SpeedCam-ipa`） |
+| **Build IPA** | 手動 | 下載最新測速資料 → 編譯未簽署的 IPA，給 SideStore／AltStore 側載（`SpeedCam-ipa`）；另提供 ODbL 融合資料庫及來源／程式（`SpeedCam-data`） |
 | **Refresh camera data** | 每週一 | 下載政府開放資料，有變動就開 PR |
 | **iOS 15 實際執行** | 手動 | 在 iPhone 7、iOS 15.5 模擬器上開啟 App，確認裝得上、開得起來、沒有閃退 |
 
@@ -78,19 +80,31 @@ swift test --package-path Packages/SpeedCamCore
 pip install -r data-pipeline/requirements-dev.txt && python3 -m pytest -q data-pipeline
 ```
 
-目前 Swift **187** 項、Python **229** 項。本機 Windows 既有 Docker 入口為 `python -I -X utf8 build\swift_test.py`；
+目前 Swift **217** 項、Python **372** 項，第二階段 D 本機全通過，均 0 跳過。本機 Windows 既有 Docker 入口為 `python -I -X utf8 build\swift_test.py`；
 須同時唯讀掛載 `SpeedCam\Resources` 到 `/SpeedCam/Resources`，才能執行全部真實道路測試，不能把跳過當成通過。
-11/08 的 macOS replay log 另以 `python -I -X utf8 scripts\ci\check-replay-1108.py build\replay-1108-fixed.log` 驗收；
-使用 `scripts/ci/route-replay-1108.json`，舊 log／缺案例會失敗。檢查器的人工測試資料不代表真 MapKit 或實機已通過。
+11/08 的 macOS replay log 另以 `python -I -X utf8 scripts\ci\check-replay-1108.py build\replay-1108-r6.log` 驗收；
+使用 `scripts/ci/route-replay-1108.json` 的完整 29 案。第二階段 D 的檢查器仍接受既有 r6；不是重新用新資料跑 MapKit。
+舊 `replay-1108-fixed.log` 有誤中止，不能當成通過。檢查器的人工測試資料不代表真 MapKit 或實機已通過。
 
 ## 資料
 
 - 照相點：內政部警政署「測速執法設置點」（政府資料開放平臺，資料集 7320），依[政府資料開放授權條款－第1版](https://data.gov.tw/license)使用。
+- 地方官方補充：新竹含超速科技 178144、新北科技 164507，以及臺北、新北、臺中、嘉市、彰化、雲林、澎湖、南投、金門等已逐欄檢查的固定／科技來源；保留原始取締項目與條件，不把有速限欄的非測速設備當測速。完整來源、版本例外與去重後貢獻見 [資料流程說明](data-pipeline/README.md)。
+- OSM：分六區查詢 `highway=speed_camera` 及 enforcement 關聯，和官方作 100 m＋行向比對。© OpenStreetMap 貢獻者，依 [ODbL 1.0](https://www.openstreetmap.org/copyright)使用；融合衍生資料庫與重建來源一起分享，政府原始資料仍保留各自授權。未知方向沿用前方判斷；未知／條件速限只提醒、不發超速警示。
 - 國道同名照相點的座標優先採國道警方資料集 **13940**；按國道編號與道路線形稽核，來源衝突／錯位印在建置報告，不直接刪點。
 - 區間測速：從開放資料「設置地點」的文字自動產生（例如「台9線68k+600m至56k+600m」），用公路局「省道里程坐標」（資料集 7040）換算座標；另外有人工維護的 `data-pipeline/manual/sections.csv`（北宜公路）。詳見 [data-pipeline/README.md](data-pipeline/README.md)。
 - 新北方向別門架與長度採 **126156**，補新店環河路 IKEA／白馬寺及新莊壽山路，校正北宜前三段；第 4 段不在此來源，仍用原里程牌端點。兩方向各自貼齊並快取；中仁相機明確關聯既有區間。沒有可驗證雙端的其他相機維持單點提醒，報告列出全部清單。
 - 新增來源失聯、格式異常或筆數縮減時，明確警告並改用隨 repo 保存的官方快照；連快照也失效就明列未套用該來源，保留原主來源／人工資料，不讓新增來源拖垮整體建置，也不靜默少資料。
 - 你也可以在 `data-pipeline/manual/cameras_extra.csv` 補充照相點。
+
+**第二階段 D 的本機資料結果（2026-11-12）**：由 1,901 筆主來源＋1 筆既有人工點增至 **2,656 筆**，
+地方來源淨增 302、OSM 淨增 452，共 **754 筆提醒點**，不是 754 支經現場證實的新設備。
+OSM 候選中 55 筆同時有可核車行向及速限；設備面向不一律反轉當車行向，只採可驗證 from→to，其餘沿用未知行向規則。
+至善路一段、國安局前、銀河社區的回報位置都沒有找到對應 OSM 設備，銀河仍沿用人工點及既有速限 40。
+新北移動公告實讀 717 列（607 個唯一地區／地點），本機僅 1 點能用既有官方路口定位，且與固定測速重疊，因此淨增 **0**。
+高雄 95 有效移動路段及彰化／臺南共 333 列聲音照相都沒有可靠點座標；新竹移動表授權未核，均未發布位置。
+本機 7040 下載失敗，區間只有 19 段，**不是完整資料建置**；完整 macOS 建置、新版 iOS App／Widget、6 張新類型 gallery 截圖與新資料 MapKit replay 均未執行。
+本輪只在 `copilot/test2-1108` 本機提交，沒有 push、觸發 workflow 或更新 IPA。調查原稿見 [資料來源調查](docs/data_sources_survey.md)，不是所有建議都已採用。
 
 ## 路線圖
 
