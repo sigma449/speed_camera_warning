@@ -348,7 +348,7 @@ struct CameraMarker: View {
                 .shadow(radius: 2)
             Image(systemName: camera.symbolName)
                 .font(.system(size: highlighted ? 18 : 13, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(Self.symbolColor(for: camera.type))
         }
         .overlay {
             if let heading = camera.heading {
@@ -364,14 +364,20 @@ struct CameraMarker: View {
 
     private var color: Color { Self.color(for: camera.type) }
 
+    static func symbolColor(for type: CameraType) -> Color {
+        switch type {
+        case .tech, .mobile, .noise: return .black
+        default: return .white
+        }
+    }
+
     static func color(for type: CameraType) -> Color {
         switch type {
         case .fixed: return .red
         case .redLight: return .orange
         case .redLightSpeed: return .pink
         case .section: return .purple
-        case .tech: return .blue
-        case .mobile: return .gray
+        case .tech, .mobile, .noise: return .yellow
         }
     }
 }

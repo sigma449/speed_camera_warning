@@ -324,7 +324,9 @@ func withActualDistance(_ event: CameraAlertEvent, at point: GeoPoint) -> String
 
 func describe(_ event: CameraAlertEvent) -> String? {
     switch event {
-    case let .preAlert(c, d): return "【照相預告】id=\(c.id) \(Int(d)) m \(c.displayTypeName) 速限\(c.speedLimit ?? 0) \(c.address)"
+    case let .preAlert(c, d):
+        let limit = c.enforcesSpeed ? (c.speedLimit.map { " 速限\($0)" } ?? " 速限未提供") : ""
+        return "【照相預告】id=\(c.id) \(Int(d)) m \(c.alertDescription)\(limit) \(c.address)"
     case let .nearAlert(c, d, afterPre): return "【照相近距】id=\(c.id) \(Int(d)) m afterPre=\(afterPre) \(afterPre ? "已預告短句" : "完整句子") \(c.address)"
     case let .passed(c): return "【通過照相】id=\(c.id) \(c.address)"
     case let .overspeedStarted(limit, speed):
@@ -389,6 +391,9 @@ func logReplay(camera: CameraAlertResult?, section: SectionResult?, stamp: Strin
             let threshold = event.isReplayNear ? th.near : th.pre
             fields["id"] = c.id
             fields["address"] = c.address
+            fields["cameraType"] = c.type.rawValue
+            fields["enforcesSpeed"] = c.enforcesSpeed
+            fields["source"] = c.source ?? "legacy"
             fields["distance"] = distance
             fields["announcedDistance"] = AnnouncementFormatter.announcedDistance(distance, threshold: threshold)
             fields["threshold"] = threshold
@@ -399,6 +404,9 @@ func logReplay(camera: CameraAlertResult?, section: SectionResult?, stamp: Strin
             key = "camera_passed"
             fields["id"] = c.id
             fields["address"] = c.address
+            fields["cameraType"] = c.type.rawValue
+            fields["enforcesSpeed"] = c.enforcesSpeed
+            fields["source"] = c.source ?? "legacy"
         case .overspeedStarted: key = "camera_overspeed_started"
         case .overspeedBeep: key = "camera_beep"
         case .overspeedEnded: key = "camera_overspeed_ended"

@@ -65,9 +65,10 @@ public enum ActivityAlertPolicy {
 
     private static func cameraAlert(_ camera: Camera, distance: Double) -> ActivityAlertContent {
         var body = "前方\(AnnouncementFormatter.spokenDistance(distance))"
-        if let limit = camera.speedLimit, camera.type.enforcesSpeed {
+        if let limit = camera.speedLimit, camera.enforcesSpeed {
             body += "，速限\(limit)"
         }
+        if let detail = camera.reminderDetail { body += "，\(detail)" }
         return ActivityAlertContent(title: camera.displayTypeName, body: body)
     }
 }

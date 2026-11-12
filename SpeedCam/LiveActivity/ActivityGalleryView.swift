@@ -32,36 +32,65 @@ struct ActivityGalleryView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 10) {
-                Text("CarPlay Live Activity 預覽（240×78 pt，最矮的尺寸）")
-                    .font(.headline)
-                ForEach(states.indices, id: \.self) { i in
-                    HStack(spacing: 10) {
-                        tile(states[i].1, width: 240, height: 78)
-                        Text(states[i].0).font(.subheadline).foregroundStyle(.secondary)
+                if let state = reminderState {
+                    Text("新提醒類型：固定示例").font(.headline)
+                    tile(state, width: 240, height: 78)
+                    tile(state, width: 170, height: 78)
+                    tile(state, width: 240, height: 100)
+                    LockScreenActivityView(state: state)
+                        .background(Color.black)
+                        .clipShape(RoundedRectangle(cornerRadius: 20))
+                    HStack {
+                        ExpandedLeadingView(state: state)
+                        Spacer()
+                        ExpandedTrailingView(state: state)
                     }
-                }
-
-                Text("170×78 pt（最窄的尺寸）").font(.headline).padding(.top, 8)
-                LazyVGrid(columns: [GridItem(.fixed(170)), GridItem(.fixed(170))], alignment: .leading, spacing: 10) {
+                    SmallActivityView(state: state, showsLeading: false)
+                        .frame(height: 78)
+                        .background(Color.black)
+                } else {
+                    Text("CarPlay Live Activity 預覽（240×78 pt，最矮的尺寸）")
+                        .font(.headline)
                     ForEach(states.indices, id: \.self) { i in
-                        tile(states[i].1, width: 170, height: 78)
+                        HStack(spacing: 10) {
+                            tile(states[i].1, width: 240, height: 78)
+                            Text(states[i].0).font(.subheadline).foregroundStyle(.secondary)
+                        }
                     }
-                }
 
-                Text("240×100 pt").font(.headline).padding(.top, 8)
-                ForEach(states.indices, id: \.self) { i in
-                    tile(states[i].1, width: 240, height: 100)
-                }
+                    Text("170×78 pt（最窄的尺寸）").font(.headline).padding(.top, 8)
+                    LazyVGrid(columns: [GridItem(.fixed(170)), GridItem(.fixed(170))], alignment: .leading, spacing: 10) {
+                        ForEach(states.indices, id: \.self) { i in
+                            tile(states[i].1, width: 170, height: 78)
+                        }
+                    }
 
-                Text("鎖定畫面").font(.headline).padding(.top, 8)
-                LockScreenActivityView(state: .previewCamera)
-                    .background(Color.black.opacity(0.75))
-                    .clipShape(RoundedRectangle(cornerRadius: 20))
+                    Text("240×100 pt").font(.headline).padding(.top, 8)
+                    ForEach(states.indices, id: \.self) { i in
+                        tile(states[i].1, width: 240, height: 100)
+                    }
+
+                    Text("鎖定畫面").font(.headline).padding(.top, 8)
+                    LockScreenActivityView(state: .previewCamera)
+                        .background(Color.black.opacity(0.75))
+                        .clipShape(RoundedRectangle(cornerRadius: 20))
+                }
             }
             .padding()
         }
         .defaultScrollAnchor(startAnchor)
         .background(Color(white: 0.12))
+    }
+
+    private var reminderState: ActivityState? {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-galleryTypes"), i + 1 < args.count else { return nil }
+        switch args[i + 1] {
+        case "mobile": return .previewMobile
+        case "tech": return .previewTech
+        case "noise": return .previewNoise
+        default: return nil
+        }
     }
 
     private func tile(_ state: ActivityState, width: CGFloat, height: CGFloat) -> some View {

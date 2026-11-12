@@ -27,6 +27,100 @@ final class CameraAlertEngineTests: XCTestCase {
         CameraAlertEngine(index: SpatialIndex(cameras: cams), settings: settings)
     }
 
+    func testMobileNoiseAndNonSpeedCamerasOnlyAnnounceOnceWithoutBeeping() {
+        for type in [CameraType.mobile, .noise, .tech, .redLight] {
+            let cam = camera(north: 1_000, limit: 50, type: type)
+            let events = runAlerts(engine([cam]), straightTrack(from: origin, bearing: 0, speedKmh: 70, seconds: 80))
+            XCTAssertEqual(events.filter { $0.event.isPre }.count, 1, type.rawValue)
+            XCTAssertEqual(events.first { $0.event.isPre }?.event.distance ?? 0, 300, accuracy: 20)
+            XCTAssertFalse(events.contains { $0.event.isNear || $0.event.isOverspeedStarted || $0.event.isBeep })
+            XCTAssertEqual(events.filter { $0.event.isPassed }.count, 1)
+        }
+    }
+
+    func testFirstFixInsideNearRangeStillUsesSinglePreAlertForHotspot() {
+        let cam = camera(north: 70, limit: 50, type: .mobile)
+        let result = engine([cam]).process(VehicleFix(point: origin, speedMps: 20, course: 0, timestamp: t0))
+        XCTAssertEqual(result.events, [.preAlert(camera: cam, distance: result.target!.distance)])
+        XCTAssertEqual(result.target?.phase, .pre)
+        XCTAssertFalse(result.target?.isOverspeed ?? true)
+    }
+
+    func testTechWithExplicitSpeedEnforcementKeepsBothStagesAndBeeps() {
+        var cam = camera(north: 1_000, limit: 50, type: .tech)
+        cam.enforcementItems = "超速、闖紅燈、未依標線行駛"
+        let track = straightTrack(from: origin, bearing: 0, speedKmh: 70, seconds: 80)
+        let events = runAlerts(engine([cam]), track)
+        XCTAssertEqual(events.filter { $0.event.isPre }.count, 1)
+        XCTAssertEqual(events.filter { $0.event.isNear }.count, 1)
+        XCTAssertEqual(events.filter { $0.event.isOverspeedStarted }.count, 1)
+        XCTAssertFalse(events.filter { $0.event.isBeep }.isEmpty)
+        cam.speedLimit = nil
+        let unknown = runAlerts(engine([cam]), track)
+        XCTAssertEqual(unknown.filter { $0.event.isNear }.count, 1)
+        XCTAssertFalse(unknown.contains { $0.event.isOverspeedStarted || $0.event.isBeep })
+    }
+
+    func testNewReminderSwitchesAreIndependentAndDoNotDisableSpeedTech() {
+        let mobile = camera("mobile", north: 250, type: .mobile)
+        let noise = camera("noise", north: 250, type: .noise)
+        var tech = camera("tech", north: 250, type: .tech)
+        tech.enforcementItems = "闖紅燈、未依標線行駛"
+        var speedTech = tech
+        speedTech.id = "speed-tech"
+        speedTech.enforcementItems = "超速、闖紅燈"
+        var settings = AlertSettings()
+        settings.mobileHotspotsEnabled = false
+        XCTAssertFalse(settings.isEnabled(mobile))
+        XCTAssertTrue(settings.isEnabled(noise))
+        XCTAssertTrue(settings.isEnabled(tech))
+        settings.noiseCamerasEnabled = false
+        settings.nonSpeedTechEnabled = false
+        for cam in [mobile, noise, tech] {
+            XCTAssertTrue(runAlerts(engine([cam], settings: settings),
+                straightTrack(from: origin, bearing: 0, speedKmh: 70, seconds: 30)).isEmpty)
+        }
+        XCTAssertTrue(settings.isEnabled(speedTech))
+        XCTAssertTrue(settings.isEnabled(camera(north: 250)))
+    }
+
+    func testDisablingTrackedHotspotAlsoStopsNoFixUpdates() {
+        let cam = camera(north: 500, type: .mobile)
+        let engine = engine([cam])
+        _ = engine.process(VehicleFix(point: origin, speedMps: 20, course: 0, timestamp: t0))
+        engine.settings.mobileHotspotsEnabled = false
+        let result = engine.tick(now: t0.addingTimeInterval(15))
+        XCTAssertNil(result?.target)
+        XCTAssertEqual(result?.events, [])
+    }
+
+    func testSingleStageReminderInTunnelDoesNotGainNearAlert() {
+        let cam = camera(north: 500, type: .noise)
+        let engine = engine([cam])
+        _ = engine.process(VehicleFix(point: origin, speedMps: 20, course: 0, timestamp: t0))
+        let events = (3...24).flatMap { engine.tick(now: t0.addingTimeInterval(Double($0)))?.events ?? [] }
+        XCTAssertEqual(events.filter(\.isPre).count, 1)
+        XCTAssertFalse(events.contains { $0.isNear || $0.isOverspeedStarted || $0.isBeep })
+    }
+
+    func testNearbyHotspotDoesNotDelayFixedCameraPreAlert() {
+        let fixed = camera("fixed", north: 290)
+        let mobile = camera("mobile", north: 230, type: .mobile)
+        let result = engine([mobile, fixed]).process(
+            VehicleFix(point: origin, speedMps: 20, course: 0, timestamp: t0))
+        XCTAssertEqual(result.target?.camera.id, "fixed")
+        XCTAssertTrue(result.events.contains { if case let .preAlert(cam, _) = $0 { return cam.id == "fixed" }; return false })
+    }
+
+    func testAddingSingleStagePriorityPreservesNearestChoiceBetweenSpeedCameras() {
+        let nearest = camera("nearest", north: 500, limit: 50)
+        let further = camera("further", north: 550, limit: 100)
+        let result = engine([further, nearest]).process(
+            VehicleFix(point: origin, speedMps: 20, course: 0, timestamp: t0))
+        XCTAssertEqual(result.target?.camera.id, "nearest")
+        XCTAssertTrue(result.events.isEmpty)
+    }
+
     func testGeneralRoadAlertsOncePerStageAndPasses() {
         let cam = camera(north: 2_000, limit: 50)
         let events = runAlerts(engine([cam]), straightTrack(from: origin, bearing: 0, speedKmh: 50, seconds: 200))

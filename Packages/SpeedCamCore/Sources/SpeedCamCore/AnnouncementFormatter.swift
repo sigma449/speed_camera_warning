@@ -24,8 +24,8 @@ public enum AnnouncementFormatter {
 
     /// 預告與近距播報時使用門檻距離（300、100…），比念實際的 296 公尺自然。
     public static func cameraAlert(camera: Camera, announcedDistance: Double) -> String {
-        var text = "前方\(spokenDistance(announcedDistance))，\(camera.displayTypeName)"
-        if let limit = camera.speedLimit, camera.type.enforcesSpeed {
+        var text = "前方\(spokenDistance(announcedDistance))，\(camera.alertDescription)"
+        if let limit = camera.speedLimit, camera.enforcesSpeed {
             text += "，速限\(limit)"
         }
         return text

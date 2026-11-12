@@ -14,6 +14,8 @@ public enum CameraType: String, Codable, CaseIterable, Sendable {
     case tech
     /// 流動測速熱點
     case mobile
+    /// 聲音照相（不是超速取締）
+    case noise
 
     /// 語音和畫面上使用的中文名稱。
     public var displayName: String {
@@ -22,16 +24,17 @@ public enum CameraType: String, Codable, CaseIterable, Sendable {
         case .redLight: return "闖紅燈照相"
         case .redLightSpeed: return "測速及闖紅燈照相"
         case .section: return "區間測速"
-        case .tech: return "科技執法"
-        case .mobile: return "流動測速"
+        case .tech: return "路口科技執法"
+        case .mobile: return "常見移動測速"
+        case .noise: return "聲音照相"
         }
     }
 
     /// 這種照相會不會取締超速（決定要不要做超速警示）。
     public var enforcesSpeed: Bool {
         switch self {
-        case .fixed, .redLightSpeed, .section, .mobile: return true
-        case .redLight, .tech: return false
+        case .fixed, .redLightSpeed, .section: return true
+        case .redLight, .tech, .mobile, .noise: return false
         }
     }
 }
@@ -78,11 +81,21 @@ public struct Camera: Codable, Hashable, Identifiable, Sendable {
     public var level: RoadLevel?
     /// 已人工核實的區間關聯（例如中仁隧道的相機離起終點直線超過 300 m）。
     public var sectionGroupID: String?
+    /// 保留來源的取締項目與適用條件，不把有速限欄的科技執法一律當成測速。
+    public var enforcementItems: String?
+    public var conditions: String?
+    public var source: String?
+    public var sourceID: String?
+    public var sourceURL: String?
+    public var positionMethod: String?
 
     public init(id: String, type: CameraType, lat: Double, lon: Double,
                 heading: Double? = nil, speedLimit: Int? = nil,
                 address: String = "", city: String? = nil, district: String? = nil,
-                axis: Double? = nil, level: RoadLevel? = nil, sectionGroupID: String? = nil) {
+                axis: Double? = nil, level: RoadLevel? = nil, sectionGroupID: String? = nil,
+                enforcementItems: String? = nil, conditions: String? = nil,
+                source: String? = nil, sourceID: String? = nil, sourceURL: String? = nil,
+                positionMethod: String? = nil) {
         self.id = id
         self.type = type
         self.lat = lat
@@ -95,6 +108,12 @@ public struct Camera: Codable, Hashable, Identifiable, Sendable {
         self.district = district
         self.level = level
         self.sectionGroupID = sectionGroupID
+        self.enforcementItems = enforcementItems
+        self.conditions = conditions
+        self.source = source
+        self.sourceID = sourceID
+        self.sourceURL = sourceURL
+        self.positionMethod = positionMethod
     }
 
     public var point: GeoPoint { GeoPoint(lat: lat, lon: lon) }
@@ -105,6 +124,27 @@ public struct Camera: Codable, Hashable, Identifiable, Sendable {
     /// 含高架／平面的類型名稱，例如「高架測速照相」。語音、橫幅、Live Activity 共用。
     public var displayTypeName: String {
         (levelName ?? "") + type.displayName
+    }
+
+    public var enforcesSpeed: Bool {
+        guard type != .mobile && type != .noise else { return false }
+        if let items = enforcementItems {
+            return items.contains("超速") || items.contains("測速")
+        }
+        return type.enforcesSpeed
+    }
+
+    public var usesTwoStageAlert: Bool { enforcesSpeed }
+
+    public var alertDescription: String {
+        guard type == .tech, let items = enforcementItems, !items.isEmpty else { return displayTypeName }
+        return "\(displayTypeName)：\(items)"
+    }
+
+    public var reminderDetail: String? {
+        if type == .mobile { return "公告熱點・非即時執法" }
+        guard let items = enforcementItems, !items.isEmpty else { return nil }
+        return "取締：\(items)"
     }
 
     /// 橫幅放得下的字數（約略值，中英數混合）。

@@ -36,7 +36,11 @@ struct BannerGalleryView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
-                if ProcessInfo.processInfo.arguments.contains("-galleryHints") {
+                if let camera = reminderCamera {
+                    label("提醒類型（375 pt；純示例，不代表已接入該地點）")
+                    CameraBanner(target: CameraTarget(camera: camera, distance: 300, phase: .pre, isOverspeed: false))
+                    CameraDetailCard(camera: camera, onClose: {})
+                } else if ProcessInfo.processInfo.arguments.contains("-galleryHints") {
                     hintExamples
                 } else if let pair {
                     pairedExamples(pair)
@@ -51,6 +55,22 @@ struct BannerGalleryView: View {
         }
         .defaultScrollAnchor(startAnchor)
         .background(Color(white: 0.3))
+    }
+
+    private var reminderCamera: Camera? {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-galleryTypes"), i + 1 < args.count else { return nil }
+        let type: CameraType
+        switch args[i + 1] {
+        case "mobile": type = .mobile
+        case "tech": type = .tech
+        case "noise": type = .noise
+        default: return nil
+        }
+        return Camera(id: "gallery-\(type.rawValue)", type: type, lat: 25, lon: 121.5,
+                      address: "長春路與中山北路二段交岔路口（版面示例）",
+                      enforcementItems: type == .tech ? "闖紅燈、未依標線行駛、未停讓行人、違規停車" : nil,
+                      conditions: type == .mobile ? "公告候選地點，非即時執法" : nil)
     }
 
     @ViewBuilder

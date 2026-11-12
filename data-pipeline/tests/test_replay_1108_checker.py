@@ -235,6 +235,25 @@ def test_each_acceptance_failure_is_rejected(records, prefix, event, changes, re
     assert any(reason in error for error in checker.check_records(records))
 
 
+@pytest.mark.parametrize("kind", ["mobile", "noise", "tech"])
+def test_new_non_speed_reminder_at_ikea_is_not_mistaken_for_section_fixed_camera(records, kind):
+    reminder = dict(schema=1, case="去程04 檢查器單元測試", event="camera_pre", t=50, lat=25, lon=121,
+                    id="new-reminder", address="中央路白馬寺路口", cameraType=kind, enforcesSpeed=False)
+    records.insert(records.index(row(records, "去程04", "section_completed")), reminder)
+    assert checker.check_records(records) == []
+    reminder["id"] = "685b30491485"
+    assert any("IKEA" in error for error in checker.check_records(records))
+
+
+@pytest.mark.parametrize("fields", [{}, {"cameraType": "tech", "enforcesSpeed": True},
+                                   {"cameraType": "fixed", "enforcesSpeed": False}])
+def test_ikea_speed_reminder_or_missing_type_evidence_still_fails(records, fields):
+    records.insert(records.index(row(records, "去程04", "section_completed")),
+                   dict(schema=1, case="去程04 檢查器單元測試", event="camera_pre", t=50, lat=25, lon=121,
+                        id="other-fixed", address="中央路白馬寺路口", **fields))
+    assert any("IKEA" in error for error in checker.check_records(records))
+
+
 def test_voice_cooldown_and_first_warning_are_not_confused(records):
     first = row(records, "北宜2去程", "section_overspeed_started")
     new = copy.deepcopy(first)

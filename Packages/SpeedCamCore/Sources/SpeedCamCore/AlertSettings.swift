@@ -61,9 +61,21 @@ public struct AlertSettings: Codable, Equatable, Sendable {
     public var liveActivityEnabled: Bool = true
     /// 重要時刻（接近照相點、超速、區間開始與歸零）讓 Live Activity 跳出提醒。
     public var liveActivityAlertsEnabled: Bool = true
+    public var mobileHotspotsEnabled: Bool = true
+    public var nonSpeedTechEnabled: Bool = true
+    public var noiseCamerasEnabled: Bool = true
     public var vehicleMode: VehicleMode = .car
 
     public init() {}
+
+    public func isEnabled(_ camera: Camera) -> Bool {
+        switch camera.type {
+        case .mobile: return mobileHotspotsEnabled
+        case .noise: return noiseCamerasEnabled
+        case .tech: return camera.enforcesSpeed || nonSpeedTechEnabled
+        case .fixed, .redLight, .redLightSpeed, .section: return true
+        }
+    }
 
     /// 依照相點速限（沒有的話用目前車速）決定預告與近距距離。
     public func thresholds(speedLimit: Int?, currentSpeedKmh: Double) -> (pre: Double, near: Double) {
@@ -123,6 +135,9 @@ public struct AlertSettings: Codable, Equatable, Sendable {
         beepEnabled = try c.decodeIfPresent(Bool.self, forKey: .beepEnabled) ?? d.beepEnabled
         liveActivityEnabled = try c.decodeIfPresent(Bool.self, forKey: .liveActivityEnabled) ?? d.liveActivityEnabled
         liveActivityAlertsEnabled = try c.decodeIfPresent(Bool.self, forKey: .liveActivityAlertsEnabled) ?? d.liveActivityAlertsEnabled
+        mobileHotspotsEnabled = try c.decodeIfPresent(Bool.self, forKey: .mobileHotspotsEnabled) ?? d.mobileHotspotsEnabled
+        nonSpeedTechEnabled = try c.decodeIfPresent(Bool.self, forKey: .nonSpeedTechEnabled) ?? d.nonSpeedTechEnabled
+        noiseCamerasEnabled = try c.decodeIfPresent(Bool.self, forKey: .noiseCamerasEnabled) ?? d.noiseCamerasEnabled
         vehicleMode = try c.decodeIfPresent(VehicleMode.self, forKey: .vehicleMode) ?? d.vehicleMode
     }
 }

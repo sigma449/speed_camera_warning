@@ -296,7 +296,9 @@ def check_records(records: list[dict], *, information: list[str] | None = None) 
         for r in selected[prefix]:
             if r["event"] in {"camera_pre", "camera_near"}:
                 address = r.get("address", "")
-                require(r.get("id") != "685b30491485" and not ("中央路" in address and "白馬寺" in address),
+                non_speed_reminder = r.get("cameraType") in {"mobile", "noise", "tech"} and r.get("enforcesSpeed") is False
+                require(r.get("id") != "685b30491485"
+                        and (not ("中央路" in address and "白馬寺" in address) or non_speed_reminder),
                         f"{prefix} IKEA 仍被當成固定照相提醒")
 
     for prefix, sid in (("北宜2去程", "beiyi-2-f"), ("北宜2回程", "beiyi-2-r")):

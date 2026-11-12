@@ -33,6 +33,19 @@ final class ActivityAlertPolicyTests: XCTestCase {
                        ActivityAlertContent(title: "闖紅燈照相", body: "前方100公尺"))
     }
 
+    func testNewTypesHaveDistinctActivityAlertsWithoutFalseSpeedLimit() {
+        for (type, title) in [(CameraType.mobile, "常見移動測速"), (.noise, "聲音照相"), (.tech, "路口科技執法")] {
+            let cam = Camera(id: type.rawValue, type: type, lat: 25, lon: 121, speedLimit: 50,
+                             enforcementItems: type == .tech ? "闖紅燈、未依標線行駛" : nil)
+            let content = alert([.preAlert(camera: cam, distance: 300)])
+            XCTAssertEqual(content?.title, title)
+            XCTAssertTrue(content?.body.hasPrefix("前方300公尺") ?? false)
+            XCTAssertFalse(content?.body.contains("速限") ?? true)
+            if type == .mobile { XCTAssertTrue(content?.body.contains("非即時執法") ?? false) }
+            if type == .tech { XCTAssertTrue(content?.body.contains("未依標線行駛") ?? false) }
+        }
+    }
+
     func testSectionAlerts() {
         XCTAssertEqual(alert([], [.entered(section: section, minimumSeconds: 680)]),
                        ActivityAlertContent(title: "進入區間測速", body: "速限60，至少需要680秒"))

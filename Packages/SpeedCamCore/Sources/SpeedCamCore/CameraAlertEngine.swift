@@ -146,10 +146,11 @@ public final class CameraAlertEngine {
         updateTracked(fix: fix, heading: heading, events: &events)
         addNewCandidates(fix: fix, heading: heading)
 
-        // 目前目標：方向相符的照相點中最近的一個。
-        let targetKey = tracked
+        // 單次提醒不能擋住已進入預告範圍的測速目標。
+        let candidates = tracked
             .filter { isRelevant($0.value.camera, distance: $0.value.distance, from: fix.point, heading: heading, isTracked: true) }
-            .min { $0.value.distance < $1.value.distance }?.key
+            .map { (key: $0.key, distance: $0.value.distance) }
+        let targetKey = preferredTarget(candidates, speedKmh: fix.speedKmh)
 
         var target: CameraTarget?
         if let key = targetKey, var t = tracked[key] {
@@ -182,8 +183,12 @@ public final class CameraAlertEngine {
         }
 
         let moved = last.speedMps * elapsed
-        var nearest: (key: String, distance: Double)?
+        var candidates: [(key: String, distance: Double)] = []
         for (key, var t) in tracked {
+            guard settings.isEnabled(t.camera) else {
+                tracked[key] = nil
+                continue
+            }
             let fromLast = GeoMath.distance(last.point, t.camera.point)
             guard fromLast < 30 || isAheadWithoutFix(t.camera, distance: fromLast, from: last.point, heading: heading) else { continue }
             let remaining = fromLast - moved
@@ -194,8 +199,8 @@ public final class CameraAlertEngine {
             t.estimated = true
             t.distance = max(0, remaining)
             tracked[key] = t
-            if remaining > 0, remaining < (nearest?.distance ?? .greatestFiniteMagnitude) {
-                nearest = (key, remaining)
+            if remaining > 0 {
+                candidates.append((key, remaining))
             }
         }
 
@@ -207,10 +212,11 @@ public final class CameraAlertEngine {
         }
 
         var target: CameraTarget?
-        if let key = nearest?.key, var t = tracked[key] {
+        if let key = preferredTarget(candidates, speedKmh: last.speedKmh), var t = tracked[key] {
             advancePhase(&t, speedKmh: last.speedKmh, events: &events)
             tracked[key] = t
-            target = CameraTarget(camera: t.camera, distance: t.distance, phase: t.phase, isOverspeed: isOverspeed)
+            target = CameraTarget(camera: t.camera, distance: t.distance, phase: t.phase,
+                                  isOverspeed: isOverspeed && t.camera.enforcesSpeed)
         }
         return CameraAlertResult(events: events, target: target)
     }
@@ -220,6 +226,13 @@ public final class CameraAlertEngine {
     /// 到了預告或近距的距離就提醒（每段只提醒一次）。
     private func advancePhase(_ t: inout Tracked, speedKmh: Double, events: inout [CameraAlertEvent]) {
         let th = settings.thresholds(speedLimit: t.camera.speedLimit, currentSpeedKmh: speedKmh)
+        if !t.camera.usesTwoStageAlert {
+            if t.distance <= th.pre && t.phase < .pre {
+                t.phase = .pre
+                events.append(.preAlert(camera: t.camera, distance: t.distance))
+            }
+            return
+        }
         if t.distance <= th.near && t.phase < .near {
             let afterPre = t.phase == .pre
             t.phase = .near
@@ -230,10 +243,23 @@ public final class CameraAlertEngine {
         }
     }
 
+    private func preferredTarget(_ candidates: [(key: String, distance: Double)], speedKmh: Double) -> String? {
+        guard let nearest = candidates.min(by: { $0.distance < $1.distance }),
+              let camera = tracked[nearest.key]?.camera else { return nil }
+        guard !camera.usesTwoStageAlert,
+              let speedTarget = candidates.filter({ tracked[$0.key]?.camera.usesTwoStageAlert == true })
+                .min(by: { $0.distance < $1.distance }),
+              let speedCamera = tracked[speedTarget.key]?.camera,
+              speedTarget.distance <= settings.thresholds(speedLimit: speedCamera.speedLimit, currentSpeedKmh: speedKmh).pre
+        else { return nearest.key }
+        return speedTarget.key
+    }
+
     /// 隧道比搜尋半徑長時，隧道裡的照相點在定位中斷前還沒開始追蹤，這裡一次找出來。
     private func addCandidatesWithoutFix(last: VehicleFix, heading: Double) {
         for (cam, d) in index.cameras(near: last.point, radius: noFixTunnelRange) {
-            guard tracked[cam.id] == nil, cooldown[cam.id] == nil, !isCoveredBySection(cam) else { continue }
+            guard settings.isEnabled(cam), tracked[cam.id] == nil, cooldown[cam.id] == nil,
+                  !isCoveredBySection(cam) else { continue }
             guard isAheadWithoutFix(cam, distance: d, from: last.point, heading: heading) else { continue }
             tracked[cam.id] = Tracked(camera: cam, phase: .approaching, minDistance: d, distance: d)
         }
@@ -264,6 +290,10 @@ public final class CameraAlertEngine {
 
     private func updateTracked(fix: VehicleFix, heading: Double, events: inout [CameraAlertEvent]) {
         for (key, var t) in tracked {
+            guard settings.isEnabled(t.camera) else {
+                tracked[key] = nil
+                continue
+            }
             let d = GeoMath.distance(fix.point, t.camera.point)
             t.distance = d
             t.minDistance = min(t.minDistance, d)
@@ -307,6 +337,7 @@ public final class CameraAlertEngine {
     /// 判斷照相點是否跟目前行進有關：必須在前方，且（有方向資料時）取締方向要相符。
     func isRelevant(_ camera: Camera, distance: Double, from point: GeoPoint,
                     heading: Double, isTracked: Bool) -> Bool {
+        guard settings.isEnabled(camera) else { return false }
         // 已經在追蹤、且非常接近時，GPS 方位角不準，直接視為相關。
         if isTracked && distance < 30 { return true }
         let aheadDiff = GeoMath.angleDifference(GeoMath.bearing(from: point, to: camera.point), heading)
@@ -353,7 +384,7 @@ public final class CameraAlertEngine {
     }
 
     private func updateOverspeed(target t: Tracked, fix: VehicleFix, events: inout [CameraAlertEvent]) {
-        guard t.phase >= .pre, t.camera.type.enforcesSpeed, let limit = t.camera.speedLimit else {
+        guard t.phase >= .pre, t.camera.enforcesSpeed, let limit = t.camera.speedLimit else {
             if isOverspeed {
                 isOverspeed = false
                 events.append(.overspeedEnded)

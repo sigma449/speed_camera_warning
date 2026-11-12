@@ -52,12 +52,23 @@ struct SettingsView: View {
                     }
                 }
 
-                Section {
-                    Toggle("開啟 App 時自動開始巡航", isOn: $autoStartCruise)
-                } header: {
-                    Text("巡航")
-                } footer: {
-                    Text("開啟後，打開 App 就會開始偵測測速照相，不用再按 ▶︎。")
+                Group {
+                    Section {
+                        Toggle("開啟 App 時自動開始巡航", isOn: $autoStartCruise)
+                    } header: {
+                        Text("巡航")
+                    } footer: {
+                        Text("開啟後，打開 App 就會開始偵測測速照相，不用再按 ▶︎。")
+                    }
+                    Section {
+                        Toggle("移動式熱點", isOn: $model.settings.mobileHotspotsEnabled)
+                        Toggle("科技執法（非測速）", isOn: $model.settings.nonSpeedTechEnabled)
+                        Toggle("聲音照相", isOn: $model.settings.noiseCamerasEnabled)
+                    } header: {
+                        Text("提醒類型")
+                    } footer: {
+                        Text("三種預設開啟，需有可靠位置資料才會提醒。移動式是公告熱點，不表示目前有取締。熱點、聲音照相和非測速科技只預告一次、不發超速嗶聲；含測速的科技設備不受「非測速」開關影響。")
+                    }
                 }
 
 
@@ -136,10 +147,14 @@ struct SettingsView: View {
                     }
                     Text(RoadLineStore.attribution).font(.footnote).foregroundStyle(.secondary)
                     Text(RouteHintStore.attribution).font(.footnote).foregroundStyle(.secondary)
+                    if let url = URL(string: "https://www.openstreetmap.org/copyright") {
+                        Link("OSM 測速設備：© OpenStreetMap 貢獻者（ODbL 1.0）", destination: url)
+                            .font(.footnote)
+                    }
                 } header: {
                     Text("資料")
                 } footer: {
-                    Text("照相點資料僅供參考，請依現場標誌與速限行駛。")
+                    Text("照相點資料僅供參考，請依現場標誌與速限行駛。OSM 補充測速設備及融合衍生資料庫依 ODbL 分享；Build IPA 的 SpeedCam-data 附完整機讀資料、來源與建置程式。未知速限只提醒，不發超速警示。")
                 }
 
                 Section {

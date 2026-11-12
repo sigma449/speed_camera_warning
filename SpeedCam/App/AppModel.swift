@@ -79,7 +79,8 @@ final class AppModel: ObservableObject {
     /// 目前畫面要顯示的速限：區間中用區間速限，否則用前方照相點的速限。
     var displayedSpeedLimit: Int? {
         if let s = sectionStatus { return s.section.speedLimit }
-        return cameraTarget?.camera.speedLimit ?? sectionApproach?.section.speedLimit
+        if let camera = cameraTarget?.camera, camera.enforcesSpeed { return camera.speedLimit }
+        return sectionApproach?.section.speedLimit
     }
 
     /// 上方橫幅要顯示的照相點：預告過的照相點優先，其次是接近中的區間。
@@ -678,8 +679,9 @@ final class AppModel: ObservableObject {
             s.mode = .camera
             s.cameraTypeName = target.camera.displayTypeName
             s.cameraSymbol = target.camera.symbolName
+            s.cameraDetail = target.camera.reminderDetail
             s.distanceMeters = target.distance
-            s.speedLimit = target.camera.speedLimit
+            s.speedLimit = target.camera.enforcesSpeed ? target.camera.speedLimit : nil
             s.isOverspeed = target.isOverspeed
         } else if let approach = sectionApproach {
             s.mode = .camera
@@ -711,9 +713,10 @@ final class AppModel: ObservableObject {
         let c = region.center
         let latHalf = region.span.latitudeDelta / 2
         let lonHalf = region.span.longitudeDelta / 2
-        return index.cameras(minLat: c.latitude - latHalf, maxLat: c.latitude + latHalf,
-                             minLon: c.longitude - lonHalf, maxLon: c.longitude + lonHalf,
-                             limit: visibleCameraLimit)
+        let candidates = index.cameras(minLat: c.latitude - latHalf, maxLat: c.latitude + latHalf,
+                                       minLon: c.longitude - lonHalf, maxLon: c.longitude + lonHalf,
+                                       limit: database.cameras.count)
+        return Array(candidates.filter { settings.isEnabled($0) }.prefix(visibleCameraLimit))
     }
 
     // MARK: 區間路形貼齊道路
@@ -772,6 +775,10 @@ final class AppModel: ObservableObject {
             UserDefaults.standard.set(data, forKey: Self.settingsKey)
         }
         applySettingsToComponents()
+        if let target = cameraTarget, !settings.isEnabled(target.camera) {
+            cameraTarget = nil
+            activity.update(activityState(), alert: nil)
+        }
         if old.liveActivityEnabled != settings.liveActivityEnabled && isCruising {
             settings.liveActivityEnabled ? activity.start(initial: activityState()) : activity.end()
         }

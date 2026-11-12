@@ -21,6 +21,7 @@ struct SpeedCamActivityState: Codable, Hashable {
     // 測速照相
     var cameraTypeName: String?
     var cameraSymbol: String?
+    var cameraDetail: String?
     var distanceMeters: Double?
     var speedLimit: Int?
     var isOverspeed: Bool = false
@@ -82,6 +83,12 @@ extension SpeedCamActivityState {
     /// 預覽、CI 截圖用的範例資料。
     static let previewCamera = Self(mode: .camera, cameraTypeName: "測速照相", cameraSymbol: "camera.fill",
                                     distanceMeters: 280, speedLimit: 50, currentSpeedKmh: 48)
+    static let previewMobile = Self(mode: .camera, cameraTypeName: "常見移動測速", cameraSymbol: "binoculars.fill",
+                                    cameraDetail: "公告熱點・非即時執法", distanceMeters: 300, currentSpeedKmh: 48)
+    static let previewTech = Self(mode: .camera, cameraTypeName: "路口科技執法", cameraSymbol: "video.fill",
+                                  cameraDetail: "取締：闖紅燈、未依標線行駛", distanceMeters: 300, currentSpeedKmh: 48)
+    static let previewNoise = Self(mode: .camera, cameraTypeName: "聲音照相", cameraSymbol: "speaker.wave.2.fill",
+                                   distanceMeters: 300, currentSpeedKmh: 48)
     static let previewOverspeed = Self(mode: .camera, cameraTypeName: "測速照相", cameraSymbol: "camera.fill",
                                        distanceMeters: 120, speedLimit: 50, isOverspeed: true, currentSpeedKmh: 63)
     static let previewSection = Self(mode: .section, sectionEarliestExit: Date().addingTimeInterval(125),

@@ -30,6 +30,22 @@ final class AnnouncementFormatterTests: XCTestCase {
                        "前方100公尺，平面測速照相，速限40")
     }
 
+    func testNewCameraTypeSpeechAndEnforcementDetails() {
+        let mobile = Camera(id: "m", type: .mobile, lat: 25, lon: 121, speedLimit: 50)
+        let noise = Camera(id: "n", type: .noise, lat: 25, lon: 121, speedLimit: 50)
+        var tech = Camera(id: "t", type: .tech, lat: 25, lon: 121, speedLimit: 50,
+                         enforcementItems: "闖紅燈、未依標線行駛")
+        XCTAssertEqual(AnnouncementFormatter.cameraAlert(camera: mobile, announcedDistance: 300),
+                       "前方300公尺，常見移動測速")
+        XCTAssertEqual(AnnouncementFormatter.cameraAlert(camera: noise, announcedDistance: 300),
+                       "前方300公尺，聲音照相")
+        XCTAssertEqual(AnnouncementFormatter.cameraAlert(camera: tech, announcedDistance: 300),
+                       "前方300公尺，路口科技執法：闖紅燈、未依標線行駛")
+        tech.enforcementItems = "超速、闖紅燈"
+        XCTAssertEqual(AnnouncementFormatter.cameraAlert(camera: tech, announcedDistance: 300),
+                       "前方300公尺，路口科技執法：超速、闖紅燈，速限50")
+    }
+
     /// 使用者實測：近距時語音精簡一點，用幾公尺就好。
     func testNearAlertAfterPreOnlySaysDistance() {
         XCTAssertEqual(AnnouncementFormatter.cameraNearAfterPre(announcedDistance: 100), "100公尺")
@@ -130,6 +146,21 @@ final class ToneGeneratorTests: XCTestCase {
 }
 
 final class DatabaseTests: XCTestCase {
+    func testMultiSourceCameraAndNewSettingsRoundTrip() throws {
+        let json = #"{"id":"osm-node-1","type":"fixed","lat":25,"lon":121,"address":"測速照相","source":"osm","sourceID":"node/1","sourceURL":"https://www.openstreetmap.org/node/1","enforcementItems":"超速","conditions":"小型車","positionMethod":"osm-node"}"#
+        let camera = try JSONDecoder().decode(Camera.self, from: Data(json.utf8))
+        XCTAssertEqual(camera.source, "osm")
+        XCTAssertTrue(camera.enforcesSpeed)
+        XCTAssertNil(camera.speedLimit)
+        XCTAssertEqual(try JSONDecoder().decode(Camera.self, from: JSONEncoder().encode(camera)), camera)
+        var settings = try JSONDecoder().decode(AlertSettings.self, from: Data("{}".utf8))
+        XCTAssertTrue(settings.mobileHotspotsEnabled && settings.nonSpeedTechEnabled && settings.noiseCamerasEnabled)
+        settings.mobileHotspotsEnabled = false
+        settings.nonSpeedTechEnabled = false
+        settings.noiseCamerasEnabled = false
+        XCTAssertEqual(try JSONDecoder().decode(AlertSettings.self, from: JSONEncoder().encode(settings)), settings)
+    }
+
     func testDecodeSampleDatabase() throws {
         let url = try XCTUnwrap(Bundle.module.url(forResource: "sample_db", withExtension: "json", subdirectory: "Fixtures"))
         let db = try CameraDatabase.decode(from: Data(contentsOf: url))

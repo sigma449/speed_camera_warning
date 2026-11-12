@@ -95,6 +95,7 @@ extension Camera {
         case .section: return "timer"
         case .tech: return "video.fill"
         case .mobile: return "binoculars.fill"
+        case .noise: return "speaker.wave.2.fill"
         }
     }
 }

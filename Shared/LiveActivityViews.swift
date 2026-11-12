@@ -59,6 +59,23 @@ struct SpeedLimitSign: View {
     }
 }
 
+struct CameraIndicator: View {
+    let limit: Int?
+    let symbol: String
+    let size: CGFloat
+
+    var body: some View {
+        if let limit {
+            SpeedLimitSign(limit: limit, size: size)
+        } else {
+            Image(systemName: symbol)
+                .font(.system(size: size * 0.62, weight: .bold))
+                .foregroundStyle(.yellow)
+                .frame(width: size, height: size)
+        }
+    }
+}
+
 // MARK: - CarPlay／Apple Watch 用的 .small 版面（約 240×78 ～ 240×100 pt）
 
 /// 重點：字要大。只放「距離或倒數」與「速限」兩個大元素，其他資訊用小字。
@@ -95,6 +112,11 @@ struct SmallActivityView: View {
                     secondaryLabel(secondary)
                     secondaryLabel(secondaryCompact)
                         .minimumScaleFactor(0.7)
+                    if state.mode == .camera && state.cameraDetail?.hasPrefix("取締：") == true
+                        && state.navHint == nil && !state.isOverspeed {
+                        secondaryLabel(state.cameraTypeName ?? "測速照相")
+                            .minimumScaleFactor(0.7)
+                    }
                 }
                 .foregroundStyle(secondaryColor)
             }
@@ -111,7 +133,7 @@ struct SmallActivityView: View {
     @ViewBuilder private var leading: some View {
         switch state.mode {
         case .camera:
-            SpeedLimitSign(limit: state.speedLimit, size: 48)
+            CameraIndicator(limit: state.speedLimit, symbol: state.cameraSymbol ?? "camera.fill", size: 48)
         case .section:
             SpeedLimitSign(limit: state.sectionLimit, size: 48)
         case .navigation:
@@ -155,7 +177,9 @@ struct SmallActivityView: View {
         switch state.mode {
         case .camera:
             // 超速時只要知道超速，距離和速限都在旁邊
-            return state.isOverspeed ? "超速！" : (state.cameraTypeName ?? "測速照相")
+            if state.isOverspeed { return "超速！" }
+            let name = state.cameraTypeName ?? "測速照相"
+            return state.cameraDetail.map { "\(name)・\($0)" } ?? name
         case .section:
             let avg = state.sectionAverageKmh.map { "均速 \($0)" } ?? "區間測速"
             if state.sectionZero { return "可依速限行駛・\(avg)" }
@@ -179,7 +203,14 @@ struct SmallActivityView: View {
             return avg.map { "區間・\($0)" } ?? "區間倒數"
         case .navigation:
             return state.maneuverTextCompact ?? secondary
-        case .idle, .camera:
+        case .camera:
+            if state.isOverspeed { return "超速！" }
+            if let detail = state.cameraDetail, detail.hasPrefix("取締："),
+               let first = detail.split(separator: "、").first {
+                return String(first) + (detail.contains("、") ? "等" : "")
+            }
+            return state.cameraTypeName ?? "測速照相"
+        case .idle:
             return secondary
         }
     }
@@ -246,7 +277,7 @@ struct ExpandedLeadingView: View {
     @ViewBuilder private var liveContent: some View {
         switch state.mode {
         case .camera:
-            SpeedLimitSign(limit: state.speedLimit, size: 40)
+            CameraIndicator(limit: state.speedLimit, symbol: state.cameraSymbol ?? "camera.fill", size: 40)
         case .section:
             SpeedLimitSign(limit: state.sectionLimit, size: 40)
         case .navigation:

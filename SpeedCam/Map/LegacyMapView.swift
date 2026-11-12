@@ -403,7 +403,7 @@ private enum CameraMarkerImage {
         let fill = UIColor(CameraMarker.color(for: camera.type))
         let symbolConfiguration = UIImage.SymbolConfiguration(pointSize: highlighted ? 18 : 13, weight: .bold)
         let symbol = UIImage(systemName: camera.symbolName, withConfiguration: symbolConfiguration)?
-            .withTintColor(.white, renderingMode: .alwaysOriginal)
+            .withTintColor(UIColor(CameraMarker.symbolColor(for: camera.type)), renderingMode: .alwaysOriginal)
         let arrow = UIImage(systemName: "arrowtriangle.up.fill", withConfiguration: UIImage.SymbolConfiguration(pointSize: 9))?
             .withTintColor(.white, renderingMode: .alwaysOriginal)
 

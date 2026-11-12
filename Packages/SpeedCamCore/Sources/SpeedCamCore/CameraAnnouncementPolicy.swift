@@ -43,7 +43,7 @@ public enum CameraAnnouncementPolicy {
     }
 
     private static func isOverspeed(_ camera: Camera, target: CameraTarget?) -> Bool {
-        camera.type.enforcesSpeed && camera.speedLimit != nil
+        camera.enforcesSpeed && camera.speedLimit != nil
             && target?.camera.id == camera.id && target?.isOverspeed == true
     }
 }

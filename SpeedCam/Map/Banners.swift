@@ -29,7 +29,8 @@ struct CameraBanner: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
-            SpeedLimitSign(limit: target.camera.speedLimit, size: BannerLayout.iconSize)
+            CameraIndicator(limit: target.camera.enforcesSpeed ? target.camera.speedLimit : nil,
+                            symbol: target.camera.symbolName, size: BannerLayout.iconSize)
             VStack(alignment: .leading, spacing: 2) {
                 Text(AnnouncementFormatter.displayDistance(target.distance))
                     .font(BannerLayout.primaryFont)
@@ -45,6 +46,12 @@ struct CameraBanner: View {
                     if let level = target.camera.levelName {
                         LevelTag(text: level)
                     }
+                }
+                if let detail = target.camera.reminderDetail {
+                    Text(detail)
+                        .font(.subheadline)
+                        .foregroundStyle(BannerStyle.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 Text(target.camera.shortAddress)
                     .font(.subheadline)
@@ -223,7 +230,7 @@ struct CameraDetailCard: View {
 
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            SpeedLimitSign(limit: camera.speedLimit, size: 48)
+            CameraIndicator(limit: camera.enforcesSpeed ? camera.speedLimit : nil, symbol: camera.symbolName, size: 48)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Label(camera.type.displayName, systemImage: camera.symbolName).font(.headline)
@@ -232,10 +239,23 @@ struct CameraDetailCard: View {
                     }
                 }
                 Text(camera.address).font(.subheadline)
+                if let detail = camera.reminderDetail {
+                    Text(detail).font(.subheadline)
+                }
+                if let conditions = camera.conditions {
+                    Text(conditions).font(.footnote)
+                }
                 Text(directionText).font(.footnote).foregroundStyle(.secondary)
+                if let source = camera.source, let value = camera.sourceURL, let url = URL(string: value) {
+                    Link("資料來源：\(source)", destination: url).font(.footnote)
+                }
             }
             Spacer()
-            Button(action: onClose) { Image(systemName: "xmark.circle.fill").font(.title2) }
+            Button(action: onClose) {
+                Image(systemName: "xmark.circle.fill").font(.title2)
+                    .frame(minWidth: 44, minHeight: 44)
+            }
+            .accessibilityLabel("關閉照相點資訊")
         }
         .padding(14)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))

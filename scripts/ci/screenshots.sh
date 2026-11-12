@@ -348,6 +348,15 @@ launch_app -legacyUI -autoStartCruise NO -mapCenter "24.9715,121.5300" -mapSpan 
 sleep 15
 shot "44-map-poi-cameras-sections-legacy"
 
+for TYPE in mobile tech noise; do
+  launch_app -autoStartCruise NO -gallery -galleryBanners -galleryTypes "${TYPE}" -galleryWidth 375
+  sleep 2
+  shot "45-reminder-banner-${TYPE}"
+  launch_app -autoStartCruise NO -gallery -galleryTypes "${TYPE}"
+  sleep 2
+  shot "46-reminder-activity-${TYPE}"
+done
+
 # App 的紀錄（確認啟動參數、sheet、地圖範圍、區間貼齊、路線選擇有沒有生效）
 xcrun simctl spawn "${UDID}" log show --last 20m --style compact \
   --predicate 'subsystem == "tw.speedcammap.app"' 2>/dev/null | grep -E "arguments|appeared|applied|opened|preview|typing|beiyi|一次規劃|分段|route plan|road_lines|live activity" | tail -120 || true
