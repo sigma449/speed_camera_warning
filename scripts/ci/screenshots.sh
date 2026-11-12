@@ -64,8 +64,12 @@ launch_app() {
 wait_for_ui() {
   local marker="$1"
   for ((attempt=0; attempt<60; attempt++)); do
-    UI_READY_LOG=$(xcrun simctl spawn "${UDID}" log show --last 3m --style compact \
-      --predicate "subsystem == \"tw.speedcammap.app\" AND category == \"ui\" AND processIdentifier == ${APP_PID}" 2>/dev/null)
+    if ! UI_READY_LOG=$(xcrun simctl spawn "${UDID}" log show --last 3m --style compact \
+      --predicate "subsystem == \"tw.speedcammap.app\" AND category == \"ui\" AND processID == ${APP_PID}" 2>&1); then
+      echo "::error::無法讀取本次 App 的畫面狀態"
+      echo "${UI_READY_LOG}"
+      return 1
+    fi
     if [[ "${UI_READY_LOG}" == *"${marker}"* ]]; then
       return 0
     fi
@@ -317,6 +321,32 @@ launch_app -legacyUI -autoStartCruise NO -vehicleMode car \
 wait_for_comparison preview darkCasing current true
 shot "38-route-legacy-darkCasing-current"
 xcrun simctl location "${UDID}" set 25.0300,121.5650
+
+# 11) 選點卡使用正式選點狀態與預覽入口；此參數不代表已測到手勢。
+launch_app -autoStartCruise NO -selectPlace "25.0478,121.5170,台北車站" \
+  -AppleLanguages "(zh-Hant-TW)" -AppleLocale zh_TW
+wait_for_ui "place selection ready legacy=false"
+sleep 6
+shot "39-map-selected-place"
+launch_app -legacyUI -autoStartCruise NO -selectPlace "25.0478,121.5170,台北車站" \
+  -AppleLanguages "(zh-Hant-TW)" -AppleLocale zh_TW
+wait_for_ui "place selection ready legacy=true"
+sleep 6
+shot "40-map-selected-place-legacy"
+launch_app -autoStartCruise NO -gallery -galleryPlaces
+sleep 8
+shot "41-map-place-card-states-top"
+launch_app -autoStartCruise NO -gallery -galleryPlaces -galleryBottom
+sleep 8
+shot "42-map-place-card-states-bottom"
+
+# IKEA 區間附近同時看 POI、照相點和區間線；導航預覽仍由原有截圖檢查隱藏相機。
+launch_app -autoStartCruise NO -mapCenter "24.9715,121.5300" -mapSpan 0.018
+sleep 15
+shot "43-map-poi-cameras-sections"
+launch_app -legacyUI -autoStartCruise NO -mapCenter "24.9715,121.5300" -mapSpan 0.018
+sleep 15
+shot "44-map-poi-cameras-sections-legacy"
 
 # App 的紀錄（確認啟動參數、sheet、地圖範圍、區間貼齊、路線選擇有沒有生效）
 xcrun simctl spawn "${UDID}" log show --last 20m --style compact \

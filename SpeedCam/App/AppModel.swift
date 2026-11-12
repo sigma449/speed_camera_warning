@@ -43,6 +43,14 @@ final class AppModel: ObservableObject {
     @Published private(set) var authorizationDenied = false
     @Published private(set) var recentDestinations: [RecentDestination] = RecentDestinationStore.load()
     @Published var statusMessage: String?
+    @Published private var mapPlaceSelection = MapPlaceSelection()
+
+    var selectedMapPlace: MapPlaceSelection.Place? { mapPlaceSelection.place }
+    var canSelectMapPlace: Bool { mapPlaceMode == .browsing }
+    private var mapPlaceMode: MapPlaceSelection.Mode {
+        if preview != nil { return .previewing }
+        return route != nil ? .navigating : .browsing
+    }
 
     /// 展示模式：用假資料與假軌跡跑一遍（CI 截圖、沒有真實資料時使用）。
     let demoMode: Bool
@@ -58,6 +66,7 @@ final class AppModel: ObservableObject {
     let searchTypingTest: String?
     /// 啟動後直接預覽到這個地點的導航（CI 截圖用：`-previewTo 25.0478,121.5170,台北車站`）。
     let initialPreviewTarget: (coordinate: CLLocationCoordinate2D, name: String)?
+    let initialSelectedPlace: (coordinate: CLLocationCoordinate2D, name: String)?
     let mapAppearance: MapAppearance
 
     var vehicleMode: VehicleMode {
@@ -93,6 +102,8 @@ final class AppModel: ObservableObject {
     private let announcer = VoiceAnnouncer()
     private let activity = LiveActivityFactory.make()
     private let navigation = NavigationController()
+    private let placeGeocoder = CLGeocoder()
+    private var placeLookupTask: Task<Void, Never>?
     private let pathSnapper = SectionPathSnapper()
     private var alertEngine: CameraAlertEngine
     private var sectionTracker: SectionSpeedTracker
@@ -118,7 +129,8 @@ final class AppModel: ObservableObject {
             initialSearchQuery = nil
         }
         initialMapRegion = Self.parseMapRegion(arguments)
-        initialPreviewTarget = Self.parsePreviewTarget(arguments)
+        initialPreviewTarget = Self.parsePlaceTarget(arguments, flag: "-previewTo", defaultName: "目的地")
+        initialSelectedPlace = Self.parsePlaceTarget(arguments, flag: "-selectPlace", defaultName: "所選位置")
         mapAppearance = MapAppearance(arguments: arguments)
         initialShowSettings = arguments.contains("-settings")
         if let i = arguments.firstIndex(of: "-typeSearch"), i + 1 < arguments.count {
@@ -161,11 +173,20 @@ final class AppModel: ObservableObject {
             }
     }
 
-    private static func parsePreviewTarget(_ arguments: [String]) -> (coordinate: CLLocationCoordinate2D, name: String)? {
-        guard let i = arguments.firstIndex(of: "-previewTo"), i + 1 < arguments.count else { return nil }
+    private static func parsePlaceTarget(_ arguments: [String], flag: String, defaultName: String)
+        -> (coordinate: CLLocationCoordinate2D, name: String)? {
+        guard let i = arguments.firstIndex(of: flag) else { return nil }
+        guard i + 1 < arguments.count else {
+            Logger(subsystem: "tw.speedcammap.app", category: "launch").error("地點啟動參數缺少座標：\(flag, privacy: .public)")
+            return nil
+        }
         let parts = arguments[i + 1].split(separator: ",", maxSplits: 2).map(String.init)
-        guard parts.count >= 2, let lat = Double(parts[0]), let lon = Double(parts[1]) else { return nil }
-        return (CLLocationCoordinate2D(latitude: lat, longitude: lon), parts.count > 2 ? parts[2] : "目的地")
+        guard parts.count >= 2, let lat = Double(parts[0]), let lon = Double(parts[1]),
+              lat.isFinite, lon.isFinite, (-90...90).contains(lat), (-180...180).contains(lon) else {
+            Logger(subsystem: "tw.speedcammap.app", category: "launch").error("無效的地點啟動參數：\(flag, privacy: .public)")
+            return nil
+        }
+        return (CLLocationCoordinate2D(latitude: lat, longitude: lon), parts.count > 2 ? parts[2] : defaultName)
     }
 
     private static func parseMapRegion(_ arguments: [String]) -> MKCoordinateRegion? {
@@ -290,6 +311,7 @@ final class AppModel: ObservableObject {
     }
 
     func stopCruise() {
+        dismissMapPlace()
         cancelPreview()
         endNavigation(silently: true)
         isCruising = false
@@ -328,6 +350,57 @@ final class AppModel: ObservableObject {
         try await navigation.search(completion: completion)
     }
 
+    // MARK: 地圖選點
+
+    func selectMapPlace(at coordinate: CLLocationCoordinate2D, name: String? = nil) {
+        let id: UUID
+        do {
+            guard let selected = try mapPlaceSelection.select(
+                point: GeoPoint(lat: coordinate.latitude, lon: coordinate.longitude),
+                name: name, mode: mapPlaceMode) else { return }
+            id = selected
+        } catch {
+            statusMessage = error.localizedDescription
+            Logger(subsystem: "tw.speedcammap.app", category: "mapPlace").error("\(error.localizedDescription, privacy: .public)")
+            return
+        }
+        placeLookupTask?.cancel()
+        placeGeocoder.cancelGeocode()
+        placeLookupTask = Task { [weak self] in
+            guard let self, !Task.isCancelled, self.selectedMapPlace?.id == id else { return }
+            do {
+                let placemarks = try await self.placeGeocoder.reverseGeocodeLocation(
+                    CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude))
+                guard !Task.isCancelled else { return }
+                let placemark = placemarks.first
+                let address = placemark.flatMap { MKPlacemark(placemark: $0).title }
+                let applied = self.mapPlaceSelection.resolveAddress(id: id, name: placemark?.name, address: address)
+                if applied, self.selectedMapPlace?.addressUnavailable == true {
+                    Logger(subsystem: "tw.speedcammap.app", category: "mapPlace").warning("反查沒有地址，選點卡保留座標並顯示提醒")
+                }
+            } catch {
+                guard !Task.isCancelled else { return }
+                if self.mapPlaceSelection.resolveAddress(id: id, name: nil, address: nil) {
+                    Logger(subsystem: "tw.speedcammap.app", category: "mapPlace")
+                        .warning("反查地址失敗，選點卡保留座標：\(error.localizedDescription, privacy: .public)")
+                }
+            }
+        }
+    }
+
+    func dismissMapPlace() {
+        placeLookupTask?.cancel()
+        placeLookupTask = nil
+        placeGeocoder.cancelGeocode()
+        mapPlaceSelection.cancel()
+    }
+
+    func previewSelectedMapPlace() {
+        guard let place = mapPlaceSelection.takeForPreview(mode: mapPlaceMode) else { return }
+        beginPreview(to: MapItems.item(name: place.name, coordinate: place.point.coordinate),
+                     subtitle: place.address ?? place.coordinateText)
+    }
+
     // MARK: 導航預覽
 
     struct NavigationPreview {
@@ -351,6 +424,7 @@ final class AppModel: ObservableObject {
 
     /// 選好目的地：先預覽地點，同時在背景規劃路線。
     func beginPreview(to item: MKMapItem, subtitle: String? = nil) {
+        dismissMapPlace()
         endNavigation(silently: true)
         previewTask?.cancel()
         preview = NavigationPreview(item: item, name: item.name ?? "未命名地點",
@@ -359,7 +433,9 @@ final class AppModel: ObservableObject {
         isCalculatingRoute = true
         previewTask = Task { [weak self] in
             guard let self else { return }
-            defer { self.isCalculatingRoute = false }
+            defer {
+                if self.preview?.item === item { self.isCalculatingRoute = false }
+            }
             do {
                 let source = self.mapAppearance.comparison == nil ? nil
                     : MapItems.item(name: "地圖對照起點", coordinate: MapAppearance.comparisonSource)
@@ -396,6 +472,7 @@ final class AppModel: ObservableObject {
 
     func cancelPreview() {
         previewTask?.cancel()
+        previewTask = nil
         preview = nil
         isCalculatingRoute = false
     }
@@ -489,6 +566,7 @@ final class AppModel: ObservableObject {
     // MARK: 定位處理（核心流程）
 
     func handle(_ fix: VehicleFix) {
+        guard isCruising else { return }
         lastFix = fix
 
         // 隧道裡的基地台定位不能判斷照相點和區間，當作沒有定位，由 tick 依時間推算

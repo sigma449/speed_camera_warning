@@ -19,11 +19,15 @@
 | 13 資料蒐集與新類型 | B／中 | 仍以7320為主；非測速項目不能直接套速限警報。 | 官方多源／品質稽核優先，再加新類型與人工審核回報。 | 僅第1／4項所需官方來源；新類型／回報本輪不做。 |
 | 14 字卡大小 | A／中 | 外寬相同，原導航34pt／56pt圖示欄，測速46pt／64pt。 | 統一視覺比例與最小高度，保留區間三行及文字自適應。 | B 已統一 64pt 圖示欄、46pt 數字／基線槽、176pt 最小高度，新增同屏及放大字截圖；尚未實看。 |
 | 15 3D遮擋與藍線 | B／中 | 55°、無描邊藍線已確認；實際遮擋與夜間畫面未重現。 | 先做底圖／描邊對照，不任選預設或自動取消3D。 | B 已加三種線樣式／兩種底圖及同幾何預覽、55° 導航截圖入口；維持原預設，尚未取得圖。 |
-| 16 點地圖導航 | A／高 | POI全排除，只能選照相ID，沒有一般地點／長按選點流程。 | 分版本加入選點，沿用預覽而非直接跳導航。 | 本輪不做。 |
+| 16 點地圖導航 | A／高 | POI全排除，只能選照相ID，沒有一般地點／長按選點流程。 | 分版本加入選點，沿用預覽而非直接跳導航。 | B 已接 MapFeature／iOS16 POI／全版本長按、選點卡與原預覽；7 項核心回歸通過，手勢／畫面待驗收。 |
 
 ## 第二階段 B：畫面與停止更新（2026-11-12）
 
 只在 `copilot/test2-1108` 本機提交，不 push、不觸發 workflow；不做第 13 項，不新增 Xcode 測試 target。
+
+**完整本機測試：Swift 206、Python 274 全通過，均 0 跳過；既有測試未刪除或放寬。**
+紀錄在 `build\test2-b-swift.log`、`build\test2-b-pytest.log`。新增 7 項純核心選點測試及 1 項補測起點回歸。
+iOS 26／iOS 15 編譯、30 張新增圖片、實際 POI／長按與新起點 MapKit 回放皆尚未取得；下列「已實作」不代表畫面／互動驗收完成。
 
 ### 補測 03 起點修正
 
@@ -41,7 +45,7 @@
 - App 仍會接手未達 7.5 小時的 active／stale activity 並立刻刷新。這次不巡航（含自動巡航關閉）或 Live Activity 關閉時，
   即使 controller 尚未接手，也會結束殘留活動。結束時清更新佇列，舊送出工作不能挪用下一次活動的新內容。
 - 停止巡航一併取消預覽／倒數、展示軌跡、每秒工作，重設兩個測速核心、停止定位／聲音／活動。
-  sleep 後及 `tick` 入口都加巡航／取消檢查；預覽消失時恢復地圖跟隨。這不是強制結束時執行收尾的保證。
+  sleep 後及 `tick`／定位回呼入口都加巡航／取消檢查，停止後晚到的定位不能重啟提醒；預覽消失時恢復地圖跟隨。這不是強制結束時執行收尾的保證。
 - 設定頁加滑掉後約 2 分鐘才過期、完全移除的方法。新增 `-gallery -galleryStale`（三種 `.small` 尺寸）
   及加 `-galleryLock`（鎖定畫面、動態島）的共用畫面預覽；CI 截圖 `27-stale-activity-lock.png`、`28-stale-activity-small.png`。
   Windows 未執行 Widget／iOS；系統過期刷新時機、定位箭頭及車機仍待實機，不能以 gallery 的手動 stale 參數當成系統已驗收。
@@ -74,6 +78,26 @@ CI 新增 `29`～`34` 六張同屏圖（含 375／390 pt 與系統放大文字�
   [showsBuildings](https://developer.apple.com/documentation/mapkit/mkmapview/showsbuildings) 說 iOS 16 以上有 overlay 時此開關不生效、建物與樹應透明。
   本輪沒有改這些設定，也沒有取得實際對照圖，**不能宣稱 muted 已解決遮線**；由驗收者看 `36` 系列後再決定。
 
+### 第 16 項：選點卡與原有導航預覽
+
+- iOS 17 的 `MapFeature`／`MapReader`／`MapProxy` 留在獨立的 `@available(iOS 17, *) ModernMapView`，
+  不讓 iOS 15 的 RootView 儲存新型別；iOS 16 的 MKMapView 開 `selectableMapFeatures = [.pointsOfInterest]`，
+  以 iOS 16 的 annotation delegate 辨識 `MKMapFeatureAnnotation`。所有版本另有 0.6 秒長按，iOS 15 不冒充支援原生 POI 點擊。
+- 選取只建立卡片；按「開始導航」才呼叫 `beginPreview(to:)`，保留地點 3 秒、路線 10 秒及拖圖暫停。
+  **導航中與預覽中均停用 POI／長按選點，不能用地圖誤換目的地；照相點仍可開完整詳細資訊，預覽仍不畫照相點。**
+  搜尋／既有預覽操作不改。選點卡開啟時暫停跟隨／自動回中心，並隱藏底部與回中心操作，只有「開始導航」用強調色；
+  關閉 44×44 pt、主要按鈕至少 48 pt，圖示有 accessibilityLabel，名稱／地址可換行、不鎖高度。
+- `MapPlaceSelection` 在 Core 管理選取、消費、取消及 UUID；反查地址不改長按原座標、不覆蓋已知 POI 名稱。
+  取消、改選、開始預覽或停止巡航會取消查詢；舊結果不能復活卡片或覆蓋新點。
+  查詢中仍能用座標預覽；查詢失敗明列提示及 log，不靜默回傳成功。7 項單測涵蓋導航／預覽禁選、
+  明確預覽動作、原座標、晚到結果、失敗備案與非法座標；沒有新增 Xcode target。
+- `-selectPlace 緯度,經度,名稱` 走正式選點狀態，`39-map-selected-place.png`／`40-map-selected-place-legacy.png`
+  及 `ios15-15-map-selected-place.png` 拍卡片；`-gallery -galleryPlaces` 加 `-galleryBottom`
+  對應 `41-map-place-card-states-top.png`／`42-map-place-card-states-bottom.png`，明確是長名稱、查詢中、失敗的版面示例。
+  新舊地圖恢復 POI，`43-map-poi-cameras-sections.png`／`44-map-poi-cameras-sections-legacy.png`
+  檢查 IKEA 附近相機／區間與 POI 同屏。**啟動參數不會實際點擊或長按，尚不能證明手勢、POI／相機分流、
+  預覽倒數、VoiceOver 或圖示清晰度已在 iOS 通過。**
+
 ## 第二階段 A 實作與驗收狀態（歷史紀錄）
 
 - 只在 `copilot/test2-1108` 實作上述7項及必要App接線；沒有push、觸發workflow或建置IPA。除本節與總表狀態外，下方保留的是**修改前分析與舊log證據**，不代表這輪已在macOS或實機通過。
@@ -84,7 +108,7 @@ CI 新增 `29`～`34` 六張同屏圖（含 375／390 pt 與系統放大文字�
 - `scripts\ci\check-replay-1108.py`核對7項預期，包括獨立的北宜2官方四門架60m範圍、方向別公告長度、IKEA完整進出／不再單點、兩個折返中止／inactive、15秒嗶聲／30秒語音、歸零無區間超速與狀態清理、兩種近距分支、水源畫面／語音。舊log、缺案例、缺事件、截斷或壞JSON都非零；人工log單測只驗檢查器能拒絕錯誤，**不是實際replay結果**。
 - **A 階段當時尚待 CI**：iOS App／macOS診斷工具編譯、最新資料完整建置、23案真MapKit replay及新檢查器。驗收者其後已提供 CI run 43155203504、replay run 43155213404，C 階段重新稽核如下；AVSpeech／車機與 SwiftUI 畫面不是 replay 的驗收範圍。
 
-## 第二階段 C：退回修正與使用者補充（2026-11-12）
+## 第二階段 C：退回修正與使用者補充（2026-11-12，前輪紀錄）
 
 只在 `copilot/test2-1108` 本機修改／提交；不 push、不觸發 workflow、不動 main／IPA／最低系統版本，第 12～16 項不做。
 基準為 `581646d` 及 `build\replay-1108-fixed.log`（3,523 行）。以下 `[C:L數字]` 是這份完整 log，和下方第一階段的 `[L數字]` 不同。
@@ -328,6 +352,8 @@ OSM way **655367014 北宜路三段**最近線段 `(24.9556947,121.5702034)→(2
 
 ## 16. 直接點地圖目的地 — A／高（功能缺口）
 
+**B 狀態**：已接上方 B 節的分版本選點與原預覽；核心單測通過，不新增 Xcode target，以下為修改前分析與尚待驗收的互動。
+
 - **重現**：讀碼確認沒有流程，未以UI操作重現。`SpeedCam\Map\RootView.swift:267` 的selection是照相String ID，`:314` POI excludingAll；`SpeedCam\Map\LegacyMapView.swift:45` 同樣隱藏POI，`:233` 的didSelect只接受CameraAnnotation，`:76` 只有拖移／縮放／旋轉手勢，沒有長按放點。
 - **修正／版本邊界**：[iOS17 MapFeature](https://developer.apple.com/documentation/mapkit/mapfeature) 支援原生地點選取，可與照相自訂點擊分流；[MapSelection](https://developer.apple.com/documentation/mapkit/mapselection) 是iOS18+，不能拿它當17共用解法。iOS16的MKMapView可設[selectableMapFeatures](https://developer.apple.com/documentation/mapkit/mkmapview/selectablemapfeatures)，delegate需辨識MKMapFeatureAnnotation；iOS15以長按座標放圖釘、反向查地址／手動名稱作備案，不能承諾同等原生POI點擊。
 - **規格／測試**：解除必要POI過濾，長按任意位置先顯示選點卡，再沿用 `SpeedCam\App\AppModel.swift:345` 的 `beginPreview(to:)`，不要直接導航跳過地點預覽／10秒倒數。保留照相點完整詳情、預覽隱藏相機與拖圖暫停倒數；測POI／空白長按、相機不誤導航、查地址失敗可用已選座標、舊系統availability、VO與44pt按鈕，新增CI選點／預覽狀態並實看截圖。
@@ -367,8 +393,8 @@ OSM way **655367014 北宜路三段**最近線段 `(24.9556947,121.5702034)→(2
    測試：補「導航＋相機」「導航＋區間／歸零／重規劃」gallery截圖；單元沿用 `RouteProgressTests.testShortManeuverText`、`CameraShortAddressTests.testLongAddressDropsParentheses`，不新增只驗字級常數的測試。
    驗收：replay只檢查導航步驟回歸，不能驗尺寸。CI實看375／390pt、最長路名／類型及放大字體：同屏左右對齊、視覺比例一致、重要字不截斷；區間倒數維持三行、歸零不硬補文字，底色仍不透明且高對比。
 
-6. **第16項：加入地圖選點並沿用預覽。** 改 `SpeedCam\Map\RootView.swift`、`LegacyMapView.swift`、`SpeedCam\App\AppModel.swift`，依iOS版本加入POI／長按卡片，不攔截相機詳情；另改 `project.yml`新增App測試target（目前沒有），新增 `SpeedCamTests\MapDestinationTests.swift`及選點CI截圖。
-   單元：`testPOISelectionOnlyStartsPreview`、`testCameraSelectionKeepsDetails`、`testLongPressUsesChosenCoordinate`，並測反查地址失敗仍能用座標、取消不啟動、拖圖暫停倒數；正常10秒自動開始仍保留。
+6. **第16項：加入地圖選點並沿用預覽。** 已改 `SpeedCam\Map\RootView.swift`、獨立 `ModernMapView`／`MapPlaceCard`、`LegacyMapView.swift` 與 `SpeedCam\App\AppModel.swift`，依 iOS 版本加入 POI／長按卡片，不攔截相機詳情；依 B 派工不改 `project.yml`、不新增 Xcode target。
+   單元：Core `MapPlaceSelectionTests` 7 項已通過，驗選取不啟動導航、原始座標、取消／晚到結果、反查失敗及導航／預覽禁選。相機詳情、拖圖暫停與正常 10 秒倒數沿用原流程，仍須 iOS 實際操作，不能拿純核心測試冒充 UI 驗收。
    驗收：replay僅保留導航回歸，不能冒充點擊測試。CI在新系統／`-legacyUI`及iOS15實際執行，看到POI／長按選點卡→地點預覽→整線預覽→「開始導航」；相機仍是完整詳情，44pt點擊與VO標籤可用。
 
 ### B 類：建議預設與理由（待使用者核准）

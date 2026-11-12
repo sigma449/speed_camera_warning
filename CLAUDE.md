@@ -99,6 +99,7 @@ Live Activity 在 iOS 26 會出現在 CarPlay 儀表板，**不需要 entitlemen
   聲音是系統預設音（文件沒有靜音選項），設定頁可以關（`liveActivityAlertsEnabled`，預設開啟）。
 - **開啟 App 就自動開始巡航**（預設開啟，設定頁可以關；`AppPreferences.autoStartCruise`）。
 - **搜尋目的地**：要像 Google 地圖那樣邊打字邊出現候選（`MKLocalSearchCompleter`），另有快速搜尋（加油站、停車場…）和最近的目的地（最多 15 筆）。
+- **地圖選點（第二階段 B）**：iOS 17 以上用 `MapFeature`，iOS 16 的 MKMapView 用 `selectableMapFeatures`；所有版本都能長按任意位置，iOS 15 只有長按。先顯示名稱、地址或原始座標的選點卡，按「開始導航」才進既有地點 3 秒／路線 10 秒預覽，不直接開始導航。導航中與預覽中一律停用選點，照相點仍開詳細資訊；預覽仍隱藏照相點。選點卡開啟時暫停跟隨／自動回中心、隱藏底部操作與回中心按鈕，只留一個主要動作。反查失敗明列提示與 log、仍可用原座標；取消或改選後的舊結果不能覆蓋新點。POI、長按、相機分流及清晰度仍待 iOS 實際操作／截圖驗收。
 - **區間在地圖上順著路形畫**：資料處理用里程牌座標產生 `path`（[[緯度, 經度], ...]，Douglas–Peucker 簡化到 6 m），
   App 用 `SpeedSection.displayPath` 畫，沒有 path 時畫起終點直線；同一段的兩個方向只畫一次。
   使用者實機發現里程牌路形在髮夾彎會抄近路，所以 App 再用 Apple 地圖的路線規劃貼齊道路（`SectionPathSnapper`）：
@@ -187,11 +188,13 @@ App 的啟動參數（CI 截圖用）：
 - `-gallery -galleryBanners -galleryHints`：內建人工提示的手機橫幅及 170×78 pt 導航／照相＋navHint 預覽；可加 `-galleryBottom`，本輪尚未取得截圖
 - `-gallery -galleryLock`：鎖定畫面和動態島展開的預覽頁，動態島外框是示意（可再加 `-galleryBottom`）
 - `-gallery -galleryStale`：已停止更新的 `.small` 三種尺寸；再加 `-galleryLock` 顯示鎖定畫面及動態島。CI 新增 `27-stale-activity-lock.png`、`28-stale-activity-small.png`，尚待截圖驗收
+- `-gallery -galleryPlaces`：375 pt 選點卡版面示例，含長名稱／地址、反查中、反查失敗；加 `-galleryBottom` 拍下半部。這是狀態預覽，不代表已操作 POI 或長按
 - `-search 文字`：打開搜尋並輸入
 - `-mapCenter 緯度,經度 -mapSpan 度數`：指定地圖範圍
 - `-settings`：打開設定頁
 - `-vehicleMode car|motorcycleRedYellow|motorcycleWhite`：指定車種（不會存進設定）
 - `-previewTo 緯度,經度,名稱`：導航預覽
+- `-selectPlace 緯度,經度,名稱`：走正式選點狀態與反查地址，顯示選點卡、尚未開始預覽；與 `-previewTo` 同時指定時以預覽優先。CI 新增 `39`／`40` 新舊地圖選點卡、`41`／`42` 卡片狀態、`43`／`44` POI＋相機＋區間同屏及 `ios15-15`；不把此參數當成手勢測試
 - `-routeLineStyle current|whiteCasing|darkCasing`、`-mapEmphasis current|muted`：新舊地圖的內部對照樣式，不存進設定；未指定就是原樣
 - `-routeComparison preview|navigation3D` 搭配 `-previewTo`：CI 固定起點 `(25.0468,121.5366)`；前者停住整線預覽、後者開始導航並固定 700 m／朝南／55° 視角，不改一般預覽倒數。`35`／`36` 各六張，`37`／`38` 舊地圖及 `ios15-14` 檢查備案；同組路線簽章不符就失敗
 - `-typeSearch 文字`：搜尋壓力測試（反覆輸入、刪除約 45 秒）
@@ -200,8 +203,8 @@ App 的啟動參數（CI 截圖用）：
 
 ## 建置與測試
 
-- **Swift 核心邏輯**（199 個測試）：本機既有入口 `python -I -X utf8 build\swift_test.py`。Docker 必須同時唯讀掛載 `SpeedCam\Resources` 到 `/SpeedCam/Resources`，不能只掛套件而讓真實道路或人工提示測試跳過；第二階段 C 的 199 項全通過，0 跳過。CI／原生 Swift 用 `swift test --package-path Packages/SpeedCamCore`。
-- **Python 資料處理與 replay 檢查器**（273 個測試）：`python -m pytest -q data-pipeline`，第二階段 C 全通過，0 跳過。
+- **Swift 核心邏輯**（206 個測試）：本機既有入口 `python -I -X utf8 build\swift_test.py`。Docker 必須同時唯讀掛載 `SpeedCam\Resources` 到 `/SpeedCam/Resources`，不能只掛套件而讓真實道路或人工提示測試跳過；第二階段 B 的 206 項全通過，0 跳過。CI／原生 Swift 用 `swift test --package-path Packages/SpeedCamCore`。
+- **Python 資料處理與 replay 檢查器**（274 個測試）：`python -m pytest -q data-pipeline`，第二階段 B 全通過，0 跳過。
 - **iOS App** 只能在 GitHub Actions 編譯：
   - `CI`（每次 push）：Swift 測試、pytest、iOS 模擬器建置和截圖。截圖會以 base64 印在 log 裡（`scripts/ci/print-screenshots.sh`），因為雲端 session 下載不了 artifact。
   - `Build IPA`（手動）：`gh workflow run build-ipa.yml --repo sigma449/speed_camera_warning --ref main`。會下載最新資料、編譯未簽署的 IPA（artifact `SpeedCam-ipa`，保留 30 天）。
@@ -279,9 +282,9 @@ App 的啟動參數（CI 截圖用）：
 
 ## 目前進度和下一步（2026-11-12 更新；IPA 仍是 11/07 版本）
 
-**11/08 第二階段 B**：補測 03 的起點移到提示點前約 735 m，保留原案例及檢查器門檻，待驗收者重跑。第 12 項已接過期畫面、啟動清理與停止巡航取消預覽；第 14 項已統一橫幅比例並加入同屏及放大字截圖入口；第 15 項已接三種線樣式／兩種底圖、同幾何 3×2 預覽與固定 3D 導航對照，預設不變。尚待 iOS／Widget／畫面驗收，詳見 `docs\test2_1108_analysis.md` B 節；不做第 13 項、不新增 Xcode 測試 target。
+**11/08 第二階段 B**：補測 03 的起點移到提示點前約 735 m，保留原案例及檢查器門檻，待驗收者重跑。第 12 項已接過期畫面、啟動清理與停止巡航取消預覽；第 14 項已統一橫幅比例並加入同屏及放大字截圖入口；第 15 項已接三種線樣式／兩種底圖、同幾何 3×2 預覽與固定 3D 導航對照，預設不變；第 16 項已接分版本 POI／長按選點卡、原預覽流程及導航／預覽中禁選點。Swift **206**／Python **274** 全通過，均 0 跳過，紀錄在 `build\test2-b-swift.log`、`build\test2-b-pytest.log`；未刪除／放寬既有測試。30 張新截圖入口已加入腳本，但尚未取得 iOS 26／15 編譯、實際圖片或手勢操作結果，不能宣稱畫面驗收完成。詳見 `docs\test2_1108_analysis.md` B 節；不做第 13 項、不新增 Xcode 測試 target。
 
-**11/08 第二階段 C**：修正第 8 項髮夾彎錯投影與路形／公告長度不一致的誤中止；舊 IPA 全部 79 段正向完整生命週期回歸通過。第 9 項人工相機已補、速限待詢；第 3／5／10 項及兩個新點以 5 筆定向分支提示接上手機與 Live Activity。Swift **199**／Python **273** 全通過、0 跳過，既有測試未刪除或放寬；詳見 `docs\test2_1108_analysis.md` C 節。尚未取得新 macOS／iOS 編譯、六點真 MapKit 最近距離／提示覆蓋、gallery 截圖或實播；不能宣稱六點已在 Apple 新路線通過。
+**11/08 第二階段 C（前輪紀錄）**：修正第 8 項髮夾彎錯投影與路形／公告長度不一致的誤中止；舊 IPA 全部 79 段正向完整生命週期回歸通過。第 9 項人工相機已補、速限待詢；第 3／5／10 項及兩個新點以 5 筆定向分支提示接上手機與 Live Activity。Swift **199**／Python **273** 全通過、0 跳過，既有測試未刪除或放寬；詳見 `docs\test2_1108_analysis.md` C 節。尚未取得新 macOS／iOS 編譯、六點真 MapKit 最近距離／提示覆蓋、gallery 截圖或實播；不能宣稱六點已在 Apple 新路線通過。
 
 **前輪 A（歷史）**：第 1、2、4、6、8、11 項及第 7 項前三段已實作，當時 Swift 187／Python 229 通過。驗收者已提供 CI run 43155203504 與 replay run 43155213404；後者完整 log 是 `build\replay-1108-fixed.log`，本輪已確認它的北宜 4 回程誤判，不能再當成通過。前輪離線資料核對為 17 筆國道座標校正、1,901 點／82 個方向、12 處未對應區間相機、8 處國道異常，並非完整 7040 線上建置或新 IPA；本輪未重新宣稱這些數量包含新增人工點。
 
@@ -297,6 +300,7 @@ App 的啟動參數（CI 截圖用）：
    - **第 4、8 項（至善路一段、國安局前的照相點沒收錄）**：警政署 7320、臺北市 130111（2026-03 更新）、立法院 2026-05 清單都沒有這兩支，OSM 也沒有。**等使用者提供位置**，再加進 `manual/cameras_extra.csv`。國安局在 25.1073,121.5360 附近，Apple 的路線經過 25.1058,121.5374。
 3. **等使用者實機回報**（使用者只有週末能上車測）：
    - 從 App 切換器滑掉後，約 2 分鐘卡片是否顯示「已停止更新」、隱藏舊數值，以及定位箭頭是否仍留著。iOS 不保證呼叫收尾，定位箭頭無法由程式控制，也無法在 CI 驗證；請分開記錄正常鎖屏、App 內停止巡航與強制結束。
+   - 地圖 POI／空白長按、選點卡關閉／反查失敗、照相點仍開詳情、選點後正常預覽與倒數；iOS 15 長按、iOS 16 原生 POI、iOS 17 以上 MapFeature 都尚未實際操作，CI 啟動參數的畫面不代替手勢或 VoiceOver 驗收。
    - iPhone 7（iOS 15.8.8）：2026-11-07 使用者回報裝得上、開起來正常。還沒回報：背景定位、語音、實機的流暢度
    - 主力手機：狀態管理改成 `ObservableObject` 之後，地圖跟隨順不順（CI 截圖看不出動畫）
    - 上述功能

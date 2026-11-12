@@ -24,11 +24,13 @@ struct LegacyMapView: UIViewRepresentable {
     @Binding var selectedCameraID: String?
     let routeLine: RouteLine?
     let appearance: MapAppearance
+    let canSelectPlace: Bool
     let pin: Pin?
     let sections: [SpeedSection]
     /// 展示模式沒有真實定位，用一台車的圖示代表目前位置。
     let demoPosition: CLLocationCoordinate2D?
     let request: LegacyMapRequest?
+    let onSelectPlace: (CLLocationCoordinate2D, String?) -> Void
     let onRegionChange: (MKCoordinateRegion) -> Void
     let onUserInteraction: () -> Void
 
@@ -43,11 +45,11 @@ struct LegacyMapView: UIViewRepresentable {
         map.showsCompass = true
         map.showsScale = true
         map.showsTraffic = true
-        map.pointOfInterestFilter = .excludingAll
+        map.pointOfInterestFilter = .includingAll
         if #available(iOS 16, *), appearance.emphasis == .muted {
             let configuration = MKStandardMapConfiguration()
             configuration.emphasisStyle = .muted
-            configuration.pointOfInterestFilter = .excludingAll
+            configuration.pointOfInterestFilter = .includingAll
             configuration.showsTraffic = true
             map.preferredConfiguration = configuration
         }
@@ -94,6 +96,24 @@ struct LegacyMapView: UIViewRepresentable {
                 recognizer.cancelsTouchesInView = false
                 map.addGestureRecognizer(recognizer)
             }
+            let longPress = UILongPressGestureRecognizer(target: self, action: #selector(selectPlace(_:)))
+            longPress.minimumPressDuration = 0.6
+            longPress.allowableMovement = 12
+            longPress.delegate = self
+            longPress.cancelsTouchesInView = false
+            map.addGestureRecognizer(longPress)
+        }
+
+        @objc private func selectPlace(_ recognizer: UILongPressGestureRecognizer) {
+            guard recognizer.state == .began, parent.canSelectPlace, let map = recognizer.view as? MKMapView else { return }
+            let location = recognizer.location(in: map)
+            for annotation in cameraAnnotations.values {
+                if let view = map.view(for: annotation), view.convert(view.bounds, to: map).insetBy(dx: -8, dy: -8).contains(location) {
+                    parent.selectedCameraID = annotation.camera.id
+                    return
+                }
+            }
+            parent.onSelectPlace(map.convert(location, toCoordinateFrom: map), nil)
         }
 
         @objc private func userGesture(_ recognizer: UIGestureRecognizer) {
@@ -110,6 +130,9 @@ struct LegacyMapView: UIViewRepresentable {
         // MARK: 同步內容
 
         func sync(_ map: MKMapView) {
+            if #available(iOS 16, *) {
+                map.selectableMapFeatures = parent.canSelectPlace ? [.pointsOfInterest] : []
+            }
             syncCameras(map)
             syncRoute(map)
             syncSections(map)
@@ -253,10 +276,22 @@ struct LegacyMapView: UIViewRepresentable {
         }
 
         func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
-            guard let annotation = view.annotation as? CameraAnnotation else { return }
-            // 馬上取消選取，再點同一個照相點才會有反應
-            mapView.deselectAnnotation(annotation, animated: false)
-            parent.selectedCameraID = annotation.camera.id
+            if let annotation = view.annotation as? CameraAnnotation {
+                mapView.deselectAnnotation(annotation, animated: false)
+                parent.selectedCameraID = annotation.camera.id
+            }
+        }
+
+        @available(iOS 16, *)
+        func mapView(_ mapView: MKMapView, didSelect annotation: MKAnnotation) {
+            if let camera = annotation as? CameraAnnotation {
+                mapView.deselectAnnotation(camera, animated: false)
+                parent.selectedCameraID = camera.camera.id
+            } else if let feature = annotation as? MKMapFeatureAnnotation {
+                mapView.deselectAnnotation(feature, animated: false)
+                guard parent.canSelectPlace else { return }
+                parent.onSelectPlace(feature.coordinate, feature.title ?? nil)
+            }
         }
 
         func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {

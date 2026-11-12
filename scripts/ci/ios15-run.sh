@@ -36,8 +36,12 @@ launch_app() {
 wait_for_ui() {
   local marker="$1" output
   for ((attempt=0; attempt<60; attempt++)); do
-    output=$(xcrun simctl spawn "${UDID}" log show --last 3m --style compact \
-      --predicate "subsystem == \"tw.speedcammap.app\" AND category == \"ui\" AND processIdentifier == ${APP_PID}" 2>/dev/null)
+    if ! output=$(xcrun simctl spawn "${UDID}" log show --last 3m --style compact \
+      --predicate "subsystem == \"tw.speedcammap.app\" AND category == \"ui\" AND processID == ${APP_PID}" 2>&1); then
+      echo "::error::無法讀取本次 App 的畫面狀態"
+      echo "${output}"
+      return 1
+    fi
     if [[ "${output}" == *"${marker}"* ]]; then
       sleep 6
       return 0
@@ -160,8 +164,17 @@ launch_app -autoStartCruise NO -vehicleMode car \
   -previewTo "25.0059187,121.5342142,水源快速道路南向福和橋前" \
   -routeLineStyle whiteCasing -mapEmphasis muted -routeComparison preview
 wait_for_ui "map comparison ready mode=preview style=whiteCasing emphasis=muted legacy=true"
+sleep 6
 assert_running "路線描邊與淡化底圖備案"
 shot "ios15-14-route-whiteCasing-muted-fallback"
+
+xcrun simctl location "${UDID}" set 25.0300,121.5650
+launch_app -autoStartCruise NO -selectPlace "25.0478,121.5170,台北車站" \
+  -AppleLanguages "(zh-Hant-TW)" -AppleLocale zh_TW
+wait_for_ui "place selection ready legacy=true"
+sleep 6
+assert_running "地圖選點卡"
+shot "ios15-15-map-selected-place"
 
 xcrun simctl spawn "${UDID}" log show --last 20m --style compact \
   --predicate 'subsystem == "tw.speedcammap.app"' 2>/dev/null | grep -E "arguments|appeared|applied|opened|preview|typing|route plan|road_lines" | tail -60 || true

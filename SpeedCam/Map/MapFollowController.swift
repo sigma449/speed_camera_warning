@@ -123,6 +123,15 @@ final class MapFollowController: ObservableObject {
         move(to: .camera(center: cameraCenter, distance: distance, heading: heading, pitch: pitch), animated: false)
     }
 
+    func beginPlaceSelection() {
+        beginPreview()
+    }
+
+    func endPlaceSelection() {
+        autoRecenterSuspended = false
+        lastInteraction = Date()
+    }
+
     /// 預覽結束（開始導航或取消）：回到目前位置並恢復跟隨。
     func endPreview() {
         autoRecenterSuspended = false

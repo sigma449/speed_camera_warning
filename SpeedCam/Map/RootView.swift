@@ -45,12 +45,17 @@ struct RootView: View {
                                           onStart: { startPreviewedNavigation() },
                                           onCancel: { cancelPreview() })
                 } else {
-                    if let camera = selectedCamera {
+                    if let place = model.selectedMapPlace {
+                        MapPlaceCard(place: place, onStart: { model.previewSelectedMapPlace() },
+                                     onClose: { model.dismissMapPlace() })
+                    } else if let camera = selectedCamera {
                         CameraDetailCard(camera: camera) { selectedCameraID = nil }
                     }
-                    recenterRow
+                    if model.selectedMapPlace == nil { recenterRow }
                 }
-                BottomBar(showSearch: $showSearch, showSettings: $showSettings)
+                if model.selectedMapPlace == nil {
+                    BottomBar(showSearch: $showSearch, showSettings: $showSettings)
+                }
             }
             .padding(.horizontal, 12)
             .padding(.bottom, 8)
@@ -85,14 +90,19 @@ struct RootView: View {
             // 剛啟動時畫面還沒準備好，太早開 sheet 或改地圖範圍會被系統忽略，稍等一下再做（CI 截圖用的啟動參數）。
             guard model.initialSearchQuery != nil || model.initialMapRegion != nil
                     || model.initialPreviewTarget != nil || model.initialShowSettings
-                    || model.searchTypingTest != nil else { return }
+                    || model.initialSelectedPlace != nil || model.searchTypingTest != nil else { return }
             try? await Task.sleep(nanoseconds: 1_200_000_000)
+            guard !Task.isCancelled else { return }
             if model.initialShowSettings {
                 showSettings = true
             }
             if let target = model.initialPreviewTarget {
                 model.beginPreview(to: MapItems.item(name: target.name, coordinate: target.coordinate), subtitle: "")
                 uiLog.notice("started navigation preview")
+            } else if let place = model.initialSelectedPlace {
+                model.selectMapPlace(at: place.coordinate, name: place.name)
+                follow.show(region: MKCoordinateRegion(center: place.coordinate,
+                                                        latitudinalMeters: 900, longitudinalMeters: 900))
             }
             if let region = model.initialMapRegion {
                 follow.show(region: region)
@@ -107,7 +117,22 @@ struct RootView: View {
             if let fix { follow.handle(fix) }
         }
         .onChange(of: model.preview?.key) { _ in
+            if model.preview != nil { selectedCameraID = nil }
             movePreviewCamera()
+        }
+        .onChange(of: selectedCameraID) { id in
+            if id != nil { model.dismissMapPlace() }
+        }
+        .onChange(of: model.selectedMapPlace?.id) { id in
+            if id != nil {
+                selectedCameraID = nil
+                follow.beginPlaceSelection()
+                let legacy: Bool
+                if #available(iOS 17, *), !LegacySupport.forced { legacy = false } else { legacy = true }
+                uiLog.notice("place selection ready legacy=\(legacy, privacy: .public)")
+            } else if model.preview == nil {
+                follow.endPlaceSelection()
+            }
         }
         .onChange(of: model.routeProgress != nil) { hasProgress in
             if hasProgress, model.mapAppearance.comparison == .navigation3D, let route = model.route {
@@ -261,10 +286,14 @@ struct RootView: View {
                       selectedCameraID: $selectedCameraID,
                       routeLine: legacyRouteLine,
                       appearance: model.mapAppearance,
+                      canSelectPlace: model.canSelectMapPlace,
                       pin: legacyPin,
                       sections: model.sectionOverlays,
                       demoPosition: model.demoMode ? model.lastFix?.point.coordinate : nil,
                       request: follow.legacyRequest,
+                      onSelectPlace: { coordinate, name in
+                          model.selectMapPlace(at: coordinate, name: name)
+                      },
                       onRegionChange: { region in
                           visibleRegion = region
                           model.requestRoadSnapping(near: GeoPoint(lat: region.center.latitude,
@@ -290,6 +319,10 @@ struct RootView: View {
             return LegacyMapView.Pin(title: p.name, latitude: p.coordinate.latitude,
                                      longitude: p.coordinate.longitude, usesFlag: false)
         }
+        if let place = model.selectedMapPlace {
+            return LegacyMapView.Pin(title: place.name, latitude: place.point.lat,
+                                     longitude: place.point.lon, usesFlag: false)
+        }
         guard let destination = model.destinationCoordinate else { return nil }
         return LegacyMapView.Pin(title: model.destinationName ?? "目的地", latitude: destination.latitude,
                                  longitude: destination.longitude, usesFlag: true)
@@ -297,86 +330,15 @@ struct RootView: View {
 
     @available(iOS 17, *)
     private var modernMap: some View {
-        Map(position: $follow.position, selection: $selectedCameraID) {
-            UserAnnotation()
-
-            ForEach(visibleCameras) { camera in
-                Annotation(camera.type.displayName, coordinate: camera.coordinate, anchor: .center) {
-                    CameraMarker(camera: camera,
-                                 highlighted: model.cameraTarget?.camera.id == camera.id)
-                }
-                .annotationTitles(.hidden)
-                .tag(camera.id)
-            }
-
-            // 新舊地圖一致：區間虛線在導航路線及描邊下方。
-            ForEach(model.sectionOverlays) { section in
-                MapPolyline(coordinates: section.displayPath.map(\.coordinate))
-                    .stroke(Color.orange.opacity(0.75),
-                            style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round, dash: [10, 7]))
-            }
-
-            if let route = model.route {
-                if let color = model.mapAppearance.routeLineStyle.casingColor {
-                    MapPolyline(route.polyline)
-                        .stroke(Color(color), style: StrokeStyle(lineWidth: RouteLineStyle.lineWidth(isPreview: false) + 6,
-                                                                 lineCap: .round, lineJoin: .round))
-                }
-                MapPolyline(route.polyline)
-                    .stroke(.blue, lineWidth: RouteLineStyle.lineWidth(isPreview: false))
-            }
-
-            // 導航預覽：目的地和預覽路線
-            if let p = model.preview {
-                if p.stage == .route, let route = p.route {
-                    if let color = model.mapAppearance.routeLineStyle.casingColor {
-                        MapPolyline(route.polyline)
-                            .stroke(Color(color), style: StrokeStyle(lineWidth: RouteLineStyle.lineWidth(isPreview: true) + 6,
-                                                                     lineCap: .round, lineJoin: .round))
-                    }
-                    MapPolyline(route.polyline)
-                        .stroke(.blue.opacity(0.85), style: StrokeStyle(lineWidth: RouteLineStyle.lineWidth(isPreview: true),
-                                                                       lineCap: .round, lineJoin: .round))
-                }
-                Marker(p.name, coordinate: p.coordinate)
-                    .tint(.red)
-            } else if let destination = model.destinationCoordinate {
-                Marker(model.destinationName ?? "目的地", systemImage: "flag.checkered", coordinate: destination)
-                    .tint(.red)
-            }
-
-            // 展示模式沒有真實定位，用一台車的圖示代表目前位置。
-            if model.demoMode, let fix = model.lastFix {
-                Annotation("目前位置", coordinate: fix.point.coordinate, anchor: .center) {
-                    Image(systemName: "location.north.circle.fill")
-                        .font(.system(size: 34))
-                        .foregroundStyle(.white, .blue)
-                }
-                .annotationTitles(.hidden)
-            }
-        }
-        .mapStyle(.standard(emphasis: model.mapAppearance.emphasis == .muted ? .muted : .automatic,
-                            pointsOfInterest: .excludingAll, showsTraffic: true))
-        .mapControls {
-            // 系統的「回到目前位置」按鈕不會調整縮放，改用右下角自己的按鈕
-            MapCompass()
-            MapScaleView()
-        }
-        .onMapCameraChange(frequency: .onEnd) { context in
-            visibleRegion = context.region
-            model.requestRoadSnapping(near: GeoPoint(lat: context.region.center.latitude,
-                                                     lon: context.region.center.longitude))
-        }
-        .onMapCameraChange(frequency: .continuous) { _ in
-            // 使用者還在拖曳或縮放：持續更新「最後一次碰地圖」的時間
-            if follow.position.positionedByUser { follow.userMovedMap() }
-        }
-        .onChange(of: follow.position.positionedByUser) { _, byUser in
-            if byUser {
-                follow.userMovedMap()
-                if model.preview != nil { previewPaused = true }
-            }
-        }
+        ModernMapView(model: model, follow: follow, cameras: visibleCameras, selectedCameraID: $selectedCameraID,
+                      onRegionChange: { region in
+                          visibleRegion = region
+                          model.requestRoadSnapping(near: GeoPoint(lat: region.center.latitude, lon: region.center.longitude))
+                      },
+                      onUserInteraction: {
+                          follow.userMovedMap()
+                          if model.preview != nil { previewPaused = true }
+                      })
     }
 }
 

@@ -30,6 +30,8 @@ private struct GalleryRoot: View {
     var body: some View {
         if ProcessInfo.processInfo.arguments.contains("-galleryStale") {
             StaleActivityGalleryView()
+        } else if ProcessInfo.processInfo.arguments.contains("-galleryPlaces") {
+            MapPlaceGalleryView()
         } else if ProcessInfo.processInfo.arguments.contains("-galleryBanners") {
             BannerGalleryView()
         } else if ProcessInfo.processInfo.arguments.contains("-galleryLock") {
