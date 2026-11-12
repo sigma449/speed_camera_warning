@@ -134,5 +134,26 @@
     "to": { "name": "該照相點後約600m", "lat": 24.9519177, "lon": 121.5499644 },
     "vehicleMode": "motorcycleRedYellow",
     "speedKmh": 60
+  },
+  {
+    "name": "補測01 不中斷去程 長春路→北宜路（第2、3、5項；須核對水源及地下道線形）",
+    "from": { "name": "長春路建國附近測試點", "lat": 25.0547831, "lon": 121.5350273 },
+    "to": { "name": "北宜路2段82巷附近測試點", "lat": 24.953354, "lon": 121.553307 },
+    "vehicleMode": "motorcycleRedYellow",
+    "speedKmh": 60
+  },
+  {
+    "name": "補測02 不中斷回程 北宜路→長春路（第10項；須核對水源北向入口）",
+    "from": { "name": "北宜路2段82巷附近測試點", "lat": 24.953354, "lon": 121.553307 },
+    "to": { "name": "長春路建國附近測試點", "lat": 25.0547831, "lon": 121.5350273 },
+    "vehicleMode": "motorcycleRedYellow",
+    "speedKmh": 60
+  },
+  {
+    "name": "補測03 環河路地下道北口前→OSM南口（第5項；中間車道及分層仍須核實）",
+    "from": { "name": "地下道北口前（本次Apple動作點）", "lat": 24.96351, "lon": 121.53681 },
+    "to": { "name": "OSM環河地下道南口（非現場指認）", "lat": 24.9615023, "lon": 121.5379752 },
+    "vehicleMode": "motorcycleRedYellow",
+    "speedKmh": 60
   }
 ]
