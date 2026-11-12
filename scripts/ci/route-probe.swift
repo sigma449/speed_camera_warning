@@ -235,17 +235,9 @@ struct ReplaySpeech {
 }
 
 func reportHintChecks(_ checks: [ReplayHintCheck], leg: String, second: Double,
-                      polyline: [GeoPoint], cumulative: [Double], original: [RouteStepInfo],
-                      appleSteps: [MKRoute.Step], hints: [RouteHint], matches: [RouteHintMatch],
+                      polyline: [GeoPoint], cumulative: [Double], stepRows: [[String: Any]],
+                      hints: [RouteHint], matches: [RouteHintMatch],
                       frames: [ReplayNavFrame], speeches: [ReplaySpeech]) {
-    var stepEnd = 0.0
-    let scale = (cumulative.last ?? 0) / max(1, original.reduce(0) { $0 + $1.distance })
-    let stepRows = appleSteps.enumerated().map { index, step -> [String: Any] in
-        let start = stepEnd
-        stepEnd += original[index].distance * scale
-        return ["index": index, "start": start, "end": stepEnd, "text": step.instructions,
-                "corrected": original[index].instruction, "shortText": ManeuverText.short(original[index].instruction)]
-    }
     for check in checks {
         var nearest = (along: 0.0, distance: Double.greatestFiniteMagnitude)
         for i in 0..<(polyline.count - 1) {
@@ -625,12 +617,18 @@ func runReplay(legs: [ReplayLeg], databasePath: String, rules: RouteRules?,
         let hintMatches = RouteHintMatcher.matches(hints, polyline: polyline)
         let stepInfos = RouteHintMatcher.steps(original, matches: hintMatches, totalDistance: total)
         var acc = 0.0
+        var stepRows: [[String: Any]] = []
+        let stepScale = total / max(1, original.reduce(0) { $0 + $1.distance })
         for (i, step) in route.steps.enumerated() {
             let points = MapItems.coordinates(of: step.polyline)
             var length = 0.0
             for (a, b) in zip(points, points.dropFirst()) { length += GeoMath.distance(a, b) }
+            let startAlong = acc * stepScale
             acc += length
             let instruction = original[i].instruction
+            stepRows.append(["index": i, "start": startAlong, "end": acc * stepScale,
+                             "text": step.instructions, "corrected": instruction,
+                             "shortText": ManeuverText.short(instruction)])
             let end = points.last ?? GeoPoint(lat: 0, lon: 0)
             print(String(format: "  步驟%2d Apple %6.0f m／折線 %6.0f m，累計 %7.0f m，終點 %.5f,%.5f  ", i, step.distance, length, acc, end.lat, end.lon)
                   + step.instructions + "；校正：" + instruction + "；短句：" + ManeuverText.short(instruction)
@@ -655,7 +653,20 @@ func runReplay(legs: [ReplayLeg], databasePath: String, rules: RouteRules?,
             "fromName": from.name, "fromQuery": from.query ?? "", "fromLat": from.lat, "fromLon": from.lon,
             "toName": to.name, "toQuery": to.query ?? "", "toLat": to.lat, "toLon": to.lon,
             "hintCheckIDs": (leg.hintChecks ?? []).map(\.id),
+            "turnaroundAtMeters": leg.turnaroundAtMeters ?? 0, "waitAtTurnaroundSeconds": waitSeconds,
+            "pauseAtMeters": leg.pauseAtMeters ?? 0, "pauseSeconds": pauseSeconds,
         ])
+        let chunkSize = 400
+        replayRecord("route_geometry", leg: leg.name, second: 0, point: polyline[0], fields: [
+            "pointCount": polyline.count, "chunkCount": (polyline.count + chunkSize - 1) / chunkSize,
+            "appleSteps": stepRows,
+        ])
+        // 完整折線分段印出，避免長路線把單行 log 撐得過大。
+        for (index, offset) in stride(from: 0, to: polyline.count, by: chunkSize).enumerated() {
+            replayRecord("route_geometry_part", leg: leg.name, second: 0, point: polyline[offset], fields: [
+                "index": index, "points": polyline[offset..<min(offset + chunkSize, polyline.count)].map { [$0.lat, $0.lon] },
+            ])
+        }
 
         print(String(format: "  模擬車速 %.0f km/h", speedKmh))
         if roundTrip {
@@ -740,7 +751,9 @@ func runReplay(legs: [ReplayLeg], databasePath: String, rules: RouteRules?,
                           + progress.maneuverText + "；原文：" + displayed)
                     replayRecord("nav_display", leg: leg.name, second: second, point: point,
                                  fields: ["text": progress.maneuverText, "instruction": displayed,
-                                          "hintID": progress.hintID ?? "", "along": position])
+                                          "hintID": progress.hintID ?? "", "along": position,
+                                          "stepIndex": progress.nextStepIndex,
+                                          "maneuverAlong": position + progress.distanceToNextManeuver])
                 }
                 for event in navResult.events {
                     if case let .announce(index, text, distance) = event {
@@ -751,7 +764,7 @@ func runReplay(legs: [ReplayLeg], databasePath: String, rules: RouteRules?,
                         print(stamp + "語音：" + spoken)
                         replayRecord("nav_speech", leg: leg.name, second: second, point: point,
                                      fields: ["text": spoken, "hintID": hintID ?? "", "along": position,
-                                              "announcement": distance ?? -1])
+                                              "announcement": distance ?? -1, "stepIndex": index])
                     }
                 }
             }
@@ -778,7 +791,7 @@ func runReplay(legs: [ReplayLeg], databasePath: String, rules: RouteRules?,
         }
         succeeded += 1
         reportHintChecks(leg.hintChecks ?? [], leg: leg.name, second: second, polyline: polyline,
-                         cumulative: cumulative, original: original, appleSteps: route.steps, hints: hints,
+                         cumulative: cumulative, stepRows: stepRows, hints: hints,
                          matches: hintMatches, frames: navFrames, speeches: speechLog)
         print("  案例結束：模擬 \(Int(second)) 秒，區間仍在追蹤=\(sections.isActive)")
         replayRecord("case_end", leg: leg.name, second: second, point: roundTrip ? polyline[0] : polyline.last!,

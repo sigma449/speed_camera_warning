@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""檢查 REPLAY1108 log；六點須有實際覆蓋，整線未經過的點另列資訊。"""
+"""依完整路線區分未經過與漏事件；每個必驗項目仍須有實際覆蓋。"""
 from __future__ import annotations
 
 import argparse
@@ -14,12 +14,33 @@ BEIYI_CASES = {f"北宜{number}{direction}": f"beiyi-{number}-{suffix}"
                for number in range(1, 5) for direction, suffix in (("去程", "f"), ("回程", "r"))}
 REQUIRED_CASES = ("去程01", "去程02", "去程03", "去程04", *BEIYI_CASES,
                   "回程01", "回程02", "回程03", "回程04", "折返01", "折返02",
-                  "語音01", "歸零01", "補測01", "補測02", "補測03", "補測04")
+                  "語音01", "歸零01", "補測01", "補測02", "補測03", "補測04",
+                  "補測05", "補測06", "補測07", "補測08", "補測09")
 # 126156 方向別官方門架；不以 log 自報的 gateLat/gateLon 當作正確位置。
 GATES = {
     "beiyi-2-f": ((24.9504174, 121.6477995), (24.9429879, 121.6708659), 5835.3),
     "beiyi-2-r": ((24.9430715, 121.6708954), (24.9503516, 121.6478697), 5830.5),
 }
+SECTION_POINTS = {
+    "beiyi-1-f": ((24.953133, 121.5981016), (24.9570178, 121.6236044)),
+    "beiyi-1-r": ((24.9569297, 121.6236371), (24.9531792, 121.5981891)),
+    **{sid: gates[:2] for sid, gates in GATES.items()},
+    "beiyi-3-f": ((24.938322, 121.6772214), (24.9359628, 121.7036968)),
+    "beiyi-3-r": ((24.9360445, 121.7035178), (24.9384678, 121.6770967)),
+    "beiyi-4-f": ((24.866288, 121.774148), (24.850314, 121.795001)),
+    "beiyi-4-r": ((24.850314, 121.795001), (24.866288, 121.774148)),
+    "ntpc-huanhe-f": ((24.9718199, 121.5292394), (24.9641247, 121.5367909)),
+    "ntpc-huanhe-r": ((24.9639108, 121.5369783), (24.9712441, 121.5309406)),
+}
+SECTION_CASES = BEIYI_CASES | {
+    "去程04": "ntpc-huanhe-f", "回程02": "ntpc-huanhe-r",
+    "補測06": "ntpc-huanhe-f", "補測07": "ntpc-huanhe-r",
+}
+CITY_CAMERA = (25.052633, 121.53678)
+NEAR_CAMERA = (24.95302, 121.544846)
+SHUIYUAN_ENTRY = (25.02047, 121.52266)
+SHUIYUAN_CONFIRMATION = (25.01833, 121.52381)
+INSTRUCTION_CASES = ("去程02", "補測01", "補測05")
 SECTION_SPEED_EVENTS = {"section_overspeed_started", "section_beep"}
 HINT_POINTS = {
     "jianguo-descent": ((25.025132, 121.537556), "jianguo-shida-descent", "下高架 往師大路", "沿建國快速道路下高架，往師大路"),
@@ -37,6 +58,14 @@ FIXED_HINT_CASES = {
     "補測04": ("jianguo-descent", "shida-underpass"),
 }
 HINT_CASES = CONTINUOUS_HINT_CASES | FIXED_HINT_CASES
+# 以獨立的有序路形證據判斷分支，不能拿核心 matched=false 當成沒經過。
+HINT_BRANCHES = {
+    "jianguo-shida-descent": ((25.025132, 121.537556), (25.0224723, 121.535033), 181.7, 15),
+    "shida-underpass": ((25.021279, 121.530923), (25.020242, 121.5298171), 227.2, 15),
+    "shuiyuan-south-huanhe": ((24.991587, 121.533042), (24.9893841, 121.5312799), 217.1, 15),
+    "huanhe-underpass": ((24.963436, 121.536824), (24.9614239, 121.5373825), 171.4, 12),
+    "shuiyuan-north-entry": ((24.991771, 121.533305), (24.9923184, 121.5336896), 32.5, 15),
+}
 ADDRESS_QUERY = "台北市中山區長春路128號"
 STORE_QUERY = "坪林 7-ELEVEN"
 
@@ -50,6 +79,59 @@ def distance(a: tuple, b: tuple) -> float:
     dlat, dlon = lat2 - lat1, math.radians(b[1] - a[1])
     h = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
     return 2 * 6371008.8 * math.asin(min(1, math.sqrt(h)))
+
+
+def bearing(a, b):
+    a_lat, b_lat = math.radians(a[0]), math.radians(b[0])
+    dlon = math.radians(b[1] - a[1])
+    return math.degrees(math.atan2(math.sin(dlon) * math.cos(b_lat),
+                                  math.cos(a_lat) * math.sin(b_lat)
+                                  - math.sin(a_lat) * math.cos(b_lat) * math.cos(dlon))) % 360
+
+
+class RouteGeometry:
+    def __init__(self, points):
+        self.points = points
+        self.segments = []
+        self.length = 0.0
+        for a, b in zip(points, points[1:]):
+            length = distance(a, b)
+            if length > 0:
+                self.segments.append((a, b, self.length, length, bearing(a, b)))
+                self.length += length
+
+    def projections(self, point, heading=None):
+        result = []
+        for a, b, start, length, course in self.segments:
+            if heading is not None and abs((course - heading + 180) % 360 - 180) > 45:
+                continue
+            scale = 6371008.8 * math.pi / 180
+            dx, dy = (b[1] - a[1]) * scale * math.cos(math.radians(a[0])), (b[0] - a[0]) * scale
+            px, py = (point[1] - a[1]) * scale * math.cos(math.radians(a[0])), (point[0] - a[0]) * scale
+            ratio = max(0, min(1, (px * dx + py * dy) / (dx * dx + dy * dy)))
+            result.append((start + ratio * length, math.hypot(px - ratio * dx, py - ratio * dy)))
+        return result
+
+    def nearest(self, point):
+        return min(self.projections(point), key=lambda projection: projection[1])
+
+    def passes(self, point, heading, *, before=0, after=60, max_before=math.inf):
+        return any(lateral <= 30 and before <= along <= min(max_before, self.length - after)
+                   for along, lateral in self.projections(point, heading))
+
+    def follows(self, entry, confirmation, *, radius=30, heading=None,
+                before=0, after=0, max_span=math.inf, unique=False):
+        entries = [(along, lateral) for along, lateral in self.projections(entry, heading)
+                   if lateral <= radius and along >= before]
+        exits = [(along, lateral) for along, lateral in self.projections(confirmation)
+                 if lateral <= radius and along <= self.length - after]
+        pairs = [(a, b, da + db) for a, da in entries for b, db in exits if 20 <= b - a <= max_span]
+        if not pairs:
+            return None
+        best = min(pairs, key=lambda pair: pair[2])
+        if unique and any(abs(a - best[0]) > radius * 2 for a, _, _ in pairs):
+            return None
+        return best[:2]
 
 
 def spoken_distance(meters: float) -> str:
@@ -122,6 +204,62 @@ def check_records(records: list[dict], *, information: list[str] | None = None) 
     def events(prefix, key, sid=None):
         return [r for r in selected[prefix] if r["event"] == key and (sid is None or r.get("id") == sid)]
 
+    geometries, apple_steps = {}, {}
+    for prefix in REQUIRED_CASES:
+        reports = events(prefix, "route_geometry")
+        require(len(reports) == 1, f"{prefix} 缺少唯一完整路線／Apple 原文證據，無法區分沒經過與漏事件")
+        if len(reports) != 1:
+            continue
+        header = reports[0]
+        parts = events(prefix, "route_geometry_part")
+        count, chunks = header.get("pointCount"), header.get("chunkCount")
+        valid_parts = all(isinstance(value, int) and not isinstance(value, bool) for value in (count, chunks))
+        valid_parts = valid_parts and count >= 2 and 1 <= chunks <= count and len(parts) == chunks and all(
+            isinstance(part.get("index"), int) and not isinstance(part["index"], bool)
+            and isinstance(part.get("points"), list) and bool(part["points"]) for part in parts)
+        valid_parts = valid_parts and sorted(part["index"] for part in parts) == list(range(chunks))
+        require(valid_parts, f"{prefix} 完整路線分段缺失、重複或索引無效")
+        if not valid_parts:
+            continue
+        points = [point for part in sorted(parts, key=lambda part: part["index"]) for point in part["points"]]
+        valid = len(points) == count and all(
+            isinstance(point, list) and len(point) == 2 and all(is_number(v) for v in point)
+            and -90 <= point[0] <= 90 and -180 <= point[1] <= 180 for point in points)
+        require(valid, f"{prefix} 完整路線座標無效")
+        if not valid:
+            continue
+        geometry = RouteGeometry(points)
+        require(geometry.length > 0, f"{prefix} 完整路線沒有長度")
+        if geometry.length <= 0:
+            continue
+        geometries[prefix] = geometry
+        steps = header.get("appleSteps")
+        valid_steps = isinstance(steps, list) and bool(steps) and all(
+            isinstance(step, dict) and step.get("index") == index
+            and all(isinstance(step.get(key), str) for key in ("text", "corrected", "shortText"))
+            and all(is_number(step.get(key)) for key in ("start", "end"))
+            and 0 <= step["start"] <= step["end"] <= geometry.length + 1
+            for index, step in enumerate(steps))
+        require(valid_steps, f"{prefix} 缺少有效 Apple 原文、校正與動作點")
+        if valid_steps:
+            require(abs(steps[0]["start"]) <= 1 and abs(steps[-1]["end"] - geometry.length) <= 1
+                    and all(abs(a["end"] - b["start"]) <= 1 for a, b in zip(steps, steps[1:])),
+                    f"{prefix} Apple 步驟位置與完整路線不連續")
+            apple_steps[prefix] = steps
+
+    required_coverage, covered_items = set(), set()
+
+    def expect_route(prefix, item, condition):
+        required_coverage.add(item)
+        if prefix not in geometries:
+            return False
+        if not condition:
+            if information is not None:
+                information.append(f"{prefix} 未經過「{item}」所需方向／完整判定範圍；仍須其他案例實際驗到")
+            return False
+        covered_items.add(item)
+        return True
+
     def sequence(prefix, sid, keys):
         found = [events(prefix, key, sid) for key in keys]
         for key, matches in zip(keys, found):
@@ -135,22 +273,35 @@ def check_records(records: list[dict], *, information: list[str] | None = None) 
             require("國道一號南向279公里" not in r.get("address", "")
                     and "國道1號南向279公里" not in r.get("address", "")
                     and r.get("id") != "8cb3e650d46a", "去程01 仍提醒錯位的國道一號南向279公里")
-    require(any(r["event"] == "camera_pre" for r in selected["去程01"])
-            and any(r["event"] == "camera_passed" for r in selected["去程01"]),
-            "去程01 真正的市區照相提醒消失，不能以關閉全部提醒修正國道誤報")
+    for prefix in ("去程01", "補測09"):
+        geometry = geometries.get(prefix)
+        if expect_route(prefix, "市區照相預告與通過",
+                        geometry is not None and geometry.passes(CITY_CAMERA, 180, before=150)):
+            require(bool(events(prefix, "camera_pre", "fdb06e9709c2"))
+                    and bool(events(prefix, "camera_passed", "fdb06e9709c2")),
+                    f"{prefix} 真正的市區照相提醒消失，不能以關閉全部提醒修正國道誤報")
 
-    for prefix, sid in (("去程04", "ntpc-huanhe-f"), ("回程02", "ntpc-huanhe-r")):
-        sequence(prefix, sid, ("section_approach", "section_entered", "section_completed"))
+    eligible_sections = set()
+    for prefix, sid in SECTION_CASES.items():
+        geometry = geometries.get(prefix)
+        is_huanhe = sid.startswith("ntpc-huanhe-")
+        if expect_route(prefix, f"{sid} 完整生命週期", geometry is not None and geometry.follows(
+                *SECTION_POINTS[sid], radius=60, before=250 if is_huanhe else 60, after=60) is not None):
+            eligible_sections.add((prefix, sid))
+            keys = ("section_approach", "section_entered", "section_completed") if is_huanhe else (
+                "section_entered", "section_completed")
+            sequence(prefix, sid, keys)
+        if not is_huanhe:
+            continue
         for r in selected[prefix]:
             if r["event"] in {"camera_pre", "camera_near"}:
                 address = r.get("address", "")
                 require(r.get("id") != "685b30491485" and not ("中央路" in address and "白馬寺" in address),
                         f"{prefix} IKEA 仍被當成固定照相提醒")
 
-    for prefix, sid in BEIYI_CASES.items():
-        sequence(prefix, sid, ("section_entered", "section_completed"))
-        require(not events(prefix, "section_aborted"), f"{prefix} 正向髮夾彎被誤判中途離開")
     for prefix, sid in (("北宜2去程", "beiyi-2-f"), ("北宜2回程", "beiyi-2-r")):
+        if (prefix, sid) not in eligible_sections:
+            continue
         gates = GATES[sid]
         for key, gate in (("section_entered", gates[0]), ("section_completed", gates[1])):
             for r in events(prefix, key, sid):
@@ -169,6 +320,16 @@ def check_records(records: list[dict], *, information: list[str] | None = None) 
             require(b["t"] - a["t"] >= 15, f"{prefix} 區間超速嗶聲間隔 {b['t'] - a['t']:g} 秒，小於 15 秒")
 
     for prefix in ("折返01", "折返02"):
+        geometry = geometries.get(prefix)
+        gates = geometry.follows(*SECTION_POINTS["beiyi-1-f"], radius=60, before=60) if geometry else None
+        start_rows = events(prefix, "case_start")
+        if start_rows:
+            require(start_rows[0].get("turnaroundAtMeters") == 1400
+                    and start_rows[0].get("waitAtTurnaroundSeconds") == (350 if prefix == "折返02" else 0),
+                    f"{prefix} 沒有保留原折返／停等情境")
+        if not expect_route(prefix, f"{prefix} 區間內折返",
+                            gates is not None and gates[0] + 60 < 1400 < gates[1]):
+            continue
         aborted = events(prefix, "section_aborted")
         require(len(aborted) == 1, f"{prefix} 預期一次中途離開，實際 {len(aborted)} 次")
         for r in events(prefix, "case_end"):
@@ -179,6 +340,16 @@ def check_records(records: list[dict], *, information: list[str] | None = None) 
                     f"{prefix} 中止後仍有舊區間超速事件")
 
     for prefix in ("折返02", "歸零01"):
+        geometry = geometries.get(prefix)
+        gates = geometry.follows(*SECTION_POINTS["beiyi-1-f"], radius=60, before=60, after=60) if geometry else None
+        if prefix == "歸零01":
+            start_rows = events(prefix, "case_start")
+            if start_rows:
+                require(start_rows[0].get("pauseAtMeters") == 1400 and start_rows[0].get("pauseSeconds") == 350,
+                        "歸零01 沒有保留原同向停等情境")
+        if not expect_route(prefix, f"{prefix} 歸零後狀態",
+                            gates is not None and gates[0] + 60 < 1400 < gates[1]):
+            continue
         zeros = events(prefix, "section_zero")
         require(len(zeros) == 1, f"{prefix} 未驗到唯一歸零事件")
         if len(zeros) == 1:
@@ -189,7 +360,8 @@ def check_records(records: list[dict], *, information: list[str] | None = None) 
             require(any(r["t"] >= zero["t"] and r.get("id") == zero.get("id")
                         and is_number(r.get("remaining")) and r["remaining"] <= 0
                         for r in events(prefix, "section_status")), f"{prefix} 沒有歸零後狀態，無法核對畫面")
-    sequence("歸零01", "beiyi-1-f", ("section_entered", "section_zero", "section_completed"))
+        if prefix == "歸零01":
+            sequence(prefix, "beiyi-1-f", ("section_entered", "section_zero", "section_completed"))
     require(not events("歸零01", "section_aborted"), "歸零01 同向繼續卻中途離開，不能藉中止掩蓋歸零政策")
 
     for name, rows in groups.items():
@@ -222,24 +394,52 @@ def check_records(records: list[dict], *, information: list[str] | None = None) 
             for a, b in zip(times, times[1:]):
                 require(b - a >= 15, f"{name} 區間超速嗶聲間隔 {b-a:g} 秒，小於 15 秒")
 
-    first = events("語音01", "camera_near", "3de5c6fd4567")
-    require(bool(first), "語音01 沒有驗到北宜路1段246號的首次近距")
-    for r in first:
-        speeches = r.get("speeches")
-        require(r.get("afterPre") is False and isinstance(speeches, list) and bool(speeches)
-                and speeches[0] == "前方100公尺，測速照相，速限50", "語音01 首次近距不應改成短句")
-    near = events("去程04", "camera_near", "3de5c6fd4567")
-    require(any(r.get("afterPre") is True and r.get("overspeed") is True
-                and r.get("speeches") == ["100公尺，超速"] for r in near),
-            "去程04 未驗到已預告且持續超速的「100公尺，超速」")
+    geometry = geometries.get("語音01")
+    if expect_route("語音01", "首次近距完整語音", geometry is not None
+                    and geometry.passes(NEAR_CAMERA, 90, max_before=100)):
+        first = events("語音01", "camera_near", "3de5c6fd4567")
+        require(bool(first), "語音01 沒有驗到北宜路1段246號的首次近距")
+        for r in first:
+            speeches = r.get("speeches")
+            require(r.get("afterPre") is False and isinstance(speeches, list) and bool(speeches)
+                    and speeches[0] == "前方100公尺，測速照相，速限50", "語音01 首次近距不應改成短句")
+    for prefix in ("去程04", "補測08"):
+        geometry = geometries.get(prefix)
+        if expect_route(prefix, "已預告且持續超速近距短句", geometry is not None
+                        and geometry.passes(NEAR_CAMERA, 90, before=150)):
+            near = events(prefix, "camera_near", "3de5c6fd4567")
+            require(any(r.get("afterPre") is True and r.get("overspeed") is True
+                        and r.get("speeches") == ["100公尺，超速"] for r in near),
+                    f"{prefix} 未驗到已預告且持續超速的「100公尺，超速」")
 
-    require(any("左轉 上水源快速道路" in r.get("text", "") for r in events("去程02", "nav_display")),
-            "去程02 畫面沒有「左轉 上水源快速道路」")
-    require(any("左轉上水源快速道路" in r.get("text", "") for r in events("去程02", "nav_speech")),
-            "去程02 語音沒有「左轉上水源快速道路」")
-    require(not any("左轉上高速公路" in r.get("text", "").replace(" ", "")
-                    for r in selected["去程02"] if r["event"] in {"nav_display", "nav_speech"}),
-            "去程02 水源動作仍說「上高速公路」")
+    for prefix in INSTRUCTION_CASES:
+        geometry = geometries.get(prefix)
+        passage = geometry.follows(SHUIYUAN_ENTRY, SHUIYUAN_CONFIRMATION,
+                                   heading=250, max_span=650, unique=True) if geometry else None
+        if not expect_route(prefix, "水源南向入口路形", passage is not None):
+            continue
+        candidates = [step for step in apple_steps.get(prefix, [])
+                      if abs(step["end"] - passage[0]) <= 40 and "上高速公路" in step["text"]]
+        required_coverage.add("水源上高速公路原文校正")
+        if not candidates:
+            if information is not None:
+                information.append(f"{prefix} 經過水源入口，但 Apple 沒有提供「上高速公路」原文；不算校正驗收")
+            continue
+        covered_items.add("水源上高速公路原文校正")
+        if prefix == "補測05":
+            require(passage[0] >= 400, "補測05 匝道前不足約 500 m，未保留提前觀察範圍")
+        for step in candidates:
+            expected = step["text"].replace("上高速公路", "上水源快速道路")
+            require(step["corrected"] == expected, f"{prefix} 水源入口原文沒有正確校正")
+            displays = [r for r in events(prefix, "nav_display")
+                        if is_number(r.get("maneuverAlong")) and abs(r["maneuverAlong"] - step["end"]) <= 20]
+            expected_short = "左轉 上水源快速道路" if step["text"].startswith("左轉") else "上水源快速道路"
+            require(bool(displays) and all(expected_short in r.get("text", "") and r.get("instruction") == expected
+                                           for r in displays), f"{prefix} 畫面沒有正確的「{expected_short}」")
+            indices = {r["stepIndex"] for r in displays if isinstance(r.get("stepIndex"), int)}
+            spoken = [r for r in events(prefix, "nav_speech") if r.get("stepIndex") in indices]
+            require(bool(spoken) and all(r.get("text", "").endswith(expected) for r in spoken),
+                    f"{prefix} 語音沒有正確的「{expected}」")
 
     covered_points = set()
     for prefix, ids in HINT_CASES.items():
@@ -270,15 +470,29 @@ def check_records(records: list[dict], *, information: list[str] | None = None) 
             require(isinstance(r.get("displayAtPoint"), str) and bool(r["displayAtPoint"]),
                     f"{prefix} {r['id']} 缺少經過當時的下一步")
             coverage = r.get("coverage")
-            if prefix in CONTINUOUS_HINT_CASES and coverage in {"not_on_route", "different_branch"}:
-                require(is_number(route_distance) and (
-                    route_distance > 30 if coverage == "not_on_route" else
-                    route_distance <= 30 and r.get("matched") is False and r.get("triggered") is False),
-                    f"{prefix} {r['id']} 未涵蓋狀態與距離／分支證據不符")
+            geometry = geometries.get(prefix)
+            if geometry is None:
+                continue
+            actual_along, actual_distance = geometry.nearest(point)
+            require(is_number(route_distance) and abs(route_distance - actual_distance) <= 5
+                    and is_number(along) and abs(along - actual_along) <= 5,
+                    f"{prefix} {r['id']} 報告位置與完整路線證據不符")
+            entry, confirmation, heading, radius = HINT_BRANCHES[hint_id]
+            branch = geometry.follows(entry, confirmation, radius=radius, heading=heading,
+                                      max_span=max(100, distance(entry, confirmation) * 2 + radius * 2),
+                                      unique=True)
+            if actual_distance > 30 or branch is None:
+                expected_coverage = "not_on_route" if actual_distance > 30 else "different_branch"
+                require(coverage == expected_coverage and r.get("matched") is False and r.get("triggered") is False,
+                        f"{prefix} {r['id']} 未涵蓋狀態與距離／分支證據不符")
+                require(not any(event["event"] in {"nav_hint", "nav_speech"} and event.get("hintID") == hint_id
+                                for event in rows), f"{prefix} {r['id']} 未經過卻發出提示")
                 if information is not None:
                     offset = f"{route_distance:.1f} m" if is_number(route_distance) else repr(route_distance)
-                    information.append(f"{prefix} {r['id']} 未經過（{coverage}，最近 {offset}）；仍須其他案例涵蓋")
+                    information.append(f"{prefix} {r['id']} 未經過（{expected_coverage}，最近 {offset}）；仍須其他案例涵蓋")
                 continue
+            require(coverage not in {"not_on_route", "different_branch"},
+                    f"{prefix} {r['id']} 未涵蓋狀態與距離／分支證據不符；完整路線確實經過")
             if prefix in FIXED_HINT_CASES:
                 require(is_number(along) and along >= 500, f"{prefix} {r['id']} 定向案例起點距提示點不足 500 m")
             require(r.get("coverage") == "covered" and is_number(route_distance) and route_distance <= 30,
@@ -317,6 +531,8 @@ def check_records(records: list[dict], *, information: list[str] | None = None) 
 
     for key in HINT_POINTS:
         require(key in covered_points, f"提示點 {key} 所有案例都沒有通過實際覆蓋檢查")
+    for item in sorted(required_coverage):
+        require(item in covered_items, f"必驗項目「{item}」沒有任何案例實際涵蓋並驗到，不能宣稱通過")
 
     endpoints = []
     for prefix, expected in (("補測01", (ADDRESS_QUERY, STORE_QUERY)), ("補測02", (STORE_QUERY, ADDRESS_QUERY))):

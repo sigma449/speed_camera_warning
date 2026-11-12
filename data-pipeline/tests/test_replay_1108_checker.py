@@ -1,6 +1,7 @@
 import copy
 import importlib.util
 import json
+import math
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,63 @@ CHECKER = Path(__file__).resolve().parents[2] / "scripts" / "ci" / "check-replay
 spec = importlib.util.spec_from_file_location("check_replay_1108", CHECKER)
 checker = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(checker)
+
+
+def shift(point, heading, meters):
+    radians = math.radians(heading)
+    return [point[0] + math.cos(radians) * meters / 111195,
+            point[1] + math.sin(radians) * meters / (111195 * math.cos(math.radians(point[0])))]
+
+
+def extended(points, before=700, after=700):
+    return [shift(points[0], checker.bearing(*points[:2]) + 180, before),
+            *map(list, points), shift(points[-1], checker.bearing(*points[-2:]), after)]
+
+
+def hint_path(prefix, wrong_branch=False):
+    points, seen = [], set()
+    for key in checker.HINT_CASES[prefix]:
+        hint_id = checker.HINT_POINTS[key][1]
+        if hint_id in seen:
+            continue
+        seen.add(hint_id)
+        entry, confirmation, heading, _ = checker.HINT_BRANCHES[hint_id]
+        if wrong_branch:
+            confirmation = shift(entry, heading + 90, 500)
+        points += [shift(entry, heading + 180, 700), list(entry), list(confirmation),
+                   shift(confirmation, checker.bearing(entry, confirmation), 350)]
+    return points
+
+
+def case_path(prefix):
+    if prefix in checker.HINT_CASES:
+        return hint_path(prefix)
+    if prefix in ("去程02", "補測05"):
+        return [shift(checker.SHUIYUAN_ENTRY, 70, 650), list(checker.SHUIYUAN_ENTRY),
+                list(checker.SHUIYUAN_CONFIRMATION), shift(checker.SHUIYUAN_CONFIRMATION, 150, 500)]
+    if prefix in ("去程01", "補測09"):
+        return [shift(checker.CITY_CAMERA, 0, 500), list(checker.CITY_CAMERA), shift(checker.CITY_CAMERA, 180, 500)]
+    if prefix in ("語音01", "補測08"):
+        before = 80 if prefix == "語音01" else 300
+        return [shift(checker.NEAR_CAMERA, 270, before), list(checker.NEAR_CAMERA), shift(checker.NEAR_CAMERA, 90, 700)]
+    sid = checker.SECTION_CASES.get(prefix, "beiyi-1-f")
+    points = extended(checker.SECTION_POINTS[sid])
+    if prefix == "去程04":
+        points += case_path("補測08")
+    return points
+
+
+def apple_steps(points, *, highway=False):
+    geometry = checker.RouteGeometry(points)
+    if not highway:
+        return [dict(index=0, start=0, end=geometry.length, text="Apple 原文", corrected="Apple 原文", shortText="Apple 原文")]
+    end = geometry.nearest(checker.SHUIYUAN_ENTRY)[0]
+    return [
+        dict(index=0, start=0, end=0, text="", corrected="", shortText=""),
+        dict(index=1, start=0, end=end, text="左轉上高速公路，朝(永和)、景美前進",
+             corrected="左轉上水源快速道路，朝(永和)、景美前進", shortText="左轉 上水源快速道路"),
+        dict(index=2, start=end, end=geometry.length, text="抵達目的地", corrected="抵達目的地", shortText="抵達目的地"),
+    ]
 
 
 @pytest.fixture
@@ -26,21 +84,37 @@ def records():
             add(case, "section_completed", 100, id=sid)
 
     add("", "run_start", 0)
+    cases = {case["name"].split(" ", 1)[0]: case
+             for case in json.loads(CHECKER.with_name("route-replay-1108.json").read_text(encoding="utf-8"))}
     for prefix in checker.REQUIRED_CASES:
         case = prefix + " 檢查器單元測試"
-        add(case, "case_start", 0)
-        if prefix == "去程01":
-            add(case, "camera_pre", 10, id="city-camera")
-            add(case, "camera_passed", 30, id="city-camera")
-        elif prefix == "去程02":
-            add(case, "nav_display", 10, text="左轉 上水源快速道路")
-            add(case, "nav_speech", 20, text="300公尺後，左轉上水源快速道路，朝(永和)、景美前進")
-        elif prefix in ("去程04", "回程02"):
-            section(case, "ntpc-huanhe-f" if prefix == "去程04" else "ntpc-huanhe-r")
+        points = case_path(prefix)
+        geometry = checker.RouteGeometry(points)
+        add(case, "case_start", 0, lat=points[0][0], lon=points[0][1],
+            **{key: cases[prefix].get(key, 0) for key in (
+                "turnaroundAtMeters", "waitAtTurnaroundSeconds", "pauseAtMeters", "pauseSeconds")})
+        start = out[-1]
+        add(case, "route_geometry", 0, pointCount=len(points), chunkCount=1,
+            appleSteps=apple_steps(points, highway=prefix in ("去程02", "補測05")))
+        add(case, "route_geometry_part", 0, index=0, points=points)
+        if prefix in ("去程01", "補測09"):
+            add(case, "camera_pre", 10, id="fdb06e9709c2")
+            add(case, "camera_passed", 30, id="fdb06e9709c2")
+        elif prefix in ("去程02", "補測05"):
+            along = geometry.nearest(checker.SHUIYUAN_ENTRY)[0]
+            add(case, "nav_display", 10, text="左轉 上水源快速道路", instruction="左轉上水源快速道路，朝(永和)、景美前進",
+                stepIndex=1, along=along - 300, maneuverAlong=along)
+            add(case, "nav_speech", 20, text="300公尺後，左轉上水源快速道路，朝(永和)、景美前進", stepIndex=1, along=along - 300)
+        elif prefix in ("去程04", "回程02", "補測06", "補測07"):
+            section(case, checker.SECTION_CASES[prefix])
             if prefix == "去程04":
                 add(case, "camera_pre", 110, id="3de5c6fd4567")
                 add(case, "camera_near", 130, id="3de5c6fd4567", afterPre=True, overspeed=True,
                     announcedDistance=100, speeches=["100公尺，超速"])
+        elif prefix == "補測08":
+            add(case, "camera_pre", 10, id="3de5c6fd4567")
+            add(case, "camera_near", 20, id="3de5c6fd4567", afterPre=True, overspeed=True,
+                announcedDistance=100, speeches=["100公尺，超速"])
         elif prefix in ("北宜2去程", "北宜2回程"):
             sid = "beiyi-2-f" if prefix == "北宜2去程" else "beiyi-2-r"
             a, b, length = checker.GATES[sid]
@@ -69,7 +143,6 @@ def records():
                 announcedDistance=100, speeches=["前方100公尺，測速照相，速限50", "您已超速，速限50"])
         elif prefix in checker.HINT_CASES:
             ids = checker.HINT_CASES[prefix]
-            start = out[-1]
             start["hintCheckIDs"] = ids
             if prefix in checker.CONTINUOUS_HINT_CASES:
                 address = dict(Name="長春路128號", Query=checker.ADDRESS_QUERY, Lat=25.05478, Lon=121.531)
@@ -81,7 +154,7 @@ def records():
                 _, hint_id, short, instruction = checker.HINT_POINTS[key]
                 if hint_id in spoken:
                     continue
-                along = (index + 1) * 1_000
+                along = geometry.nearest(checker.HINT_BRANCHES[hint_id][0])[0]
                 add(case, "nav_display", 10 + index * 30, text=short, hintID=hint_id, along=along - 500)
                 add(case, "nav_hint", 20 + index * 30, text=short, hintID=hint_id, along=along - 200, distance=200)
                 add(case, "nav_speech", 25 + index * 30, text=instruction, hintID=hint_id, along=along - 100, announcement=-1)
@@ -89,8 +162,9 @@ def records():
             for key in ids:
                 point, hint_id, short, instruction = checker.HINT_POINTS[key]
                 speech = spoken[hint_id]
+                along, lateral = geometry.nearest(point)
                 add(case, "hint_check", 490, id=key, lat=point[0], lon=point[1], hintID=hint_id,
-                    along=speech["along"] + 100, routeDistance=1, coverage="covered", matched=True, triggered=True,
+                    along=along, routeDistance=lateral, coverage="covered", matched=True, triggered=True,
                     shortText=short, instruction=instruction, displayAtPoint=short, displayedHint=short, liveActivityHint=short,
                     appleSteps=[dict(start=0, end=10_000, text="Apple 原文")],
                     speeches=[dict(t=speech["t"], text=instruction, source="navigation", hintID=hint_id)])
@@ -101,6 +175,11 @@ def records():
 
 def row(records, prefix, event, index=0):
     return [r for r in records if r["case"].startswith(prefix + " ") and r["event"] == event][index]
+
+
+def replace_route(records, prefix, points):
+    row(records, prefix, "route_geometry").update(pointCount=len(points), chunkCount=1, appleSteps=apple_steps(points))
+    row(records, prefix, "route_geometry_part").update(points=points)
 
 
 @pytest.mark.parametrize("prefix,ids", checker.FIXED_HINT_CASES.items())
@@ -218,12 +297,21 @@ def test_hint_reports_cannot_pass_missing_route_branch_or_evidence(records, chan
 
 
 def skip_hint(records, prefix, key, coverage="not_on_route"):
-    report = next(r for r in records if r["case"].startswith(prefix + " ")
-                  and r["event"] == "hint_check" and r["id"] == key)
-    report.update(coverage=coverage, routeDistance=5738.7 if coverage == "not_on_route" else 1,
-                  matched=False, triggered=False, displayedHint="", liveActivityHint="", speeches=[])
+    assert key in checker.HINT_CASES[prefix]
+    points = hint_path(prefix, wrong_branch=True) if coverage == "different_branch" else [
+        [point[0] + 0.1, point[1]] for point in case_path(prefix)]
+    replace_route(records, prefix, points)
+    geometry = checker.RouteGeometry(points)
+    for report in records:
+        if not (report["case"].startswith(prefix + " ") and report["event"] == "hint_check"):
+            continue
+        point = checker.HINT_POINTS[report["id"]][0]
+        along, lateral = geometry.nearest(point)
+        report.update(coverage="not_on_route" if lateral > 30 else "different_branch",
+                      along=along, routeDistance=lateral,
+                      matched=False, triggered=False, displayedHint="", liveActivityHint="", speeches=[])
     records[:] = [r for r in records if not (r["case"].startswith(prefix + " ")
-                  and r["event"] in {"nav_hint", "nav_speech"} and r.get("hintID") == report["hintID"])]
+                  and r["event"] in {"nav_hint", "nav_speech"} and r.get("hintID"))]
 
 
 @pytest.mark.parametrize("coverage", ["not_on_route", "different_branch"])
@@ -233,7 +321,7 @@ def test_continuous_routes_can_skip_points_only_with_other_case_coverage(records
             skip_hint(records, prefix, key, coverage)
     information = []
     assert checker.check_records(records, information=information) == []
-    assert len(information) == len(checker.HINT_POINTS)
+    assert sum(any(key in message for key in checker.HINT_POINTS) for message in information) == len(checker.HINT_POINTS)
     path = tmp_path / "alternate-route.log"
     path.write_text("\n".join(checker.MARKER + json.dumps(r) for r in records), encoding="utf-8")
     assert checker.main([str(path)]) == 0
@@ -248,6 +336,143 @@ def test_point_without_actual_coverage_in_any_case_fails(records, key):
         if key in ids:
             skip_hint(records, prefix, key)
     assert f"提示點 {key} 所有案例都沒有通過實際覆蓋檢查" in checker.check_records(records)
+
+
+@pytest.mark.parametrize("prefix", checker.FIXED_HINT_CASES)
+@pytest.mark.parametrize("coverage", ["not_on_route", "different_branch"])
+def test_fixed_route_variations_are_informational_when_another_route_really_covers_the_point(records, prefix, coverage):
+    skip_hint(records, prefix, checker.FIXED_HINT_CASES[prefix][0], coverage)
+    information = []
+    assert checker.check_records(records, information=information) == []
+    assert any(message.startswith(prefix + " ") and "未經過" in message for message in information)
+
+
+def alternate_route(records, prefix):
+    """r5 去程02 改走辛亥、復興、基隆，沒有師大路水源入口。"""
+    points = [[25.0262663, 121.5376475], [25.02249, 121.53784], [25.02123, 121.54330],
+              [25.01910, 121.54639], [25.01310, 121.53952], [25.0059115, 121.5341985]]
+    replace_route(records, prefix, points)
+    records[:] = [r for r in records if not (r["case"].startswith(prefix + " ")
+                  and r["event"] in {"nav_display", "nav_speech"})]
+
+
+def test_r5_alternate_route_is_not_reported_as_missing_shuiyuan_text(records):
+    alternate_route(records, "去程02")
+    information = []
+    assert checker.check_records(records, information=information) == []
+    assert any("去程02 未經過「水源南向入口路形」" in message for message in information)
+
+
+@pytest.mark.parametrize("kind", ["reverse", "parallel", "crossing"])
+def test_reverse_parallel_and_crossing_routes_do_not_count_as_the_shuiyuan_joining_branch(records, kind):
+    points = case_path("去程02")
+    if kind == "reverse":
+        points.reverse()
+    elif kind == "parallel":
+        points = [[lat, lon + 0.0008] for lat, lon in points]
+    else:
+        points = [shift(checker.SHUIYUAN_ENTRY, 70, 500), list(checker.SHUIYUAN_ENTRY),
+                  shift(checker.SHUIYUAN_ENTRY, 250, 500)]
+    replace_route(records, "去程02", points)
+    records[:] = [r for r in records if not (r["case"].startswith("去程02 ")
+                  and r["event"] in {"nav_display", "nav_speech"})]
+    information = []
+    assert checker.check_records(records, information=information) == []
+    assert any("去程02 未經過「水源南向入口路形」" in message for message in information)
+
+
+def test_every_route_missing_the_shuiyuan_entrance_still_fails_global_coverage(records):
+    for prefix in ("去程02", "補測05"):
+        alternate_route(records, prefix)
+    information = []
+    errors = checker.check_records(records, information=information)
+    assert any("必驗項目「水源南向入口路形」" in error for error in errors)
+    assert not any("畫面沒有" in error or "語音沒有" in error for error in errors)
+
+
+def test_passing_the_entrance_without_actual_events_cannot_be_hidden_by_another_passing_case(records):
+    records[:] = [r for r in records if not (r["case"].startswith("補測05 ")
+                  and r["event"] in {"nav_display", "nav_speech"})]
+    errors = checker.check_records(records)
+    assert any("補測05 畫面沒有" in error for error in errors)
+    assert any("補測05 語音沒有" in error for error in errors)
+
+
+def test_highway_correction_is_verified_against_apple_original_and_the_same_maneuver(records):
+    report = row(records, "補測05", "route_geometry")
+    report["appleSteps"][1]["corrected"] = "左轉上高速公路，朝(永和)、景美前進"
+    speech = row(records, "補測05", "nav_speech")
+    speech["stepIndex"] = 99
+    errors = checker.check_records(records)
+    assert any("原文沒有正確校正" in error for error in errors)
+    assert any("補測05 語音沒有" in error for error in errors)
+
+
+def test_another_highway_maneuver_is_allowed_to_keep_apple_text(records):
+    display = row(records, "去程02", "nav_display")
+    records.insert(records.index(display) + 1,
+                   dict(display, stepIndex=99, maneuverAlong=display["maneuverAlong"] + 600,
+                        text="左轉 上高速公路", instruction="左轉上高速公路，未知接續"))
+    assert checker.check_records(records) == []
+
+
+def test_already_named_apple_text_is_not_claimed_as_a_correction(records):
+    for prefix in ("去程02", "補測05"):
+        step = row(records, prefix, "route_geometry")["appleSteps"][1]
+        step["text"] = step["corrected"]
+    information = []
+    errors = checker.check_records(records, information=information)
+    assert any("必驗項目「水源上高速公路原文校正」" in error for error in errors)
+    assert any("Apple 沒有提供「上高速公路」原文" in message for message in information)
+
+
+@pytest.mark.parametrize("prefix,backup,event,reason", [
+    ("去程01", "補測09", "camera_pre", "真正的市區"),
+    ("去程04", "補測06", "section_entered", "section_entered"),
+    ("回程02", "補測07", "section_completed", "section_completed"),
+    ("去程04", "補測08", "camera_near", "持續超速"),
+])
+def test_other_dedicated_checks_do_not_excuse_missing_events_on_a_route_that_was_passed(records, prefix, backup, event, reason):
+    records.remove(row(records, prefix, event))
+    assert any(reason in error for error in checker.check_records(records))
+    assert row(records, backup, event)
+
+
+def test_a_long_section_detour_is_information_but_no_case_may_vacuously_skip_the_lifecycle(records):
+    for prefix in ("去程04", "補測06"):
+        points = [[point[0] + 0.1, point[1]] for point in case_path(prefix)]
+        replace_route(records, prefix, points)
+        records[:] = [r for r in records if not (r["case"].startswith(prefix + " ")
+                      and r["event"].startswith("section_"))]
+    information = []
+    errors = checker.check_records(records, information=information)
+    assert any("必驗項目「ntpc-huanhe-f 完整生命週期」" in error for error in errors)
+    assert any("去程04 未經過" in message for message in information)
+    assert not any("去程04 ntpc-huanhe-f 預期" in error for error in errors)
+
+
+@pytest.mark.parametrize("points", [[], [[25, 121], [float("nan"), 121]], [[25, 121], [25, 121]]])
+def test_missing_or_invalid_geometry_cannot_be_replaced_by_a_success_shaped_event_log(records, points):
+    report = row(records, "補測05", "route_geometry")
+    row(records, "補測05", "route_geometry_part")["points"] = points
+    assert any("完整路線" in error for error in checker.check_records(records))
+    records.remove(report)
+    assert any("缺少唯一完整路線" in error for error in checker.check_records(records))
+
+
+def test_complete_numbered_geometry_chunks_are_reassembled_and_missing_chunks_are_rejected(records):
+    header = row(records, "補測05", "route_geometry")
+    part = row(records, "補測05", "route_geometry_part")
+    points = part["points"]
+    header["chunkCount"] = 2
+    part["points"] = points[:2]
+    second = dict(part, index=1, points=points[2:])
+    records.insert(records.index(part) + 1, second)
+    assert checker.check_records(records) == []
+    second["index"] = 0
+    assert any("分段缺失、重複或索引無效" in error for error in checker.check_records(records))
+    records.remove(second)
+    assert any("分段缺失、重複或索引無效" in error for error in checker.check_records(records))
 
 
 def test_continuous_report_cannot_hide_missing_prompt_with_false_coverage_label(records):

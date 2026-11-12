@@ -195,5 +195,40 @@
       { "id": "jianguo-descent", "name": "建國高架切出點", "lat": 25.025132, "lon": 121.537556, "hintID": "jianguo-shida-descent" },
       { "id": "shida-underpass", "name": "地下道接師大路", "lat": 25.021279, "lon": 121.530923, "hintID": "shida-underpass" }
     ]
+  },
+  {
+    "name": "補測05 師大路水源匝道前約470m→水源南向主線（第2項定向校正）",
+    "from": { "name": "舊回放去程02 t103位置（距匝道約470m）", "lat": 25.019670007794623, "lon": 121.52640823711303 },
+    "to": { "name": "OSM水源快速道路南向主線", "lat": 25.01424, "lon": 121.52658 },
+    "vehicleMode": "motorcycleRedYellow",
+    "speedKmh": 60
+  },
+  {
+    "name": "補測06 IKEA南向門架前→白馬寺門架後（第4項定向生命週期）",
+    "from": { "name": "環河路IKEA北側南向", "lat": 24.973889, "lon": 121.5267354 },
+    "to": { "name": "白馬寺南向門架後環河路", "lat": 24.96330, "lon": 121.53687 },
+    "vehicleMode": "motorcycleRedYellow",
+    "speedKmh": 60
+  },
+  {
+    "name": "補測07 白馬寺北向門架前→IKEA門架後（第4項反向生命週期）",
+    "from": { "name": "r5回程02區間預告位置", "lat": 24.96186577726171, "lon": 121.53888782453282 },
+    "to": { "name": "環河路IKEA北側北向", "lat": 24.9740001, "lon": 121.5268401 },
+    "vehicleMode": "motorcycleRedYellow",
+    "speedKmh": 60
+  },
+  {
+    "name": "補測08 北宜路246號點前約286m→點後（第11項已預告近距）",
+    "from": { "name": "r5去程04該點預告位置", "lat": 24.95289052449536, "lon": 121.542015389191 },
+    "to": { "name": "該照相點後約600m", "lat": 24.9519177, "lon": 121.5499644 },
+    "vehicleMode": "motorcycleRedYellow",
+    "speedKmh": 60
+  },
+  {
+    "name": "補測09 長春路入口→建國高架照相點後（第1項市區提醒保留）",
+    "from": { "name": "長春路建國附近測試點", "lat": 25.0547831, "lon": 121.5350273 },
+    "to": { "name": "建國高架長春入口照相點後", "lat": 25.0509, "lon": 121.53677 },
+    "vehicleMode": "motorcycleRedYellow",
+    "speedKmh": 60
   }
 ]

@@ -204,7 +204,7 @@ App 的啟動參數（CI 截圖用）：
 ## 建置與測試
 
 - **Swift 核心邏輯**（206 個測試）：本機既有入口 `python -I -X utf8 build\swift_test.py`。Docker 必須同時唯讀掛載 `SpeedCam\Resources` 到 `/SpeedCam/Resources`，不能只掛套件而讓真實道路或人工提示測試跳過；第二階段 B 的 206 項全通過，0 跳過。CI／原生 Swift 用 `swift test --package-path Packages/SpeedCamCore`。
-- **Python 資料處理與 replay 檢查器**（290 個測試）：`python -m pytest -q data-pipeline`，第二階段 B 退回修正全通過，0 跳過。
+- **Python 資料處理與 replay 檢查器**（316 個測試）：`python -m pytest -q data-pipeline`，第二階段 B 第二次退回修正全通過，0 跳過。
 - **iOS App** 只能在 GitHub Actions 編譯：
   - `CI`（每次 push）：Swift 測試、pytest、iOS 模擬器建置和截圖。截圖會以 base64 印在 log 裡（`scripts/ci/print-screenshots.sh`），因為雲端 session 下載不了 artifact。
   - `Build IPA`（手動）：`gh workflow run build-ipa.yml --repo sigma449/speed_camera_warning --ref main`。會下載最新資料、編譯未簽署的 IPA（artifact `SpeedCam-ipa`，保留 30 天）。
@@ -213,9 +213,10 @@ App 的啟動參數（CI 截圖用）：
     `mode=plan` 看三種車種實際選到哪條路；`mode=compare` 比較不同避開設定 Apple 回傳的路線。`route-probe-elevated.json` 沿著各條快速道路和高架規劃，用來確認 Apple 算不算 highway。結果在 log 和 artifact `route-probe`（含步驟文字和路線座標）。
     **`mode=replay`（模擬開車）**：`-f mode=replay -f cases=scripts/ci/route-replay-1107.json`。沿著 Apple 的路線每秒給一筆定位，用真實的照相點和區間資料跑核心程式，印出每個語音和提醒的位置，並檢查每個動作點畫面顯示的對不對（log 最後有「相符 N／M」）。隧道裡不給定位，只呼叫 `tick`。改了提醒、區間或導航就跑一次；使用者回報實測問題時，把路線加進清單就能重現。
     `route-replay-tunnels.json` 專門測隧道（辛亥、文山、懷恩、萬里、過港、東澳、雪山），可以用 `tunnelSpeedFactor` 模擬隧道裡車速變慢，提醒後面會印實際離照相點多遠。隧道範圍在 `route-probe.swift` 的 `tunnels`。
-    **11/08 驗收**：`route-replay-1108.json` 現為 24 案，原 23 案完整保留，包含同核心折返、歸零後折返及同向歸零續行。第二階段 C 強制北宜 1～4 雙向完整進入／完成，所有非折返案例不准中途離開，並核對生命週期、全案例數、原有市區照相仍提醒、全案例節流等不變性；原北宜 2 四個官方門架獨立比對保留。不中斷案例仍以 MapKit 搜尋「台北市中山區長春路128號」及「坪林 7-ELEVEN」，快取同一對結果供回程反向，印實際門市／地址／座標；門市尚待驗收者核對，搜尋失敗直接失敗、不用搜尋中心冒充。
-    `REPLAY1108 ` 的 `hint_check` 逐一列六點的完整路線最近距離、Apple 前後步驟、當時下一步、前後 300 m 語音候選、補充短句及觸發情況；另比對實際 `nav_hint`／`nav_speech` 事件。補測 01／02 的整條路線若未經過或走不同分支，只列資訊、不算該點通過；每點仍必須在其他案例有完整實際證據。去程 03 固定核對水源南向出口＋秀朗橋分岔、回程 03 核對北向入口、補測 03 核對環河地下道，新增補測 04 從建國切出點前約 765 m 到師大地下道後，核對其餘兩點。這四個短段必須走對分支、提示點在起點後至少 500 m；原 30 m 路線距離、前後 300 m 語音／navHint、手機／Live Activity 短句及不重播檢查都保留，已經過卻漏提示仍失敗。
-    replay 的 JSONL 保存完整折線，不再只保留 50 m 取樣；下一輪將完整回放存為 `build\replay-1108-r5.log` 後，執行 `python -I -X utf8 scripts\ci\check-replay-1108.py build\replay-1108-r5.log`，支援 UTF-16 BOM。r4 已確認補測 03 的提前起點有涵蓋／觸發，但整線改走信義快速道路而漏過去程五點；新 24 案與新增報告尚待 macOS 重跑。r3／r4 舊 log 缺新案例或報告時仍明確失敗，不改寫它們，人工 log 單測不能充當驗收。**舊 `build\replay-1108-fixed.log` 另有北宜 4 回程誤中止，仍不能當成通過。**
+    **11/08 驗收**：`route-replay-1108.json` 現為 29 案，原 24 案及起終點完整保留。補測 05 從舊實際回放去程 02 的 t103 位置（沿路距水源匝道約 470 m）到水源南向主線，專測第 2 項；補測 06／07 分別隔離 IKEA 雙向生命週期，補測 08 隔離北宜路 246 號已預告近距，補測 09 隔離市區相機預告／通過，避免正向事件只能依賴長段當天的走法。北宜 1～4 雙向仍各自隔離，折返／歸零仍用原 1,400 m／350 秒情境。所有非折返案例不准中途離開、生命週期、全案例數、全案例節流、北宜 2 四個官方門架獨立比對等不變性保留。不中斷補測 01／02 仍搜尋「台北市中山區長春路128號」及「坪林 7-ELEVEN」，快取同一對結果反向；搜尋失敗直接失敗、不用搜尋中心冒充。
+    `REPLAY1108 ` 新增每案唯一 `route_geometry`（點數、分段數、Apple 原文／校正及動作點）與有編號的 `route_geometry_part`（每段最多 400 點），完整折線亦照常寫入 JSONL。檢查器獨立投影，核對有序門架、相機行向、提示點與後續分支，不拿核心 `matched=false` 自證沒經過。所有長短案例都可將確實未經過／不同分支列資訊；經過卻缺事件、文字、語音或 navHint 仍失敗，每個必驗項目與六點均須至少一案實際驗到，缺全域覆蓋仍失敗，不能全跳過。
+    `hint_check` 的六點最近距離、Apple 前後步驟、前後 300 m 實際語音／navHint、手機與 Live Activity 短句、不重播及短段起點至少 500 m 的要求保留。水源校正只比對同一個入口動作點的原文、畫面與語音，不再禁止整案其他道路保留「上高速公路」；Apple 未提供該原文只列未驗到，不冒稱校正通過，仍須別案補足。
+    下一輪將新完整回放存為 `build\replay-1108-r6.log`，執行 `python -I -X utf8 scripts\ci\check-replay-1108.py build\replay-1108-r6.log`，支援 UTF-16 BOM。新 29 案及完整分段證據尚待 macOS 重跑；r5 缺新增五案與路線證據，檢查器明確拒絕，不改寫舊 log，人工 log 單測不能充當驗收。**舊 `build\replay-1108-fixed.log` 另有北宜 4 回程誤中止，仍不能當成通過。**
   - `iOS 15 實際執行`（手動，約 20 分鐘）：`gh workflow run ios15-test.yml --repo sigma449/speed_camera_warning --ref main`。從 Apple 官方 CDN 安裝 iOS 15.5 模擬器（不用登入），在 iPhone 7 模擬器上實際開啟 App 並截圖。改了舊系統的程式就跑一次。截圖一樣在 log 裡。
 - 用 `gh run watch <id> --exit-status` 等結果，`gh run view <id> --log` 讀 log。
 - 環境：runner `macos-26`、Xcode 26.6、App 最低 iOS 15.0、Widget 最低 iOS 26.0、`SWIFT_VERSION 5.0`、`SWIFT_STRICT_CONCURRENCY minimal`。
@@ -291,6 +292,16 @@ App 的啟動參數（CI 截圖用）：
 新舊地圖共用同一條線與固定 2D／55° 3D 鏡頭，兩邊皆有完整 3×2 對照；iOS 15 保留 muted 原底圖備案。
 取消路線簽章失敗條件，UI 狀態等待及讀取失敗改為警告，每張仍檢查 App 是否執行及圖片是否產生。
 本輪沒有 iOS SDK，不將靜態複查當成新版本編譯或截圖通過；只在本機分支提交，不 push、不觸發 workflow。
+
+**11/08 第二階段 B 第二次退回（路線感知驗收）**：r5 去程 02 改走辛亥路二段、復興南路、基隆路，
+沒有經過師大路水源南向匝道。整份 r5 log 的「上高速公路」原文為 **0 次**；建國等已具名指示的原文與校正相同，
+沒有其他泛稱可據以宣稱已校正或正確保留。新增補測 05 的起點取自已保存回放，終點及後續確認點取自既有 OSM 主線；
+另加四個市區／區間正向短段，原 24 案不刪改。檢查器依完整路形分辨沒經過與漏提示，所有短段也不再硬綁當天路線，
+但全域必驗項目、原文校正輸入、六個提示點與既有不變性不能缺。回歸涵蓋 r5 繞路、反向／平行／橫跨、
+已經過卻漏事件、核心假稱不同分支、其他道路保留高速原文、Apple 已具名不算校正、缺全域覆蓋及折線分段缺失。
+Swift **206**／Python **316** 全通過，均 0 跳過；Swift 改動已逐行檢查，沒有新增 iOS 15 不可用的 API。
+本輪未編譯 App／RouteProbe、未取得新截圖或 29 案 MapKit 結果；一般搜尋、真實導航預覽、選點反查、底圖與區間貼齊
+仍依賴 Apple，所有 replay 仍用 MapKit（補測 01／02 另有搜尋），不能把本機測試當成新 CI 或實機驗收通過。
 
 **11/08 第二階段 B 退回修正（編譯）**：完整搜尋 `build\ci-r4.log`、`build\ios15-r4.log` 的 `error:`／`warning:`，
 實際 Swift 診斷只有 ViewBuilder 內宣告型別及找不到 `StaleActivityGalleryView`，沒有其他實際 warning。
