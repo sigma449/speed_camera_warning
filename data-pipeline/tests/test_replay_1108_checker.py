@@ -301,10 +301,135 @@ def test_hotspot_spacing_is_traveled_distance_not_elapsed_time_or_straight_line(
     ("去程01", "臺9線22.5K(往新店)"), ("北宜1去程", "臺9線22.5K（往新店方向）"),
     ("補測01", "臺9線18.4K（往 新店）"), ("回程01", "臺9線18.4K(往宜蘭)"),
     ("北宜2回程", "臺9線27.6K(往坪林)"), ("補測02", "臺9線25.2K(往坪林方向)"),
+    ("折返01", "臺9線18.4K(往新店)"), ("折返02", "臺9線18.4K(往新店)"),
 ])
-def test_hotspot_wrong_direction_is_rejected_from_address_on_long_and_short_cases(records, prefix, address):
-    add_hotspot(records, prefix, 5, address=address)
-    assert any("反向" in error for error in checker.check_records(records))
+def test_hotspot_wrong_direction_is_rejected_from_road_evidence_on_long_and_short_cases(records, prefix, address):
+    a, _, _, _, course = checker.RouteGeometry(case_path(prefix)).segments[0]
+    point = shift(a, course, 50)
+    add_hotspot(records, prefix, 5, traveled=50, address=address, source="ntpc-mobile",
+                lat=point[0], lon=point[1])
+    directions = {("ntpc-mobile", checker.normalized_address(address)): ((course + 180) % 360, None)}
+    assert any("反向" in error for error in checker.check_records(records, hotspot_directions=directions))
+
+
+@pytest.mark.parametrize("prefix,address", [
+    ("去程01", "臺9線22.5K(往新店)"), ("補測01", "臺9線18.4K（往 新店）"),
+    ("回程01", "臺9線14.5K(往坪林)"), ("補測02", "臺9線25.2K(往宜蘭方向)"),
+])
+def test_same_direction_hotspot_is_not_rejected_by_case_name(records, prefix, address):
+    a, _, _, _, course = checker.RouteGeometry(case_path(prefix)).segments[0]
+    point = shift(a, course, 50)
+    add_hotspot(records, prefix, 5, traveled=50, address=address, source="ntpc-mobile",
+                lat=point[0], lon=point[1])
+    directions = {("ntpc-mobile", checker.normalized_address(address)): (course, None)}
+    assert checker.check_records(records, hotspot_directions=directions) == []
+
+
+@pytest.mark.parametrize("course,heading,accepted", [(0, 45, True), (0, 45.01, False),
+                                                   (350, 10, True), (350, 170, False)])
+def test_hotspot_direction_uses_45_degree_limit_and_wraps_north(records, course, heading, accepted):
+    points = [[25, 121], shift([25, 121], course, 400)]
+    replace_route(records, "回程01", points)
+    point = shift(points[0], course, 100)
+    target = add_hotspot(records, "回程01", 5, address="臺9線14.5K(往坪林)", source="ntpc-mobile",
+                         lat=point[0], lon=point[1])
+    directions = {("ntpc-mobile", checker.normalized_address(target["address"])): (heading, None)}
+    errors = checker.check_records(records, hotspot_directions=directions)
+    assert (errors == []) is accepted
+    if not accepted:
+        assert any("反向" in error and "超過 45°" in error for error in errors)
+
+
+@pytest.mark.parametrize("course,accepted", [(87.3, True), (267.3, True), (177.3, False)])
+def test_unresolved_destination_uses_only_known_road_axis(records, course, accepted):
+    points = [[25, 121], shift([25, 121], course, 400)]
+    replace_route(records, "回程01", points)
+    point = shift(points[0], course, 100)
+    target = add_hotspot(records, "回程01", 5, address="新店區臺9線18.4K(往新店)", source="ntpc-mobile",
+                         lat=point[0], lon=point[1])
+    directions = {("ntpc-mobile", checker.normalized_address(target["address"])): (None, 87.3)}
+    information = []
+    errors = checker.check_records(records, information=information, hotspot_directions=directions)
+    assert (errors == []) is accepted
+    assert any("只有道路雙向軸" in message and "不據地名推測單向" in message for message in information)
+    if not accepted:
+        assert any("反向／橫向" in error for error in errors)
+
+
+@pytest.fixture
+def e_return_hotspot_log(records):
+    """保存 e 版的實際事件與局部原始折線，不冒充整份真實回放。"""
+    points = [
+        [24.953162700000007, 121.56736050000002], [24.95340530000001, 121.56749669999998],
+        [24.953579799999986, 121.56759490000003], [24.95375609999999, 121.56772200000003],
+        [24.953789499999996, 121.56775050000003], [24.9539379, 121.56790200000002],
+        [24.9542002, 121.56824230000004], [24.95425039999999, 121.56830060000003],
+        [24.954301400000002, 121.56835030000002], [24.954582299999995, 121.56856949999997],
+        [24.95467839999999, 121.56864359999994], [24.95488319999999, 121.56881290000004],
+        [24.955057399999987, 121.5690215], [24.955150399999987, 121.5691653],
+        [24.955331900000004, 121.56950059999996],
+    ]
+    replace_route(records, "回程01", points)
+    target = add_hotspot(
+        records, "回程01", 201, traveled=3349.9999999999918,
+        id="ntpc-mobile-fecd4a6863d0", address="新店區臺9線14.5K(往坪林)",
+        source="ntpc-mobile", lat=24.953336260536748, lon=121.56745794000454,
+        distance=288.20922324529187, announcedDistance=300, threshold=300,
+        estimated=False, sectionActive=False, overspeed=False)
+    passed = dict(target, event="camera_passed", t=218, traveled=3633.3333333333226,
+                  lat=24.955221745616662, lon=121.56929710267364)
+    records.insert(records.index(target) + 1, passed)
+    report = ("[熱點行向] ntpc-mobile｜新店區 新店區臺9線14.5K(往坪林)｜directional"
+              "｜heading=63.3 axis=None｜同路官方行政區「坪林」里程 31.7–55.5K，取里程增加方向")
+    return report + "\n" + "\n".join(checker.MARKER + json.dumps(r, ensure_ascii=False) for r in records)
+
+
+def test_actual_e_return_event_is_accepted_using_legacy_report_and_geometry(e_return_hotspot_log):
+    assert checker.check_text(e_return_hotspot_log) == []
+    reversed_heading = e_return_hotspot_log.replace("heading=63.3", "heading=243.3")
+    assert any("反向" in error for error in checker.check_text(reversed_heading))
+
+
+@pytest.mark.parametrize("change,reason", [
+    ("missing", "缺少熱點地址對應"),
+    ("malformed", "熱點行向數值無效"),
+    ("conflicting", "有衝突的熱點行向"),
+])
+def test_missing_malformed_or_conflicting_hotspot_evidence_cannot_pass(e_return_hotspot_log, change, reason):
+    report, records = e_return_hotspot_log.split("\n", 1)
+    if change == "missing":
+        text = records
+    elif change == "malformed":
+        text = e_return_hotspot_log.replace("heading=63.3", "heading=bad")
+    else:
+        text = report.replace("heading=63.3", "heading=243.3") + "\n" + e_return_hotspot_log
+    assert any(reason in error for error in checker.check_text(text))
+
+
+def test_returning_hotspot_course_is_reversed_from_trip_metadata_not_case_name(records):
+    prefix, address = "折返01", "臺9線18.4K(往新店)"
+    a, _, _, _, course = checker.RouteGeometry(case_path(prefix)).segments[0]
+    point = shift(a, course, 50)
+    turn = row(records, prefix, "case_start")["turnaroundAtMeters"]
+    add_hotspot(records, prefix, 480, traveled=2 * turn - 50, address=address, source="ntpc-mobile",
+                lat=point[0], lon=point[1])
+    key = ("ntpc-mobile", checker.normalized_address(address))
+    assert checker.check_records(records, hotspot_directions={key: ((course + 180) % 360, None)}) == []
+    assert any("反向" in error for error in checker.check_records(records, hotspot_directions={key: (course, None)}))
+
+
+@pytest.mark.parametrize("ambiguous", [False, True])
+def test_hotspot_course_requires_local_unambiguous_route_geometry(records, ambiguous):
+    point = [25, 121]
+    points = [shift(point, 180, 400), shift(point, 0, 400)]
+    if ambiguous:
+        points += [shift(point, 180, 400)]
+    replace_route(records, "回程01", points)
+    target = add_hotspot(records, "回程01", 5, address="臺9線14.5K(往坪林)", source="ntpc-mobile",
+                         lat=point[0], lon=point[1] if ambiguous else point[1] + 0.001)
+    directions = {("ntpc-mobile", checker.normalized_address(target["address"])): (0, None)}
+    assert any("不在路線 30 m 內或行向有歧義" in error
+               for error in checker.check_records(records, hotspot_directions=directions))
 
 
 def test_missing_hotspot_type_or_section_state_claim_cannot_hide_a_violation(records):

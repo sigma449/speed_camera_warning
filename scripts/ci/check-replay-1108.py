@@ -12,6 +12,7 @@ import sys
 import unicodedata
 
 MARKER = "REPLAY1108 "
+HOTSPOT_DIRECTION_TOLERANCE = 45
 BEIYI_CASES = {f"北宜{number}{direction}": f"beiyi-{number}-{suffix}"
                for number in range(1, 5) for direction, suffix in (("去程", "f"), ("回程", "r"))}
 REQUIRED_CASES = ("去程01", "去程02", "去程03", "去程04", *BEIYI_CASES,
@@ -76,6 +77,14 @@ def is_number(value) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
 
 
+def normalized_address(address: str) -> str:
+    return re.sub(r"\s+", "", unicodedata.normalize("NFKC", address)).replace("臺", "台")
+
+
+def angle_difference(a: float, b: float) -> float:
+    return abs((a - b + 180) % 360 - 180)
+
+
 def distance(a: tuple, b: tuple) -> float:
     lat1, lat2 = math.radians(a[0]), math.radians(b[0])
     dlat, dlon = lat2 - lat1, math.radians(b[1] - a[1])
@@ -117,6 +126,20 @@ class RouteGeometry:
     def nearest(self, point):
         return min(self.projections(point), key=lambda projection: projection[1])
 
+    def course_at(self, point):
+        projections = self.projections(point)
+        if not projections:
+            return None
+        closest = min(range(len(projections)), key=lambda index: projections[index][1])
+        lateral = projections[closest][1]
+        course = self.segments[closest][-1]
+        if lateral > 30 or any(
+            offset <= lateral + 1 and angle_difference(course, segment[-1]) > HOTSPOT_DIRECTION_TOLERANCE
+            for (_, offset), segment in zip(projections, self.segments)
+        ):
+            return None
+        return course
+
     def passes(self, point, heading, *, before=0, after=60, max_before=math.inf):
         return any(lateral <= 30 and before <= along <= min(max_before, self.length - after)
                    for along, lateral in self.projections(point, heading))
@@ -143,8 +166,10 @@ def spoken_distance(meters: float) -> str:
     return f"{max(10, math.floor(meters / 10 + 0.5) * 10)}公尺"
 
 
-def check_records(records: list[dict], *, information: list[str] | None = None) -> list[str]:
+def check_records(records: list[dict], *, information: list[str] | None = None,
+                  hotspot_directions: dict[tuple[str, str], tuple[float | None, float | None]] | None = None) -> list[str]:
     errors = []
+    directional_hotspots = []
 
     def require(condition, message):
         if not condition:
@@ -231,13 +256,8 @@ def check_records(records: list[dict], *, information: list[str] | None = None) 
             require(isinstance(address, str) and bool(address), f"{name} 熱點預告缺少 address，無法核對行向")
             if not isinstance(address, str):
                 continue
-            address = re.sub(r"\s+", "", unicodedata.normalize("NFKC", address))
-            if not name.startswith(("折返01 ", "折返02 ")):
-                if "去程" in name or name.startswith("補測01 "):
-                    require("往新店" not in address, f"{name} 去程提醒反向「往新店」熱點：{address}")
-                if "回程" in name or name.startswith("補測02 "):
-                    require(re.search(r"往(?:宜蘭|坪林)", address) is None,
-                            f"{name} 回程提醒反向「往宜蘭／往坪林」熱點：{address}")
+            if "往" in normalized_address(address):
+                directional_hotspots.append(r)
     start = [r for r in records if r["event"] == "run_start"]
     end = [r for r in records if r["event"] == "run_end"]
     require(len(start) == len(end) == 1, "缺少唯一 run_start/run_end，log 可能不完整或混了多次執行")
@@ -293,6 +313,41 @@ def check_records(records: list[dict], *, information: list[str] | None = None) 
                     and all(abs(a["end"] - b["start"]) <= 1 for a, b in zip(steps, steps[1:])),
                     f"{prefix} Apple 步驟位置與完整路線不連續")
             apple_steps[prefix] = steps
+
+    for r in directional_hotspots:
+        name, address = r["case"], normalized_address(r["address"])
+        direction = (hotspot_directions or {}).get((r.get("source"), address))
+        require(direction is not None, f"{name} 缺少熱點地址對應的道路行向證據：{address}")
+        if direction is None:
+            continue
+        heading, axis = direction
+        valid = ((heading is None or is_number(heading) and 0 <= heading < 360)
+                 and (axis is None or is_number(axis) and 0 <= axis < 180)
+                 and (heading is not None or axis is not None))
+        require(valid, f"{name} 熱點道路行向無效／未知：{address}")
+        if not valid:
+            continue
+        geometry = geometries.get(name.split(" ", 1)[0])
+        course = geometry.course_at((r["lat"], r["lon"])) if geometry else None
+        require(course is not None, f"{name} 熱點預告位置不在路線 30 m 內或行向有歧義：{address}")
+        if course is None:
+            continue
+        turnaround = groups[name][0].get("turnaroundAtMeters", 0)
+        if (is_number(turnaround) and turnaround > 0 and is_number(r.get("traveled"))
+                and r["traveled"] >= min(turnaround, geometry.length)):
+            course = (course + 180) % 360
+        if heading is not None:
+            difference = angle_difference(course, heading)
+            label = f"單向 {heading:.1f}°"
+        else:
+            difference = angle_difference(course, axis)
+            difference = min(difference, 180 - difference)
+            label = f"雙向軸 {axis:.1f}°"
+            if information is not None:
+                information.append(f"{name} {address} 只有道路{label}，不據地名推測單向；僅核對沿路行向")
+        require(difference <= HOTSPOT_DIRECTION_TOLERANCE,
+                f"{name} 提醒反向／橫向熱點：{address}（車行 {course:.1f}°，{label}，"
+                f"夾角 {difference:.1f}° 超過 {HOTSPOT_DIRECTION_TOLERANCE}°）")
 
     required_coverage, covered_items = set(), set()
 
@@ -604,15 +659,33 @@ def check_records(records: list[dict], *, information: list[str] | None = None) 
 
 
 def check_text(text: str, *, information: list[str] | None = None) -> list[str]:
-    records, errors = [], []
+    records, errors, hotspot_directions = [], [], {}
     for line_number, line in enumerate(text.splitlines(), 1):
+        if "[熱點行向]" in line:
+            match = re.search(
+                r"\[熱點行向\]\s+([^｜]+)｜([^｜]+)｜(?:directional|bidirectional|unresolved)"
+                r"｜heading=(\S+) axis=(\S+)｜", line)
+            place = match[2].split(maxsplit=1) if match else []
+            if not match or len(place) != 2:
+                errors.append(f"log 第 {line_number} 行熱點行向報告格式無效")
+            else:
+                try:
+                    direction = tuple(None if value == "None" else float(value) for value in match.group(3, 4))
+                except ValueError:
+                    errors.append(f"log 第 {line_number} 行熱點行向數值無效")
+                else:
+                    key = (match[1].strip(), normalized_address(place[1]))
+                    if key in hotspot_directions and hotspot_directions[key] != direction:
+                        errors.append(f"log 第 {line_number} 行同來源／地址有衝突的熱點行向：{place[1]}")
+                    else:
+                        hotspot_directions[key] = direction
         if MARKER not in line:
             continue
         try:
             records.append(json.loads(line.split(MARKER, 1)[1]))
         except ValueError as exc:
             errors.append(f"log 第 {line_number} 行 JSON 損壞：{exc}")
-    return errors + check_records(records, information=information)
+    return errors + check_records(records, information=information, hotspot_directions=hotspot_directions)
 
 
 def main(argv: list[str] | None = None) -> int:
