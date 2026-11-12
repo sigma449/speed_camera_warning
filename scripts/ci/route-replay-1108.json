@@ -1,0 +1,138 @@
+[
+  {
+    "name": "去程01 長春路→建國高架南向經市民大道（第1項）",
+    "from": { "name": "長春路建國附近測試點", "lat": 25.0547831, "lon": 121.5350273 },
+    "to": { "name": "建國快速道路南向辛亥前", "lat": 25.0262662, "lon": 121.5376495 },
+    "vehicleMode": "motorcycleRedYellow",
+    "speedKmh": 60
+  },
+  {
+    "name": "去程02 建國高架→水源快速道路南向（第2項）",
+    "from": { "name": "建國快速道路南向辛亥前", "lat": 25.0262662, "lon": 121.5376495 },
+    "to": { "name": "水源快速道路南向福和橋前", "lat": 25.0059187, "lon": 121.5342142 },
+    "vehicleMode": "motorcycleRedYellow",
+    "speedKmh": 60
+  },
+  {
+    "name": "去程03 水源快速下匝道→秀朗橋分岔→環河路IKEA前（第3項）",
+    "from": { "name": "水源快速道路南向福和橋前", "lat": 25.0059187, "lon": 121.5342142 },
+    "to": { "name": "環河路IKEA北側南向", "lat": 24.973889, "lon": 121.5267354 },
+    "vehicleMode": "motorcycleRedYellow",
+    "speedKmh": 60
+  },
+  {
+    "name": "去程04 IKEA區間→白馬寺→環河地下道轉北宜路（第4、5項）",
+    "from": { "name": "環河路IKEA北側南向", "lat": 24.973889, "lon": 121.5267354 },
+    "to": { "name": "北宜路2段82巷附近測試點", "lat": 24.953354, "lon": 121.553307 },
+    "vehicleMode": "motorcycleRedYellow",
+    "speedKmh": 60
+  },
+  {
+    "name": "北宜1去程 beiyi-1-f 19–23.1K（第6、7項基準）",
+    "from": { "name": "第1段資料起點前約400m", "lat": 24.9526532, "lon": 121.5939215 },
+    "to": { "name": "第1段資料終點後約400m", "lat": 24.9545394, "lon": 121.6261817 },
+    "vehicleMode": "motorcycleRedYellow",
+    "speedKmh": 60
+  },
+  {
+    "name": "北宜2去程 beiyi-2-f 26.2–32.2K（第6、7項）",
+    "from": { "name": "第2段資料起點前約400m", "lat": 24.9527207, "lon": 121.643812 },
+    "to": { "name": "第2段資料終點後約400m", "lat": 24.9411533, "lon": 121.6723863 },
+    "vehicleMode": "motorcycleRedYellow",
+    "speedKmh": 60
+  },
+  {
+    "name": "北宜3去程 beiyi-3-f 33.3–37.2K（擴充檢查）",
+    "from": { "name": "第3段資料起點前約400m", "lat": 24.9415223, "lon": 121.6751223 },
+    "to": { "name": "第3段資料終點後約400m", "lat": 24.9347343, "lon": 121.7062518 },
+    "vehicleMode": "motorcycleRedYellow",
+    "speedKmh": 60
+  },
+  {
+    "name": "北宜4去程 beiyi-4-f 56.6–68.6K（擴充檢查，非已確認實車範圍）",
+    "from": { "name": "第4段資料起點前約400m", "lat": 24.8689854, "lon": 121.7719505 },
+    "to": { "name": "第4段資料終點後約400m", "lat": 24.8468605, "lon": 121.7934634 },
+    "vehicleMode": "motorcycleRedYellow",
+    "speedKmh": 60
+  },
+  {
+    "name": "北宜4回程 beiyi-4-r 68.6–56.6K（擴充檢查，非已確認實車範圍）",
+    "from": { "name": "第4段資料終點後約400m", "lat": 24.8468605, "lon": 121.7934634 },
+    "to": { "name": "第4段資料起點前約400m", "lat": 24.8689854, "lon": 121.7719505 },
+    "vehicleMode": "motorcycleRedYellow",
+    "speedKmh": 60
+  },
+  {
+    "name": "北宜3回程 beiyi-3-r 37.2–33.3K（擴充檢查）",
+    "from": { "name": "第3段資料終點後約400m", "lat": 24.9347343, "lon": 121.7062518 },
+    "to": { "name": "第3段資料起點前約400m", "lat": 24.9415223, "lon": 121.6751223 },
+    "vehicleMode": "motorcycleRedYellow",
+    "speedKmh": 60
+  },
+  {
+    "name": "北宜2回程 beiyi-2-r 32.2–26.2K（第6、7項）",
+    "from": { "name": "第2段資料終點後約400m", "lat": 24.9411533, "lon": 121.6723863 },
+    "to": { "name": "第2段資料起點前約400m", "lat": 24.9527207, "lon": 121.643812 },
+    "vehicleMode": "motorcycleRedYellow",
+    "speedKmh": 60
+  },
+  {
+    "name": "北宜1回程 beiyi-1-r 23.1–19K（第6、7項基準）",
+    "from": { "name": "第1段資料終點後約400m", "lat": 24.9545394, "lon": 121.6261817 },
+    "to": { "name": "第1段資料起點前約400m", "lat": 24.9526532, "lon": 121.5939215 },
+    "vehicleMode": "motorcycleRedYellow",
+    "speedKmh": 60
+  },
+  {
+    "name": "回程01 北宜第1段前→銀河附近→北宜二段（第9項位置線索）",
+    "from": { "name": "第1段資料起點前約400m", "lat": 24.9526532, "lon": 121.5939215 },
+    "to": { "name": "北宜路2段82巷附近測試點", "lat": 24.953354, "lon": 121.553307 },
+    "vehicleMode": "motorcycleRedYellow",
+    "speedKmh": 60
+  },
+  {
+    "name": "回程02 北宜路→環河路IKEA前（第4項反向）",
+    "from": { "name": "北宜路2段82巷附近測試點", "lat": 24.953354, "lon": 121.553307 },
+    "to": { "name": "環河路IKEA北側北向", "lat": 24.9740001, "lon": 121.5268401 },
+    "vehicleMode": "motorcycleRedYellow",
+    "speedKmh": 60
+  },
+  {
+    "name": "回程03 環河路→水源快速北向入口（第10項）",
+    "from": { "name": "環河路IKEA北側北向", "lat": 24.9740001, "lon": 121.5268401 },
+    "to": { "name": "水源快速道路北向福和橋前", "lat": 25.0060321, "lon": 121.5341731 },
+    "vehicleMode": "motorcycleRedYellow",
+    "speedKmh": 60
+  },
+  {
+    "name": "回程04 水源快速北向→建國高架→長春路",
+    "from": { "name": "水源快速道路北向福和橋前", "lat": 25.0060321, "lon": 121.5341731 },
+    "to": { "name": "長春路建國附近測試點", "lat": 25.0547831, "lon": 121.5350273 },
+    "vehicleMode": "motorcycleRedYellow",
+    "speedKmh": 60
+  },
+  {
+    "name": "折返01 北宜第1段內迴轉，再退回門架前（第8項，核心不重設）",
+    "from": { "name": "第1段資料起點前約400m", "lat": 24.9526532, "lon": 121.5939215 },
+    "to": { "name": "第1段資料終點後約400m", "lat": 24.9545394, "lon": 121.6261817 },
+    "vehicleMode": "motorcycleRedYellow",
+    "speedKmh": 60,
+    "turnaroundAtMeters": 1400
+  },
+  {
+    "name": "折返02 區間內停等350秒至歸零，再以60折返（第6、8項，核心不重設）",
+    "from": { "name": "第1段資料起點前約400m", "lat": 24.9526532, "lon": 121.5939215 },
+    "to": { "name": "第1段資料終點後約400m", "lat": 24.9545394, "lon": 121.6261817 },
+    "vehicleMode": "motorcycleRedYellow",
+    "speedKmh": 60,
+    "turnaroundAtMeters": 1400,
+    "waitAtTurnaroundSeconds": 350
+  },
+  {
+    "name": "語音01 首筆定位就在固定照相近距內並超速（第11項，非實車GPS）",
+    "from": { "name": "北宜路1段246號照相點前約80m", "lat": 24.9531259, "lon": 121.5439557 },
+    "to": { "name": "該照相點後約600m", "lat": 24.9519177, "lon": 121.5499644 },
+    "vehicleMode": "motorcycleRedYellow",
+    "speedKmh": 60
+  }
+]
