@@ -135,6 +135,7 @@ struct SettingsView: View {
                         Text(source).font(.footnote).foregroundStyle(.secondary)
                     }
                     Text(RoadLineStore.attribution).font(.footnote).foregroundStyle(.secondary)
+                    Text(RouteHintStore.attribution).font(.footnote).foregroundStyle(.secondary)
                 } header: {
                     Text("資料")
                 } footer: {

@@ -1,0 +1,800 @@
+{
+  "source": "© OpenStreetMap 貢獻者（ODbL）；2026-11-12 Overpass 快照；測試定向分支，不代表法規或實車 GPS",
+  "ways": {
+    "24836710": {
+      "tags": {
+        "destination": "秀朗橋;中和",
+        "highway": "trunk_link",
+        "lanes": "1",
+        "lit": "yes",
+        "maxspeed": "40",
+        "name": "秀朗橋出口匝道",
+        "oneway": "yes",
+        "start_date": "2004-09-19",
+        "surface": "asphalt"
+      },
+      "points": [
+        [
+          24.9918083,
+          121.5331871
+        ],
+        [
+          24.9916525,
+          121.5330973
+        ],
+        [
+          24.991047,
+          121.532629
+        ]
+      ]
+    },
+    "24836732": {
+      "tags": {
+        "bridge": "yes",
+        "highway": "trunk",
+        "lanes": "3",
+        "layer": "1",
+        "lit": "yes",
+        "maxspeed": "70",
+        "name": "水源快速道路",
+        "name:en": "Shuiyuan Expressway",
+        "name:nan": "Chúi-goân Khoài-sok Tō-lō͘",
+        "name:nan-Hant": "水源快速道路",
+        "name:nan-Latn-pehoeji": "Chúi-goân Khoài-sok Tō-lō͘",
+        "name:nan-Latn-tailo": "Tsuí-guân Khuài-sok Tō-lōo",
+        "name:zh": "水源快速道路",
+        "oneway": "yes",
+        "surface": "asphalt"
+      },
+      "points": [
+        [
+          24.9960908,
+          121.5355359
+        ],
+        [
+          24.9959802,
+          121.5355382
+        ],
+        [
+          24.9956941,
+          121.5355274
+        ],
+        [
+          24.9953951,
+          121.5354484
+        ],
+        [
+          24.9951063,
+          121.5353566
+        ],
+        [
+          24.9947676,
+          121.5351971
+        ],
+        [
+          24.9923283,
+          121.5335507
+        ]
+      ]
+    },
+    "28905845": {
+      "tags": {
+        "bridge": "yes",
+        "highway": "trunk",
+        "lanes": "3",
+        "layer": "1",
+        "lit": "yes",
+        "maxspeed": "60",
+        "name": "水源快速道路",
+        "name:en": "Shuiyuan Expressway",
+        "name:nan": "Chúi-goân Khoài-sok Tō-lō͘",
+        "name:nan-Hant": "水源快速道路",
+        "name:nan-Latn-pehoeji": "Chúi-goân Khoài-sok Tō-lō͘",
+        "name:nan-Latn-tailo": "Tsuí-guân Khuài-sok Tō-lōo",
+        "name:zh": "水源快速道路",
+        "oneway": "yes",
+        "surface": "asphalt"
+      },
+      "points": [
+        [
+          24.9923184,
+          121.5336896
+        ],
+        [
+          24.9946396,
+          121.5352459
+        ],
+        [
+          24.995013,
+          121.5354386
+        ],
+        [
+          24.995221,
+          121.5355123
+        ],
+        [
+          24.9954449,
+          121.5355676
+        ],
+        [
+          24.9957154,
+          121.5356236
+        ],
+        [
+          24.9960416,
+          121.5356472
+        ],
+        [
+          24.996098,
+          121.5356491
+        ],
+        [
+          24.9962505,
+          121.5356518
+        ]
+      ]
+    },
+    "28905846": {
+      "tags": {
+        "highway": "trunk",
+        "lanes": "3",
+        "lit": "yes",
+        "maxspeed": "60",
+        "name": "水源快速道路",
+        "name:en": "Shuiyuan Expressway",
+        "name:nan": "Chúi-goân Khoài-sok Tō-lō͘",
+        "name:nan-Hant": "水源快速道路",
+        "name:nan-Latn-pehoeji": "Chúi-goân Khoài-sok Tō-lō͘",
+        "name:nan-Latn-tailo": "Tsuí-guân Khuài-sok Tō-lōo",
+        "name:zh": "水源快速道路",
+        "oneway": "yes",
+        "surface": "asphalt"
+      },
+      "points": [
+        [
+          24.9923283,
+          121.5335507
+        ],
+        [
+          24.9918844,
+          121.5332375
+        ],
+        [
+          24.9918083,
+          121.5331871
+        ]
+      ]
+    },
+    "49695689": {
+      "tags": {
+        "bridge": "yes",
+        "cycleway:both": "no",
+        "foot": "no",
+        "highway": "trunk",
+        "lanes": "2",
+        "layer": "1",
+        "lit": "yes",
+        "maxweightrating:hgv": "10",
+        "maxweightrating:hgv:conditional": "19 @ governmental-owned vehicle",
+        "motorcycle:conditional": "no @ <=250 cc",
+        "name": "建國快速道路",
+        "name:en": "Jianguo Expressway",
+        "name:nan": "Kiàn-kok Khoài-sok Tō-lō͘",
+        "name:nan-Hant": "建國快速道路",
+        "name:nan-Latn-pehoeji": "Kiàn-kok Khoài-sok Tō-lō͘",
+        "name:nan-Latn-tailo": "Kiàn-kok Khuài-sok Tō-lōo",
+        "name:zh": "建國快速道路",
+        "oneway": "yes",
+        "sidewalk:both": "separate"
+      },
+      "points": [
+        [
+          25.0240355,
+          121.5375289
+        ],
+        [
+          25.0235602,
+          121.5375266
+        ],
+        [
+          25.0233219,
+          121.5375052
+        ],
+        [
+          25.0231796,
+          121.5374693
+        ],
+        [
+          25.0230498,
+          121.5374162
+        ],
+        [
+          25.0229524,
+          121.5373539
+        ],
+        [
+          25.0228642,
+          121.5372862
+        ],
+        [
+          25.022769,
+          121.5371948
+        ],
+        [
+          25.0226927,
+          121.5370838
+        ],
+        [
+          25.0226382,
+          121.5369918
+        ],
+        [
+          25.0225836,
+          121.536875
+        ],
+        [
+          25.0225487,
+          121.536764
+        ],
+        [
+          25.0225232,
+          121.536658
+        ],
+        [
+          25.0225105,
+          121.536558
+        ],
+        [
+          25.0224959,
+          121.5362094
+        ],
+        [
+          25.0224723,
+          121.535033
+        ],
+        [
+          25.0224533,
+          121.5337394
+        ],
+        [
+          25.0224277,
+          121.5331547
+        ],
+        [
+          25.0223876,
+          121.5329106
+        ],
+        [
+          25.0222898,
+          121.5325626
+        ],
+        [
+          25.0222093,
+          121.5323107
+        ],
+        [
+          25.0220528,
+          121.5319483
+        ],
+        [
+          25.0219417,
+          121.5317871
+        ],
+        [
+          25.0216463,
+          121.5314059
+        ],
+        [
+          25.0210275,
+          121.5306683
+        ]
+      ]
+    },
+    "49695699": {
+      "tags": {
+        "bridge": "yes",
+        "cycleway:both": "no",
+        "highway": "trunk",
+        "lanes": "2",
+        "layer": "1",
+        "lit": "yes",
+        "maxweightrating:hgv": "10",
+        "maxweightrating:hgv:conditional": "19 @ governmental-owned vehicle",
+        "motorcycle:conditional": "no @ <=250 cc",
+        "name": "建國快速道路",
+        "name:en": "Jianguo Expressway",
+        "name:nan": "Kiàn-kok Khoài-sok Tō-lō͘",
+        "name:nan-Hant": "建國快速道路",
+        "name:nan-Latn-pehoeji": "Kiàn-kok Khoài-sok Tō-lō͘",
+        "name:nan-Latn-tailo": "Kiàn-kok Khuài-sok Tō-lōo",
+        "name:zh": "建國快速道路",
+        "oneway": "yes"
+      },
+      "points": [
+        [
+          25.0248686,
+          121.5376028
+        ],
+        [
+          25.0240355,
+          121.5375289
+        ]
+      ]
+    },
+    "49749172": {
+      "tags": {
+        "cycleway:both": "no",
+        "highway": "trunk",
+        "lanes": "2",
+        "layer": "-1",
+        "lit": "yes",
+        "maxweightrating:hgv": "10",
+        "maxweightrating:hgv:conditional": "19 @ governmental-owned vehicle",
+        "motorcycle:conditional": "no @ <=250 cc",
+        "name": "建國快速道路",
+        "name:en": "Jianguo Expressway",
+        "name:nan": "Kiàn-kok Khoài-sok Tō-lō͘",
+        "name:nan-Hant": "建國快速道路",
+        "name:nan-Latn-pehoeji": "Kiàn-kok Khoài-sok Tō-lō͘",
+        "name:nan-Latn-tailo": "Kiàn-kok Khuài-sok Tō-lōo",
+        "name:zh": "建國快速道路",
+        "oneway": "yes",
+        "sidewalk:both": "separate"
+      },
+      "points": [
+        [
+          25.0210275,
+          121.5306683
+        ],
+        [
+          25.020878,
+          121.5305218
+        ]
+      ]
+    },
+    "189011738": {
+      "tags": {
+        "destination": "北宜路",
+        "destination:en": "Beiyi Road",
+        "highway": "trunk",
+        "lanes": "1",
+        "lit": "yes",
+        "name": "環河路",
+        "name:en": "Huanhe Road",
+        "name:zh": "環河路",
+        "oneway": "yes",
+        "surface": "asphalt"
+      },
+      "points": [
+        [
+          24.963483,
+          121.5368039
+        ],
+        [
+          24.9630895,
+          121.5368695
+        ],
+        [
+          24.9621328,
+          121.5369447
+        ]
+      ]
+    },
+    "189011740": {
+      "tags": {
+        "destination": "北宜路",
+        "destination:en": "Beiyi Road",
+        "highway": "trunk",
+        "lanes": "1",
+        "layer": "-2",
+        "lit": "yes",
+        "name": "環河路",
+        "name:en": "Huanhe Road",
+        "name:zh": "環河路",
+        "oneway": "yes",
+        "surface": "asphalt",
+        "tunnel": "yes"
+      },
+      "points": [
+        [
+          24.9621328,
+          121.5369447
+        ],
+        [
+          24.9616918,
+          121.537013
+        ],
+        [
+          24.9615653,
+          121.5370536
+        ],
+        [
+          24.961486,
+          121.5370953
+        ],
+        [
+          24.9614423,
+          121.5371634
+        ],
+        [
+          24.9614221,
+          121.5372646
+        ],
+        [
+          24.9614239,
+          121.5373825
+        ],
+        [
+          24.9615023,
+          121.5379752
+        ]
+      ]
+    },
+    "238689685": {
+      "tags": {
+        "highway": "trunk",
+        "lanes": "3",
+        "lit": "yes",
+        "name": "水源快速道路",
+        "name:en": "Shuiyuan Expressway",
+        "name:nan": "Chúi-goân Khoài-sok Tō-lō͘",
+        "name:nan-Hant": "水源快速道路",
+        "name:nan-Latn-pehoeji": "Chúi-goân Khoài-sok Tō-lō͘",
+        "name:nan-Latn-tailo": "Tsuí-guân Khuài-sok Tō-lōo",
+        "name:zh": "水源快速道路",
+        "oneway": "yes",
+        "surface": "asphalt"
+      },
+      "points": [
+        [
+          24.9921731,
+          121.5336205
+        ],
+        [
+          24.9923184,
+          121.5336896
+        ]
+      ]
+    },
+    "238699270": {
+      "tags": {
+        "destination": "安康路",
+        "destination:en": "Ankang Road",
+        "highway": "trunk",
+        "lanes": "1",
+        "lit": "yes",
+        "name": "環河路",
+        "name:en": "Huanhe Road",
+        "name:zh": "環河路",
+        "oneway": "yes",
+        "ref": "北100",
+        "ref:en": "TP100",
+        "ref:zh": "北100"
+      },
+      "points": [
+        [
+          24.963483,
+          121.5368039
+        ],
+        [
+          24.9633301,
+          121.5367877
+        ],
+        [
+          24.9629851,
+          121.5368008
+        ],
+        [
+          24.9620041,
+          121.5369018
+        ]
+      ]
+    },
+    "283481043": {
+      "tags": {
+        "highway": "trunk",
+        "lit": "yes",
+        "name": "環河路",
+        "name:en": "Huanhe Road",
+        "name:nan": "Khoân-hô-lō͘",
+        "name:nan-Hant": "環河路",
+        "name:nan-Latn-pehoeji": "Khoân-hô-lō͘",
+        "name:nan-Latn-tailo": "Khuân-hô-lōo",
+        "name:zh": "環河路",
+        "oneway": "yes",
+        "ref": "北100",
+        "ref:en": "TP100",
+        "ref:zh": "北100",
+        "surface": "asphalt"
+      },
+      "points": [
+        [
+          24.9888432,
+          121.531017
+        ],
+        [
+          24.9890324,
+          121.5311808
+        ],
+        [
+          24.9903165,
+          121.5322276
+        ],
+        [
+          24.9910885,
+          121.5328285
+        ],
+        [
+          24.9915094,
+          121.5331842
+        ],
+        [
+          24.9917021,
+          121.5332992
+        ]
+      ]
+    },
+    "331609728": {
+      "tags": {
+        "cycleway:both": "no",
+        "highway": "trunk",
+        "lanes": "2",
+        "lit": "yes",
+        "maxweightrating:hgv": "10",
+        "maxweightrating:hgv:conditional": "19 @ governmental-owned vehicle",
+        "motorcycle:conditional": "no @ <=250 cc",
+        "name": "建國快速道路",
+        "name:en": "Jianguo Expressway",
+        "name:nan": "Kiàn-kok Khoài-sok Tō-lō͘",
+        "name:nan-Hant": "建國快速道路",
+        "name:nan-Latn-pehoeji": "Kiàn-kok Khoài-sok Tō-lō͘",
+        "name:nan-Latn-tailo": "Kiàn-kok Khuài-sok Tō-lōo",
+        "name:zh": "建國快速道路",
+        "oneway": "yes",
+        "sidewalk:both": "separate"
+      },
+      "points": [
+        [
+          25.020878,
+          121.5305218
+        ],
+        [
+          25.0206891,
+          121.5303343
+        ],
+        [
+          25.020242,
+          121.5298171
+        ]
+      ]
+    },
+    "540625075": {
+      "tags": {
+        "highway": "trunk",
+        "lit": "yes",
+        "name": "環河路",
+        "name:en": "Huanhe Road",
+        "name:nan": "Khoân-hô-lō͘",
+        "name:nan-Hant": "環河路",
+        "name:nan-Latn-pehoeji": "Khoân-hô-lō͘",
+        "name:nan-Latn-tailo": "Khuân-hô-lōo",
+        "name:zh": "環河路",
+        "oneway": "yes",
+        "ref": "北100",
+        "ref:en": "TP100",
+        "ref:zh": "北100",
+        "surface": "asphalt"
+      },
+      "points": [
+        [
+          24.9918083,
+          121.5331871
+        ],
+        [
+          24.9916709,
+          121.5330521
+        ],
+        [
+          24.9907658,
+          121.5322968
+        ],
+        [
+          24.9900142,
+          121.5317071
+        ],
+        [
+          24.9893841,
+          121.5312799
+        ],
+        [
+          24.9890912,
+          121.5310787
+        ]
+      ]
+    },
+    "540625076": {
+      "tags": {
+        "highway": "trunk",
+        "lanes": "2",
+        "lit": "yes",
+        "maxspeed": "60",
+        "name": "環河路",
+        "name:en": "Huanhe Road",
+        "name:nan": "Khoân-hô-lō͘",
+        "name:nan-Hant": "環河路",
+        "name:nan-Latn-pehoeji": "Khoân-hô-lō͘",
+        "name:nan-Latn-tailo": "Khuân-hô-lōo",
+        "name:zh": "環河路",
+        "oneway": "yes",
+        "ref:zh": "北100",
+        "surface": "asphalt"
+      },
+      "points": [
+        [
+          24.9917021,
+          121.5332992
+        ],
+        [
+          24.9917765,
+          121.5333417
+        ]
+      ]
+    },
+    "764187879": {
+      "tags": {
+        "bridge": "yes",
+        "highway": "trunk",
+        "lanes": "2",
+        "layer": "1",
+        "lit": "yes",
+        "maxweightrating:hgv": "10",
+        "maxweightrating:hgv:conditional": "19 @ governmental-owned vehicle",
+        "motorcycle:conditional": "no @ <=250 cc",
+        "name": "建國快速道路",
+        "name:en": "Jianguo Expressway",
+        "name:nan": "Kiàn-kok Khoài-sok Tō-lō͘",
+        "name:nan-Hant": "建國快速道路",
+        "name:nan-Latn-pehoeji": "Kiàn-kok Khoài-sok Tō-lō͘",
+        "name:nan-Latn-tailo": "Kiàn-kok Khuài-sok Tō-lōo",
+        "name:zh": "建國快速道路",
+        "note": "No goods vehicles with total weight more than 5T.",
+        "oneway": "yes"
+      },
+      "points": [
+        [
+          25.0377958,
+          121.5378224
+        ],
+        [
+          25.0371397,
+          121.5378291
+        ],
+        [
+          25.035537,
+          121.5377969
+        ],
+        [
+          25.0320144,
+          121.537754
+        ],
+        [
+          25.0295407,
+          121.5376996
+        ],
+        [
+          25.0283781,
+          121.5376776
+        ],
+        [
+          25.0262662,
+          121.5376495
+        ],
+        [
+          25.0248686,
+          121.5376028
+        ]
+      ]
+    },
+    "1080802350": {
+      "tags": {
+        "destination": "北新路",
+        "destination:en": "Beixin Road",
+        "highway": "trunk",
+        "lanes": "1",
+        "name": "環河路",
+        "name:en": "Huanhe Road",
+        "name:zh": "環河路",
+        "oneway": "yes",
+        "ref": "北100",
+        "ref:en": "TP100",
+        "ref:zh": "北100"
+      },
+      "points": [
+        [
+          24.9637687,
+          121.5368234
+        ],
+        [
+          24.9636119,
+          121.5368586
+        ],
+        [
+          24.9633329,
+          121.5368734
+        ],
+        [
+          24.9630819,
+          121.5369223
+        ],
+        [
+          24.9616769,
+          121.53706
+        ],
+        [
+          24.9614695,
+          121.5370749
+        ],
+        [
+          24.9613702,
+          121.5370912
+        ]
+      ]
+    },
+    "1345096370": {
+      "tags": {
+        "highway": "trunk",
+        "lanes": "2",
+        "lit": "yes",
+        "name": "環河路",
+        "name:en": "Huanhe Road",
+        "name:nan": "Khoân-hô-lō͘",
+        "name:nan-Hant": "環河路",
+        "name:nan-Latn-pehoeji": "Khoân-hô-lō͘",
+        "name:nan-Latn-tailo": "Khuân-hô-lōo",
+        "name:zh": "環河路",
+        "oneway": "yes",
+        "ref": "北100",
+        "ref:en": "TP100",
+        "ref:zh": "北100",
+        "surface": "asphalt"
+      },
+      "points": [
+        [
+          24.9637687,
+          121.5368234
+        ],
+        [
+          24.963483,
+          121.5368039
+        ]
+      ]
+    },
+    "1422614376": {
+      "tags": {
+        "highway": "trunk",
+        "lanes": "3",
+        "lit": "yes",
+        "maxspeed": "60",
+        "name": "水源快速道路",
+        "name:en": "Shuiyuan Expressway",
+        "name:nan": "Chúi-goân Khoài-sok Tō-lō͘",
+        "name:nan-Hant": "水源快速道路",
+        "name:nan-Latn-pehoeji": "Chúi-goân Khoài-sok Tō-lō͘",
+        "name:nan-Latn-tailo": "Tsuí-guân Khuài-sok Tō-lōo",
+        "name:zh": "水源快速道路",
+        "oneway": "yes",
+        "surface": "asphalt"
+      },
+      "points": [
+        [
+          24.9917765,
+          121.5333417
+        ],
+        [
+          24.9921731,
+          121.5336205
+        ]
+      ]
+    }
+  }
+}

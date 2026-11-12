@@ -1,0 +1,90 @@
+[
+  {
+    "id": "jianguo-shida-descent",
+    "point": {
+      "lat": 25.025132,
+      "lon": 121.537556
+    },
+    "heading": 181.7,
+    "confirmation": {
+      "lat": 25.0224723,
+      "lon": 121.535033
+    },
+    "radius": 15.0,
+    "shortText": "下高架 往師大路",
+    "instruction": "沿建國快速道路下高架，往師大路",
+    "source": "OSM 2026-11-12 way 764187879→49695699→49695689（bridge=yes；主線接往師大路）；下高架動作依使用者實測；沒有靠右或獨立出口匝道的依據故不寫靠右；https://www.openstreetmap.org/way/49695689",
+    "replaces": []
+  },
+  {
+    "id": "shida-underpass",
+    "point": {
+      "lat": 25.021279,
+      "lon": 121.530923
+    },
+    "heading": 227.2,
+    "confirmation": {
+      "lat": 25.020242,
+      "lon": 121.5298171
+    },
+    "radius": 15.0,
+    "shortText": "下地下道 往師大路",
+    "instruction": "沿主線下地下道，往師大路",
+    "source": "OSM 2026-11-12 way 49695689→49749172（layer=-1）→331609728；地下道及接師大路依使用者實測；未標示進入車道故不猜左右；https://www.openstreetmap.org/way/49749172",
+    "replaces": []
+  },
+  {
+    "id": "shuiyuan-south-huanhe",
+    "point": {
+      "lat": 24.991587,
+      "lon": 121.533042
+    },
+    "heading": 217.1,
+    "confirmation": {
+      "lat": 24.9893841,
+      "lon": 121.5312799
+    },
+    "radius": 15.0,
+    "shortText": "下匝道 不上秀朗橋",
+    "instruction": "下水源快速道路，靠右往環河路，不上秀朗橋",
+    "source": "OSM 2026-11-12 way 28905846→540625075（往環河路）而非24836710（destination=秀朗橋;中和）；下匝道與左側秀朗橋分岔依使用者實測；兩個相距約37m的標記合成同一步避免連續互蓋；https://www.openstreetmap.org/way/24836710",
+    "replaces": []
+  },
+  {
+    "id": "huanhe-underpass",
+    "point": {
+      "lat": 24.963436,
+      "lon": 121.536824
+    },
+    "heading": 171.4,
+    "confirmation": {
+      "lat": 24.9614239,
+      "lon": 121.5373825
+    },
+    "radius": 12.0,
+    "shortText": "中間車道 下地下道",
+    "instruction": "走中間車道下地下道，往北宜路",
+    "source": "OSM 2026-11-12 way 189011738（destination=北宜路）→189011740（tunnel=yes；layer=-2；lanes=1）；入口在三條車道中間依使用者實測（OSM僅記各支線1車道不代表入口前車道數）；https://www.openstreetmap.org/way/189011740",
+    "replaces": [
+      "靠左行駛進入環河路",
+      "左轉進入環河路"
+    ]
+  },
+  {
+    "id": "shuiyuan-north-entry",
+    "point": {
+      "lat": 24.991771,
+      "lon": 121.533305
+    },
+    "heading": 32.5,
+    "confirmation": {
+      "lat": 24.9923184,
+      "lon": 121.5336896
+    },
+    "radius": 15.0,
+    "shortText": "上匝道 水源快速道路",
+    "instruction": "上匝道，接水源快速道路",
+    "source": "OSM 2026-11-12 way 540625076→1422614376→238689685→28905845（bridge=yes）；上匝道動作依使用者實測；未查到靠左或靠右依據故不寫；https://www.openstreetmap.org/way/1422614376",
+    "replaces": []
+  }
+]

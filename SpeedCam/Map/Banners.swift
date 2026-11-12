@@ -145,7 +145,7 @@ struct NavigationBanner: View {
                     Text(AnnouncementFormatter.displayDistance(progress.distanceToNextManeuver))
                         .font(.system(size: 34, weight: .heavy, design: .rounded))
                         .monospacedDigit()
-                    Text(ManeuverText.short(progress.nextInstruction))
+                    Text(progress.maneuverText)
                         .font(.headline)
                         .lineLimit(2)
                 }

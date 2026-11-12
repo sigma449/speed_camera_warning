@@ -14,7 +14,7 @@ python3 -m pytest -q                     # 測試
 - **欄位對應**：同時支援全國版英文欄位（CityName、Address、Longitude、Latitude、direct、limit…）與縣市版中文欄位（設置地點、座標經度、拍攝方向、速限…）。
 - **編碼**：UTF-8（含 BOM）與 Big5／cp950。
 - **座標**：經緯度填反會自動對調；只保留台灣本島、澎湖、金門、馬祖範圍內的點。
-- **方向**：「北向南」「南下」「往東」「西向」等文字 → 行車方位角；雙向或無法判斷 → 不設方向（App 改用「照相點在前方」判斷）。
+- **方向**：「北向南」「南下」「往東」「西向」等文字 → 行車方位角；人工資料可明寫 `240.6°`（必須含度數符號，0 至不足 360）。雙向或無法判斷 → 不設方向（App 改用「照相點在前方」判斷）。
 - **速限**：有多個數字時（例如「大型車60/小型車70」）取較小值。
 - **類型**：依取締項目／地址判斷固定測速、闖紅燈、測速兼闖紅燈、區間、科技執法。
 - **去重複**：約 11 m 內、同方向視為同一支；ID 由位置與方向產生，資料順序改變也不會變。
@@ -61,6 +61,31 @@ python -I -X utf8 data-pipeline\build_cameras.py --input build\raw.csv --freeway
 - `manual/section_lengths.csv`：警方公告的區間偵測長度，依行駛方向蓋過里程差（新北市警局 1140919 修訂的一覽表）。
 - `manual/ntpc_sections_126156.csv`、`manual/freeway_cameras_13940.csv`：官方來源的已查核回退快照，勿手改成臆測座標。
 - `manual/cameras_extra.csv`：補充的照相點，欄位同縣市版原始資料。
+  銀河附近新點為使用者街景標記，非精確設備座標；OSM way 655367014 北宜路三段局部往新店為 240.6°，速限未知保持空白、不做超速警示。和二段 348 號對面是不同設備，不能合併。
+- `manual/route_hints.csv`：核實過的定向分支導航提示，與測速資料分開。產物 `SpeedCam\Resources\route_hints.json` 直接提交，如同道路線形不在建置時連網猜提示。
+
+## 新增人工導航提示
+
+在 repo 根目錄執行：
+
+```powershell
+python -I -X utf8 data-pipeline\build_route_hints.py
+python -m pytest -q data-pipeline\tests\test_route_hints.py
+```
+
+每列填提示點、進入方位角、**後續確認點**（距離至少 20 m）、匹配半徑、`short_text`、完整 `instruction` 與 `source`。
+現有半徑 12～15 m，上限 30 m；只依完整規劃路線的順序／方向確認分支，不依目前位置猜高架或地下道。
+來源要列 OSM way ID、日期及 URL；OSM 沒有的車道／上下匝道描述明列「依使用者實測」。
+目前 5 列涵蓋 6 個標記：水源南向出口及秀朗橋分岔相距約 37 m，共用一句，避免兩步互相覆蓋。
+
+`replace_text` 只填已核實誤導的 Apple 原文片段，以 `|` 分隔；空欄表示不取代 Apple 原步驟。
+只有同分支且動作點相距 ≤40 m 才取代，其他 Apple 轉彎及位置一律保留；不要寫空片段當萬用比對。
+核心與 CSV builder 都拒絕無效資料，pytest 比對 CSV 與已提交 JSON 完全一致；載入失敗 App 會明列警告。
+`project.yml` 已遞迴包含 `SpeedCam`，因此 JSON 自動打包；`route-probe.sh` 另外傳資源路徑，共用 Core 匹配／步驟插入。
+
+新增提示時，補 `RouteHintTests.swift` 的真實分支／另一支／反向案例、replay 的 `hintChecks` 與檢查器預期。
+驗收須列完整路線最近距離、Apple 前後原文、當時下一步、前後 300 m 語音候選及是否觸發；
+規劃沒有走那條分支就列「未涵蓋」，不能拿沒觸發當通過。`-gallery -galleryBanners -galleryHints` 可預覽手機與最窄 CarPlay 尺寸，仍須實際截圖。
 
 ## 國道和白牌限制道路的線形
 
@@ -92,3 +117,4 @@ python3 build_road_lines.py
 - 內政部警政署「測速執法設置點」，依[政府資料開放授權條款－第1版](https://data.gov.tw/license)使用，App 設定頁會顯示出處。
 - 國道警方資料集 13940、新北市政府資料集 126156，同依政府資料開放授權條款－第1版，建置產物的 `sources` 會附出處。
 - 道路線形：© OpenStreetMap 貢獻者，依 [ODbL](https://www.openstreetmap.org/copyright) 使用。`road_lines.json` 是衍生資料，同樣適用 ODbL，App 設定頁會顯示出處。
+- 人工提示的 OSM 衍生接續資料及測試 fixture 同依 ODbL；使用者提供的車道資訊與 OSM 標籤在各列分開註明，App 設定頁另列導航補充提示出處。

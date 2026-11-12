@@ -418,7 +418,7 @@ final class AppModel: ObservableObject {
         var text = "開始導航，全程\(String(format: "%.1f", km))公里"
         if let first = navigation.firstInstruction { text += "，\(first)" }
         announcer.speak(text)
-        statusMessage = nil
+        statusMessage = navigation.routeHintWarning
     }
 
     /// 改語言後重新開啟 App 之前：結束巡航（Live Activity 也一起結束）。
@@ -459,7 +459,8 @@ final class AppModel: ObservableObject {
                 guard !Task.isCancelled, self.navigation.destination === destination else { return }
                 self.navigation.start(route: plan.route, destination: destination)
                 self.route = plan.route
-                self.statusMessage = plan.warning?.text
+                let warnings = [plan.warning?.text, self.navigation.routeHintWarning].compactMap { $0 }
+                self.statusMessage = warnings.isEmpty ? nil : warnings.joined(separator: "\n")
                 // 不等下一筆定位：藍線和下一步馬上換成新路線
                 if let fix = self.lastFix {
                     self.routeProgress = self.navigation.process(fix)?.progress
@@ -572,7 +573,7 @@ final class AppModel: ObservableObject {
         s.vehicleModeName = settings.vehicleMode.shortName
         // 導航資訊一律放進去：區間和照相模式快到轉彎時，小字也要顯示下一步（見 navHint）
         if let p = routeProgress {
-            s.maneuverText = p.isOffRoute ? "重新規劃中" : ManeuverText.short(p.nextInstruction)
+            s.maneuverText = p.isOffRoute ? "重新規劃中" : p.maneuverText
             s.maneuverSymbol = p.isOffRoute ? "arrow.triangle.2.circlepath" : NavigationController.symbol(for: p.nextInstruction)
             s.maneuverDistance = p.isOffRoute ? nil : p.distanceToNextManeuver
         }

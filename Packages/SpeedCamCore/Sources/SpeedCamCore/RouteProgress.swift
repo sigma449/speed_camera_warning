@@ -8,10 +8,14 @@ public struct RouteStepInfo: Equatable, Sendable {
     public var instruction: String
     /// 這一步的長度。App 用折線實際長度，比 Apple 回報的距離準（累積誤差最多 2.3%）。
     public var distance: Double
+    public var shortInstruction: String?
+    public var hintID: String?
 
-    public init(instruction: String, distance: Double) {
+    public init(instruction: String, distance: Double, shortInstruction: String? = nil, hintID: String? = nil) {
         self.instruction = instruction
         self.distance = distance
+        self.shortInstruction = shortInstruction
+        self.hintID = hintID
     }
 }
 
@@ -35,15 +39,22 @@ public struct RouteProgress: Equatable, Sendable {
     public var distanceFromRoute: Double
     /// 已經判定偏離路線：下一步的指示不再正確，畫面改顯示重新規劃中。
     public var isOffRoute: Bool
+    public var shortInstruction: String?
+    public var hintID: String?
+
+    public var maneuverText: String { shortInstruction ?? ManeuverText.short(nextInstruction) }
 
     public init(nextStepIndex: Int, nextInstruction: String, distanceToNextManeuver: Double,
-                distanceRemaining: Double, distanceFromRoute: Double, isOffRoute: Bool = false) {
+                distanceRemaining: Double, distanceFromRoute: Double, isOffRoute: Bool = false,
+                shortInstruction: String? = nil, hintID: String? = nil) {
         self.nextStepIndex = nextStepIndex
         self.nextInstruction = nextInstruction
         self.distanceToNextManeuver = distanceToNextManeuver
         self.distanceRemaining = distanceRemaining
         self.distanceFromRoute = distanceFromRoute
         self.isOffRoute = isOffRoute
+        self.shortInstruction = shortInstruction
+        self.hintID = hintID
     }
 }
 
@@ -149,7 +160,9 @@ public final class RouteProgressTracker {
                                      distanceToNextManeuver: distToManeuver,
                                      distanceRemaining: remaining,
                                      distanceFromRoute: projection.distance,
-                                     isOffRoute: isOffRoute)
+                                     isOffRoute: isOffRoute,
+                                     shortInstruction: steps.isEmpty ? nil : steps[nextIndex].shortInstruction,
+                                     hintID: steps.isEmpty ? nil : steps[nextIndex].hintID)
         return RouteProgressResult(events: events, progress: progress)
     }
 

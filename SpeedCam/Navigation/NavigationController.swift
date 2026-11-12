@@ -1,6 +1,7 @@
 import CoreLocation
 import Foundation
 import MapKit
+import os
 import SpeedCamCore
 
 /// 目的地搜尋、路線規劃與逐向導航進度。
@@ -10,6 +11,7 @@ final class NavigationController {
     private(set) var destination: MKMapItem?
     private var tracker: RouteProgressTracker?
     private var instructionResolver: RoadInstructionResolver = .empty
+    private(set) var routeHintWarning: String?
 
     var isActive: Bool { route != nil }
 
@@ -49,22 +51,36 @@ final class NavigationController {
         self.route = route
         self.destination = destination
         let polyline = MapItems.coordinates(of: route.polyline)
-        tracker = RouteProgressTracker(polyline: polyline, steps: MapItems.stepInfos(of: route, resolver: instructionResolver))
+        let original = MapItems.stepInfos(of: route, resolver: instructionResolver)
+        let hints: [RouteHint]
+        do {
+            hints = try RouteHintStore.load()
+            routeHintWarning = nil
+        } catch {
+            hints = []
+            routeHintWarning = "導航補充提示載入失敗，暫用 Apple 導航：\(error.localizedDescription)"
+            Logger(subsystem: "tw.speedcammap.app", category: "route").error("\(self.routeHintWarning ?? "", privacy: .public)")
+        }
+        let matches = RouteHintMatcher.matches(hints, polyline: polyline)
+        tracker = RouteProgressTracker(polyline: polyline, steps: RouteHintMatcher.steps(
+            original, matches: matches, totalDistance: GeoMath.length(of: polyline)))
     }
 
     func stop() {
         route = nil
         destination = nil
         tracker = nil
+        routeHintWarning = nil
     }
 
     func process(_ fix: VehicleFix) -> RouteProgressResult? {
         tracker?.process(fix)
     }
 
-    /// 第一個有內容的指示（開始導航時念出來）。
+    /// 開始導航時額外念 Apple 首步；人工提示留給轉彎事件，避免起點連念兩次。
     var firstInstruction: String? {
-        tracker?.steps.first { !$0.instruction.isEmpty }?.instruction
+        guard let first = tracker?.steps.first(where: { !$0.instruction.isEmpty }), first.hintID == nil else { return nil }
+        return first.instruction
     }
 
     /// 依指示文字挑選轉彎箭頭圖示。

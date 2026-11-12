@@ -145,24 +145,37 @@
     "speedKmh": 60
   },
   {
-    "name": "補測01 不中斷去程 長春路→北宜路（第2、3、5項；須核對水源及地下道線形）",
-    "from": { "name": "長春路建國附近測試點", "lat": 25.0547831, "lon": 121.5350273 },
-    "to": { "name": "北宜路2段82巷附近測試點", "lat": 24.953354, "lon": 121.553307 },
+    "name": "補測01 不中斷去程 長春路128號→坪林7-ELEVEN（第2、3、5項；搜尋實際目的地）",
+    "from": { "name": "長春路128號（座標僅為搜尋中心）", "query": "台北市中山區長春路128號", "lat": 25.05478, "lon": 121.531 },
+    "to": { "name": "坪林市區7-ELEVEN（門市依搜尋結果記錄）", "query": "坪林 7-ELEVEN", "lat": 24.935, "lon": 121.711 },
     "vehicleMode": "motorcycleRedYellow",
-    "speedKmh": 60
+    "speedKmh": 60,
+    "hintChecks": [
+      { "id": "jianguo-descent", "name": "建國高架切出點", "lat": 25.025132, "lon": 121.537556, "hintID": "jianguo-shida-descent" },
+      { "id": "shida-underpass", "name": "地下道接師大路", "lat": 25.021279, "lon": 121.530923, "hintID": "shida-underpass" },
+      { "id": "shuiyuan-south-exit", "name": "下水源快速道路", "lat": 24.991865, "lon": 121.533267, "hintID": "shuiyuan-south-huanhe" },
+      { "id": "xiulang-fork", "name": "秀朗橋分岔", "lat": 24.991587, "lon": 121.533042, "hintID": "shuiyuan-south-huanhe" },
+      { "id": "huanhe-underpass", "name": "環河路中間車道地下道", "lat": 24.963436, "lon": 121.536824, "hintID": "huanhe-underpass" }
+    ]
   },
   {
-    "name": "補測02 不中斷回程 北宜路→長春路（第10項；須核對水源北向入口）",
-    "from": { "name": "北宜路2段82巷附近測試點", "lat": 24.953354, "lon": 121.553307 },
-    "to": { "name": "長春路建國附近測試點", "lat": 25.0547831, "lon": 121.5350273 },
+    "name": "補測02 不中斷回程 坪林7-ELEVEN→長春路128號（第10項；同一對搜尋結果反向）",
+    "from": { "name": "坪林市區7-ELEVEN（門市依搜尋結果記錄）", "query": "坪林 7-ELEVEN", "lat": 24.935, "lon": 121.711 },
+    "to": { "name": "長春路128號（座標僅為搜尋中心）", "query": "台北市中山區長春路128號", "lat": 25.05478, "lon": 121.531 },
     "vehicleMode": "motorcycleRedYellow",
-    "speedKmh": 60
+    "speedKmh": 60,
+    "hintChecks": [
+      { "id": "shuiyuan-north-entry", "name": "回程上水源快速道路", "lat": 24.991771, "lon": 121.533305, "hintID": "shuiyuan-north-entry" }
+    ]
   },
   {
-    "name": "補測03 環河路地下道北口前→OSM南口（第5項；中間車道及分層仍須核實）",
-    "from": { "name": "地下道北口前（本次Apple動作點）", "lat": 24.96351, "lon": 121.53681 },
+    "name": "補測03 使用者環河路地下道入口→OSM南口（第5項定向補測）",
+    "from": { "name": "使用者地下道入口標記", "lat": 24.963436, "lon": 121.536824 },
     "to": { "name": "OSM環河地下道南口（非現場指認）", "lat": 24.9615023, "lon": 121.5379752 },
     "vehicleMode": "motorcycleRedYellow",
-    "speedKmh": 60
+    "speedKmh": 60,
+    "hintChecks": [
+      { "id": "huanhe-underpass", "name": "環河路中間車道地下道", "lat": 24.963436, "lon": 121.536824, "hintID": "huanhe-underpass" }
+    ]
   }
 ]
