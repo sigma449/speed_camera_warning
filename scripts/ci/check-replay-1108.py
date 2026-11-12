@@ -7,7 +7,9 @@ from collections import defaultdict
 import json
 import math
 from pathlib import Path
+import re
 import sys
+import unicodedata
 
 MARKER = "REPLAY1108 "
 BEIYI_CASES = {f"北宜{number}{direction}": f"beiyi-{number}-{suffix}"
@@ -177,13 +179,19 @@ def check_records(records: list[dict], *, information: list[str] | None = None) 
         if not name.startswith(("折返01 ", "折返02 ")):
             require(not any(r["event"] == "section_aborted" for r in rows), f"{name} 非折返案例卻中途離開")
         active = None
+        entered_at = None
+        section_spans = []
         for r in rows:
             if r["event"] == "section_entered":
                 require(active is None, f"{name} 尚未結束 {active} 就進入其他區間")
                 active = r.get("id")
+                entered_at = r["t"]
                 require(isinstance(active, str) and bool(active), f"{name} 進入區間缺少 id")
             elif r["event"] in {"section_completed", "section_aborted"}:
                 require(active is not None and r.get("id") == active, f"{name} 沒有對應進入事件的 {r['event']}")
+                if entered_at is not None:
+                    section_spans.append((entered_at, r["t"]))
+                entered_at = None
                 active = None
             elif r["event"] in SECTION_SPEED_EVENTS | {"section_status", "section_zero", "section_remaining"}:
                 require(active is not None and r.get("id") == active, f"{name} 未進入或結束後仍有 {r['event']}")
@@ -191,6 +199,45 @@ def check_records(records: list[dict], *, information: list[str] | None = None) 
                 require(r.get("sectionStillActive") is (active is not None), f"{name} 結束時仍在追蹤或缺少結束事件")
                 if not name.startswith(("補測01 ", "補測02 ")):
                     require(active is None, f"{name} 結束時仍在追蹤")
+        if entered_at is not None:
+            section_spans.append((entered_at, math.inf))
+        previous_hotspot = None
+        for r in rows:
+            if r["event"] not in {"camera_pre", "camera_near"}:
+                continue
+            speeches = r.get("speeches")
+            hotspot = (r.get("cameraType") == "mobile" or r.get("source") == "ntpc-mobile"
+                       or str(r.get("id", "")).startswith("ntpc-mobile-")
+                       or isinstance(speeches, list) and any(
+                           isinstance(text, str) and "常見移動測速" in text for text in speeches))
+            if not hotspot:
+                continue
+            require(r["event"] == "camera_pre", f"{name} 熱點不應產生近距第二次提醒")
+            # 同批次先寫相機、再寫區間事件：起點秒納入，終點秒以本次處理後的狀態為準。
+            require(r.get("sectionActive") is not True
+                    and not any(start <= r["t"] < finish for start, finish in section_spans),
+                    f"{name} 區間倒數中出現熱點預告：{r.get('address', '')}")
+            require(isinstance(speeches, list) and any(
+                isinstance(text, str) and "常見移動測速" in text for text in speeches),
+                f"{name} 熱點預告缺少實際語音候選")
+            traveled = r.get("traveled")
+            require(is_number(traveled) and traveled >= 0, f"{name} 熱點語音缺少有效累計行駛距離 traveled")
+            if is_number(traveled) and traveled >= 0:
+                if previous_hotspot is not None:
+                    gap = traveled - previous_hotspot
+                    require(gap >= 1000, f"{name} 相鄰熱點語音行駛距離 {gap:g} m，小於 1 km")
+                previous_hotspot = traveled
+            address = r.get("address")
+            require(isinstance(address, str) and bool(address), f"{name} 熱點預告缺少 address，無法核對行向")
+            if not isinstance(address, str):
+                continue
+            address = re.sub(r"\s+", "", unicodedata.normalize("NFKC", address))
+            if not name.startswith(("折返01 ", "折返02 ")):
+                if "去程" in name or name.startswith("補測01 "):
+                    require("往新店" not in address, f"{name} 去程提醒反向「往新店」熱點：{address}")
+                if "回程" in name or name.startswith("補測02 "):
+                    require(re.search(r"往(?:宜蘭|坪林)", address) is None,
+                            f"{name} 回程提醒反向「往宜蘭／往坪林」熱點：{address}")
     start = [r for r in records if r["event"] == "run_start"]
     end = [r for r in records if r["event"] == "run_end"]
     require(len(start) == len(end) == 1, "缺少唯一 run_start/run_end，log 可能不完整或混了多次執行")

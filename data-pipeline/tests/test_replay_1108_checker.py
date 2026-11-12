@@ -239,10 +239,86 @@ def test_each_acceptance_failure_is_rejected(records, prefix, event, changes, re
 def test_new_non_speed_reminder_at_ikea_is_not_mistaken_for_section_fixed_camera(records, kind):
     reminder = dict(schema=1, case="去程04 檢查器單元測試", event="camera_pre", t=50, lat=25, lon=121,
                     id="new-reminder", address="中央路白馬寺路口", cameraType=kind, enforcesSpeed=False)
-    records.insert(records.index(row(records, "去程04", "section_completed")), reminder)
+    before = "section_completed"
+    if kind == "mobile":
+        reminder.update(t=15, traveled=100, speeches=["前方300公尺，常見移動測速"])
+        before = "section_entered"
+    records.insert(records.index(row(records, "去程04", before)), reminder)
     assert checker.check_records(records) == []
     reminder["id"] = "685b30491485"
     assert any("IKEA" in error for error in checker.check_records(records))
+
+
+def add_hotspot(records, prefix, second, traveled=100, **fields):
+    reminder = dict(schema=1, case=row(records, prefix, "case_start")["case"], event="camera_pre",
+                    t=second, lat=25, lon=121, id=f"mobile-{second}", address="臺9線18K雙向",
+                    cameraType="mobile", enforcesSpeed=False, traveled=traveled,
+                    speeches=["前方300公尺，常見移動測速"]) | fields
+    end = records.index(row(records, prefix, "case_end"))
+    position = next((i for i in range(end) if records[i]["case"] == reminder["case"]
+                     and records[i]["t"] > second), end)
+    records.insert(position, reminder)
+    return reminder
+
+
+@pytest.mark.parametrize("prefix,second", [("去程04", 20), ("去程04", 50), ("北宜2回程", 50),
+                                          ("補測01", 100), ("補測02", 100)])
+def test_hotspot_pre_is_rejected_during_every_case_countdown_including_same_batch_entry(records, prefix, second):
+    if prefix.startswith("補測"):
+        start = row(records, prefix, "case_start")
+        entry = dict(start, event="section_entered", t=second, id="temporary-section")
+        at = records.index(next(r for r in records if r["case"] == start["case"] and r["t"] >= second))
+        records.insert(at, entry)
+        end = row(records, prefix, "case_end")
+        records.insert(records.index(end), dict(entry, event="section_completed", t=499))
+    add_hotspot(records, prefix, second, sectionActive=False)
+    assert any("區間倒數中出現熱點預告" in error for error in checker.check_records(records))
+
+
+def test_hotspot_is_allowed_before_entry_and_at_completion_but_noise_and_tech_remain_independent(records):
+    add_hotspot(records, "去程04", 15, traveled=100)
+    add_hotspot(records, "去程04", 100, traveled=1100)
+    assert checker.check_records(records) == []
+
+
+@pytest.mark.parametrize("traveled", [1099.99, 99, -1, float("nan"), None, True])
+def test_hotspot_spacing_rejects_under_one_km_reversals_and_invalid_odometer(records, traveled):
+    add_hotspot(records, "補測01", 200, traveled=100)
+    add_hotspot(records, "補測01", 300, traveled=traveled)
+    assert any("行駛距離" in error for error in checker.check_records(records))
+
+
+def test_hotspot_spacing_is_traveled_distance_not_elapsed_time_or_straight_line(records):
+    first = add_hotspot(records, "補測02", 200, traveled=100)
+    second = add_hotspot(records, "補測02", 400, traveled=1100)
+    assert (first["lat"], first["lon"]) == (second["lat"], second["lon"])
+    assert checker.check_records(records) == []
+    second["traveled"] = 1090
+    assert any("小於 1 km" in error for error in checker.check_records(records))
+
+
+@pytest.mark.parametrize("prefix,address", [
+    ("去程01", "臺9線22.5K(往新店)"), ("北宜1去程", "臺9線22.5K（往新店方向）"),
+    ("補測01", "臺9線18.4K（往 新店）"), ("回程01", "臺9線18.4K(往宜蘭)"),
+    ("北宜2回程", "臺9線27.6K(往坪林)"), ("補測02", "臺9線25.2K(往坪林方向)"),
+])
+def test_hotspot_wrong_direction_is_rejected_from_address_on_long_and_short_cases(records, prefix, address):
+    add_hotspot(records, prefix, 5, address=address)
+    assert any("反向" in error for error in checker.check_records(records))
+
+
+def test_missing_hotspot_type_or_section_state_claim_cannot_hide_a_violation(records):
+    target = add_hotspot(records, "去程04", 50, source="ntpc-mobile", sectionActive=False)
+    target.pop("cameraType")
+    assert any("區間倒數中" in error for error in checker.check_records(records))
+    target["t"] = 100
+    records.remove(target)
+    records.insert(records.index(row(records, "去程04", "camera_pre")), target)
+    target["sectionActive"] = True
+    assert any("區間倒數中" in error for error in checker.check_records(records))
+    target["sectionActive"] = False
+    target.pop("address")
+    assert any("缺少 address" in error for error in checker.check_records(records))
 
 
 @pytest.mark.parametrize("fields", [{}, {"cameraType": "tech", "enforcesSpeed": True},

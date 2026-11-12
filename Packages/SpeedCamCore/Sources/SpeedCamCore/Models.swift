@@ -136,12 +136,43 @@ public struct Camera: Codable, Hashable, Identifiable, Sendable {
 
     public var usesTwoStageAlert: Bool { enforcesSpeed }
 
+    private var enforcementItemList: [String] {
+        (enforcementItems ?? "").components(separatedBy: CharacterSet(charactersIn: "、，,；;／/\n\r"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
+    private static func isParkingItem(_ item: String) -> Bool {
+        let text = item.components(separatedBy: .whitespacesAndNewlines).joined()
+        let pattern = #"^(?:(?:違規|不依規定|未依規定)?(?:臨時)?停車|(?:違規)?臨停|違停|(?:違規)?併排(?:停車|臨時停車|臨停)|(?:紅|黃|紅黃)線(?:違規)?(?:停車|臨時停車|臨停|違停)|(?:禁止|禁)(?:臨時)?停車)(?:取締|偵測)?$"#
+        return text.range(of: pattern, options: .regularExpression) != nil
+    }
+
+    public var isParkingOnlyTechnology: Bool {
+        let items = enforcementItemList
+        return type == .tech && !items.isEmpty && items.allSatisfy(Self.isParkingItem)
+    }
+
+    /// 保留來源原文供詳細資訊使用；提醒清單穩定地將停車項目排到最後。
+    public var prioritizedEnforcementItems: String? {
+        guard type == .tech else { return enforcementItems }
+        let items = enforcementItemList
+        guard !items.isEmpty else { return enforcementItems }
+        return (items.filter { !Self.isParkingItem($0) } + items.filter(Self.isParkingItem)).joined(separator: "、")
+    }
+
     public var alertDescription: String {
-        guard type == .tech, let items = enforcementItems, !items.isEmpty else { return displayTypeName }
+        guard type == .tech, let items = prioritizedEnforcementItems, !items.isEmpty else { return displayTypeName }
         return "\(displayTypeName)：\(items)"
     }
 
     public var reminderDetail: String? {
+        if type == .mobile { return "公告熱點・非即時執法" }
+        guard let items = prioritizedEnforcementItems, !items.isEmpty else { return nil }
+        return "取締：\(items)"
+    }
+
+    public var enforcementDetail: String? {
         if type == .mobile { return "公告熱點・非即時執法" }
         guard let items = enforcementItems, !items.isEmpty else { return nil }
         return "取締：\(items)"

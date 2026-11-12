@@ -35,6 +35,8 @@ public struct AlertSettings: Codable, Equatable, Sendable {
     public var rearmDistance: Double = 1_000
     /// 或者經過多久之後才會再次提醒。
     public var rearmInterval: TimeInterval = 600
+    /// 兩則移動熱點語音之間至少行駛的距離；不限制橫幅或其他提醒類型。
+    public var mobileHotspotVoiceDistance: Double = 1_000
 
     // MARK: 區間測速
     /// 安全餘裕：最短合法時間再多加的比例（預設 3%）。
@@ -121,6 +123,8 @@ public struct AlertSettings: Codable, Equatable, Sendable {
         minimumSpeedForCourse = try c.decodeIfPresent(Double.self, forKey: .minimumSpeedForCourse) ?? d.minimumSpeedForCourse
         rearmDistance = try c.decodeIfPresent(Double.self, forKey: .rearmDistance) ?? d.rearmDistance
         rearmInterval = try c.decodeIfPresent(TimeInterval.self, forKey: .rearmInterval) ?? d.rearmInterval
+        mobileHotspotVoiceDistance = try c.decodeIfPresent(Double.self, forKey: .mobileHotspotVoiceDistance)
+            ?? d.mobileHotspotVoiceDistance
         sectionSafetyMargin = try c.decodeIfPresent(Double.self, forKey: .sectionSafetyMargin) ?? d.sectionSafetyMargin
         sectionToleranceKmh = try c.decodeIfPresent(Double.self, forKey: .sectionToleranceKmh) ?? d.sectionToleranceKmh
         sectionToleranceOverrides = try c.decodeIfPresent([String: Double].self, forKey: .sectionToleranceOverrides)

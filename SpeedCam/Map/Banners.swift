@@ -239,7 +239,7 @@ struct CameraDetailCard: View {
                     }
                 }
                 Text(camera.address).font(.subheadline)
-                if let detail = camera.reminderDetail {
+                if let detail = camera.enforcementDetail {
                     Text(detail).font(.subheadline)
                 }
                 if let conditions = camera.conditions {

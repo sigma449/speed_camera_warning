@@ -371,7 +371,7 @@ func replayRecord(_ event: String, leg: String, second: Double, point: GeoPoint,
 
 func logReplay(camera: CameraAlertResult?, section: SectionResult?, stamp: String,
                point: GeoPoint, showStatus: Bool, estimated: Bool,
-               leg: String, second: Double, speedKmh: Double, settings: AlertSettings,
+               leg: String, second: Double, speedKmh: Double, traveledMeters: Double, settings: AlertSettings,
                cameraTarget: inout CameraTarget?, sectionStatus: inout SectionStatus?) -> [String] {
     let previousSection = sectionStatus
     if let camera { cameraTarget = camera.target }
@@ -382,7 +382,8 @@ func logReplay(camera: CameraAlertResult?, section: SectionResult?, stamp: Strin
         if let text = describe(event) {
             print(stamp + text + (estimated ? withActualDistance(event, at: point) : ""))
         }
-        var fields: [String: Any] = ["id": cameraTarget?.camera.id ?? "", "estimated": estimated]
+        var fields: [String: Any] = ["id": cameraTarget?.camera.id ?? "", "estimated": estimated,
+                                    "traveled": traveledMeters, "sectionActive": sectionStatus != nil]
         let key: String
         switch event {
         case let .preAlert(c, distance), let .nearAlert(c, distance, _):
@@ -730,9 +731,11 @@ func runReplay(legs: [ReplayLeg], databasePath: String, rules: RouteRules?,
                 print(stamp + (tunnelNow ? "── 進隧道，定位中斷" : "── 出隧道，定位恢復"))
             }
             if tunnelNow {
-                let spoken = logReplay(camera: engine.tick(now: now), section: sections.tick(now: now), stamp: stamp,
+                let sectionResult = sections.tick(now: now)
+                let cameraResult = engine.tick(now: now, sectionActive: sections.isActive)
+                let spoken = logReplay(camera: cameraResult, section: sectionResult, stamp: stamp,
                           point: point, showStatus: Int(second) % 30 == 0, estimated: true,
-                          leg: leg.name, second: second, speedKmh: actualSpeed * 3.6, settings: settings,
+                          leg: leg.name, second: second, speedKmh: actualSpeed * 3.6, traveledMeters: traveled, settings: settings,
                           cameraTarget: &cameraTarget, sectionStatus: &sectionStatus)
                 speechLog += spoken.map { ReplaySpeech(along: position, second: second, text: $0, source: "測速", hintID: nil) }
                 traveled = min(nextStop, traveled + actualSpeed * tunnelFactor)
@@ -776,9 +779,11 @@ func runReplay(legs: [ReplayLeg], databasePath: String, rules: RouteRules?,
                     }
                 }
             }
-            let spoken = logReplay(camera: engine.process(fix), section: sections.process(fix), stamp: stamp,
+            let sectionResult = sections.process(fix)
+            let cameraResult = engine.process(fix, sectionActive: sections.isActive)
+            let spoken = logReplay(camera: cameraResult, section: sectionResult, stamp: stamp,
                       point: point, showStatus: Int(second) % 30 == 0, estimated: false,
-                      leg: leg.name, second: second, speedKmh: actualSpeed * 3.6, settings: settings,
+                      leg: leg.name, second: second, speedKmh: actualSpeed * 3.6, traveledMeters: traveled, settings: settings,
                       cameraTarget: &cameraTarget, sectionStatus: &sectionStatus)
             speechLog += spoken.map { ReplaySpeech(along: position, second: second, text: $0, source: "測速", hintID: nil) }
 

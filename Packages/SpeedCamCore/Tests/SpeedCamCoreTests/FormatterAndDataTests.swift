@@ -46,6 +46,29 @@ final class AnnouncementFormatterTests: XCTestCase {
                        "前方300公尺，路口科技執法：超速、闖紅燈，速限50")
     }
 
+    func testMixedTechnologyListsKeepDrivingItemsFirstAndRawDetailsIntact() {
+        let items = "違規停車、闖紅燈、併排停車、不停讓行人、紅黃線停車"
+        let tech = Camera(id: "t", type: .tech, lat: 25, lon: 121, enforcementItems: items)
+        let sorted = "闖紅燈、不停讓行人、違規停車、併排停車、紅黃線停車"
+        XCTAssertFalse(tech.isParkingOnlyTechnology)
+        XCTAssertEqual(tech.enforcementItems, items)
+        XCTAssertEqual(tech.enforcementDetail, "取締：" + items)
+        XCTAssertEqual(tech.reminderDetail, "取締：" + sorted)
+        XCTAssertEqual(AnnouncementFormatter.cameraAlert(camera: tech, announcedDistance: 300),
+                       "前方300公尺，路口科技執法：" + sorted)
+    }
+
+    func testParkingClassificationKeepsUnknownItemsAndStopSignEnforcement() {
+        for items in ["違規停車", "併排停車；紅線違停，黃線停車", "違規臨時停車／違規臨停", "紅黃線停車"] {
+            XCTAssertTrue(Camera(id: "t", type: .tech, lat: 25, lon: 121, enforcementItems: items).isParkingOnlyTechnology, items)
+        }
+        for items in ["違規停車、超速", "違規停車、停車再開", "未依規定停車再開", "違規停車、未知項目", "不停讓行人", ""] {
+            XCTAssertFalse(Camera(id: "t", type: .tech, lat: 25, lon: 121, enforcementItems: items).isParkingOnlyTechnology, items)
+        }
+        XCTAssertFalse(Camera(id: "fixed", type: .fixed, lat: 25, lon: 121,
+                              enforcementItems: "違規停車").isParkingOnlyTechnology)
+    }
+
     /// 使用者實測：近距時語音精簡一點，用幾公尺就好。
     func testNearAlertAfterPreOnlySaysDistance() {
         XCTAssertEqual(AnnouncementFormatter.cameraNearAfterPre(announcedDistance: 100), "100公尺")
@@ -146,6 +169,13 @@ final class ToneGeneratorTests: XCTestCase {
 }
 
 final class DatabaseTests: XCTestCase {
+    func testHotspotVoiceDistanceMigratesOldSettingsAndRoundTripsCustomValue() throws {
+        var settings = try JSONDecoder().decode(AlertSettings.self, from: Data("{}".utf8))
+        XCTAssertEqual(settings.mobileHotspotVoiceDistance, 1_000)
+        settings.mobileHotspotVoiceDistance = 750
+        XCTAssertEqual(try JSONDecoder().decode(AlertSettings.self, from: JSONEncoder().encode(settings)), settings)
+    }
+
     func testMultiSourceCameraAndNewSettingsRoundTrip() throws {
         let json = #"{"id":"osm-node-1","type":"fixed","lat":25,"lon":121,"address":"測速照相","source":"osm","sourceID":"node/1","sourceURL":"https://www.openstreetmap.org/node/1","enforcementItems":"超速","conditions":"小型車","positionMethod":"osm-node"}"#
         let camera = try JSONDecoder().decode(Camera.self, from: Data(json.utf8))

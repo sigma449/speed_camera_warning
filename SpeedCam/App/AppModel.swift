@@ -260,8 +260,8 @@ final class AppModel: ObservableObject {
         restartLiveActivityIfNeeded()
         // 隧道裡沒有定位：照相提醒、區間倒數和語音都依時間繼續
         let now = Date()
-        let cam = alertEngine.tick(now: now)
         let sec = sectionTracker.tick(now: now)
+        let cam = alertEngine.tick(now: now, sectionActive: sectionTracker.isActive)
         guard cam != nil || sec != nil else { return }
 
         if let cam { cameraTarget = cam.target }
@@ -569,8 +569,8 @@ final class AppModel: ObservableObject {
         lastFix = fix
 
         // 隧道裡的基地台定位不能判斷照相點和區間，當作沒有定位，由 tick 依時間推算
-        let cam = fix.isReliable ? alertEngine.process(fix) : nil
         let sec = fix.isReliable ? sectionTracker.process(fix) : nil
+        let cam = fix.isReliable ? alertEngine.process(fix, sectionActive: sectionTracker.isActive) : nil
         let nav = navigation.process(fix)
 
         if let cam { cameraTarget = cam.target }
