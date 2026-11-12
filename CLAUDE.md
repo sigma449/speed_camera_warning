@@ -83,6 +83,7 @@ Live Activity 在 iOS 26 會出現在 CarPlay 儀表板，**不需要 entitlemen
   - 照相點橫幅用 `Camera.shortAddress`：18 字以內用原文，太長才拿掉括號內容、多段只留第一段；詳細資訊卡仍顯示完整地址。
 - **主畫面橫幅不透明**（`BannerStyle`）：使用者同意的第一項 UI 收斂。底色不透明，地圖路名才不會透出來；
   有顏色的底色要夠深，白字對比至少 4.5:1，小字不要用 `.secondary`（紅底上會變成低對比的粉色）。
+- **同屏橫幅比例（第二階段 B）**：照相、導航、區間共用 64 pt 圖示欄、46 pt 主要數字、56 pt 主要行槽及 176 pt 最小高度，從上方對齊；長文字可撐高，不能硬鎖高度。區間仍維持三行。375／390 pt 與放大文字的同屏圖尚待 CI 實看。
 - **導航文字縮短**（2026-11-07 使用者要求）：CarPlay、鎖定畫面和手機橫幅顯示「動作＋路名」（`ManeuverText.short`），例如「靠右 上五股楊梅高架」「下交流道 95A出口」；語音仍念 Apple 的完整句子。
   區間和照相模式下，轉彎點 300 m 內小字改顯示下一步（`SpeedCamActivityState.navHint`，超速時先顯示超速）。
 - **「上高速公路」校正**（11/08 第二階段 A 已核准）：只有動作點之後的接續路形能唯一對上 `road_lines.json` 具名非國道主線時，畫面和完整語音一起改成「上＋路名」，例如「左轉上水源快速道路，朝(永和)、景美前進」／短句「左轉 上水源快速道路」。`RoadInstructionResolver` 在 Core 判斷；國道、平行／橫跨、入口太短、未知或多名稱有歧義都保留 Apple 原文，不猜。
@@ -181,6 +182,7 @@ App 的啟動參數（CI 截圖用）：
 - `-demoIfEmpty`：沒有資料時改用展示資料
 - `-gallery`：Live Activity 預覽頁（加 `-galleryMiddle`、`-galleryBottom` 從頁面中段、底部開始顯示）
 - `-gallery -galleryBanners`：手機橫幅預覽頁，用真實資料裡最長的文字（可再加 `-galleryBottom`）
+- `-gallery -galleryBanners -galleryBannerPair camera|section|zero|rerouting -galleryWidth 375|390`：固定顯示導航＋照相／區間／歸零，或重新規劃＋照相；用最長路名及類型，CI 新增 `29`～`34` 同屏／放大字截圖
 - `-gallery -galleryBanners -galleryHints`：內建人工提示的手機橫幅及 170×78 pt 導航／照相＋navHint 預覽；可加 `-galleryBottom`，本輪尚未取得截圖
 - `-gallery -galleryLock`：鎖定畫面和動態島展開的預覽頁，動態島外框是示意（可再加 `-galleryBottom`）
 - `-gallery -galleryStale`：已停止更新的 `.small` 三種尺寸；再加 `-galleryLock` 顯示鎖定畫面及動態島。CI 新增 `27-stale-activity-lock.png`、`28-stale-activity-small.png`，尚待截圖驗收
@@ -273,7 +275,7 @@ App 的啟動參數（CI 截圖用）：
 
 ## 目前進度和下一步（2026-11-12 更新；IPA 仍是 11/07 版本）
 
-**11/08 第二階段 B**：補測 03 的起點移到提示點前約 735 m，保留原案例及檢查器門檻，待驗收者重跑。第 12 項已接過期畫面、啟動清理與停止巡航取消預覽，尚待 iOS／Widget 驗收。第 12／14／15／16 項的本輪狀態見 `docs\test2_1108_analysis.md` B 節；不做第 13 項、不新增 Xcode 測試 target、不改地圖預設值。
+**11/08 第二階段 B**：補測 03 的起點移到提示點前約 735 m，保留原案例及檢查器門檻，待驗收者重跑。第 12 項已接過期畫面、啟動清理與停止巡航取消預覽；第 14 項已統一橫幅比例並加入同屏及放大字截圖入口，尚待 iOS／Widget／畫面驗收。第 12／14／15／16 項的本輪狀態見 `docs\test2_1108_analysis.md` B 節；不做第 13 項、不新增 Xcode 測試 target、不改地圖預設值。
 
 **11/08 第二階段 C**：修正第 8 項髮夾彎錯投影與路形／公告長度不一致的誤中止；舊 IPA 全部 79 段正向完整生命週期回歸通過。第 9 項人工相機已補、速限待詢；第 3／5／10 項及兩個新點以 5 筆定向分支提示接上手機與 Live Activity。Swift **199**／Python **273** 全通過、0 跳過，既有測試未刪除或放寬；詳見 `docs\test2_1108_analysis.md` C 節。尚未取得新 macOS／iOS 編譯、六點真 MapKit 最近距離／提示覆蓋、gallery 截圖或實播；不能宣稱六點已在 Apple 新路線通過。
 

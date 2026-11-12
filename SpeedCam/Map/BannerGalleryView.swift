@@ -17,19 +17,56 @@ struct BannerGalleryView: View {
                                            address: "線西鄉台61線170.11公里(快速道路)(20公噸以上大貨車速限80公里/小時)",
                                            level: .elevated)
 
+    private let longTypeCamera = Camera(id: "gallery-long-type", type: .redLightSpeed, lat: 25, lon: 121.5,
+                                       speedLimit: 80, address: "市民大道三段與建國南路一段口", level: .elevated)
+
+    private var pair: String? {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-galleryBannerPair"), i + 1 < args.count else { return nil }
+        return args[i + 1]
+    }
+
+    private var galleryWidth: CGFloat {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-galleryWidth"), i + 1 < args.count,
+              let width = Double(args[i + 1]), width == 375 || width == 390 else { return .infinity }
+        return CGFloat(width)
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
                 if ProcessInfo.processInfo.arguments.contains("-galleryHints") {
                     hintExamples
+                } else if let pair {
+                    pairedExamples(pair)
                 } else {
                     standardExamples
                 }
             }
-            .padding()
+            .padding(.horizontal, 12)
+            .padding(.vertical, 16)
+            .frame(maxWidth: galleryWidth)
+            .frame(maxWidth: .infinity)
         }
         .defaultScrollAnchor(startAnchor)
         .background(Color(white: 0.3))
+    }
+
+    @ViewBuilder
+    private func pairedExamples(_ pair: String) -> some View {
+        label(pair == "rerouting" ? "重新規劃＋照相" : "導航＋\(pair == "camera" ? "照相" : "區間")")
+        NavigationBanner(progress: RouteProgress(nextStepIndex: 1,
+            nextInstruction: "靠左行駛上建國南北快速道路，朝景美、木柵前進",
+            distanceToNextManeuver: 1_250, distanceRemaining: 17_300,
+            distanceFromRoute: pair == "rerouting" ? 80 : 0, isOffRoute: pair == "rerouting"),
+            destination: "臺灣新竹地方法院新竹簡易庭")
+        if pair == "section" || pair == "zero" {
+            SectionBanner(status: status(remaining: pair == "zero" ? 0 : 615,
+                meters: 12_300, average: 72, suggested: 55), currentSpeed: 62)
+        } else {
+            CameraBanner(target: CameraTarget(camera: longTypeCamera, distance: 1_250, phase: .pre, isOverspeed: false))
+        }
     }
 
     @ViewBuilder
@@ -60,12 +97,8 @@ struct BannerGalleryView: View {
 
     private var standardExamples: some View {
         Group {
-            label("導航＋區間同時")
-            NavigationBanner(progress: RouteProgress(nextStepIndex: 1, nextInstruction: "右轉進入忠孝東路",
-                                                     distanceToNextManeuver: 350, distanceRemaining: 7_300,
-                                                     distanceFromRoute: 0),
-                             destination: "台北車站")
-            SectionBanner(status: status(remaining: 51, meters: 1_100, average: 61, suggested: 70), currentSpeed: 57)
+            pairedExamples("camera")
+            pairedExamples("section")
 
             label("區間倒數，開太快（三位數秒數、最長距離）")
             SectionBanner(status: status(remaining: 615, meters: 12_300, average: 72, suggested: 55), currentSpeed: 62)

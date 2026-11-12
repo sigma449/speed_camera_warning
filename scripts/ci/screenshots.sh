@@ -90,6 +90,26 @@ shot "27-stale-activity-lock"
 launch_app -autoStartCruise NO -gallery -galleryStale
 sleep 8
 shot "28-stale-activity-small"
+launch_app -autoStartCruise NO -gallery -galleryBanners -galleryBannerPair camera -galleryWidth 375
+sleep 8
+shot "29-banners-navigation-camera-375"
+launch_app -autoStartCruise NO -gallery -galleryBanners -galleryBannerPair section -galleryWidth 375
+sleep 8
+shot "30-banners-navigation-section-375"
+launch_app -autoStartCruise NO -gallery -galleryBanners -galleryBannerPair zero -galleryWidth 390
+sleep 8
+shot "31-banners-navigation-zero-390"
+launch_app -autoStartCruise NO -gallery -galleryBanners -galleryBannerPair rerouting -galleryWidth 390
+sleep 8
+shot "32-banners-rerouting-camera-390"
+xcrun simctl ui "${UDID}" content_size accessibility-large
+launch_app -autoStartCruise NO -gallery -galleryBanners -galleryBannerPair camera -galleryWidth 375
+sleep 8
+shot "33-banners-navigation-camera-large-text-375"
+launch_app -autoStartCruise NO -gallery -galleryBanners -galleryBannerPair section -galleryWidth 375
+sleep 8
+shot "34-banners-navigation-section-large-text-375"
+xcrun simctl ui "${UDID}" content_size large
 
 # 2) 展示模式：假軌跡以 62 km/h 往北開，600 m 處有速限 50 的測速照相，1.2 km 處進入區間
 launch_app -demo

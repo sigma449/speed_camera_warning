@@ -17,20 +17,31 @@ enum BannerStyle {
     static let secondaryText = Color.white.opacity(0.88)
 }
 
+enum BannerLayout {
+    static let iconSize: CGFloat = 64
+    static let primaryFont = Font.system(size: 46, weight: .heavy, design: .rounded)
+    static let primaryLineHeight: CGFloat = 56
+    static let minimumHeight: CGFloat = 176
+}
+
 struct CameraBanner: View {
     let target: CameraTarget
 
     var body: some View {
-        HStack(spacing: 14) {
-            SpeedLimitSign(limit: target.camera.speedLimit, size: 64)
+        HStack(alignment: .top, spacing: 14) {
+            SpeedLimitSign(limit: target.camera.speedLimit, size: BannerLayout.iconSize)
             VStack(alignment: .leading, spacing: 2) {
                 Text(AnnouncementFormatter.displayDistance(target.distance))
-                    .font(.system(size: 46, weight: .heavy, design: .rounded))
+                    .font(BannerLayout.primaryFont)
                     .monospacedDigit()
                     .foregroundStyle(target.isOverspeed ? Color.white : Color.yellow)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .frame(minHeight: BannerLayout.primaryLineHeight, alignment: .leading)
                 HStack(spacing: 6) {
                     Label(target.camera.type.displayName, systemImage: target.camera.symbolName)
                         .font(.headline)
+                        .fixedSize(horizontal: false, vertical: true)
                     if let level = target.camera.levelName {
                         LevelTag(text: level)
                     }
@@ -43,6 +54,7 @@ struct CameraBanner: View {
             Spacer(minLength: 0)
         }
         .padding(14)
+        .frame(maxWidth: .infinity, minHeight: BannerLayout.minimumHeight, alignment: .topLeading)
         .background(target.isOverspeed ? BannerStyle.overspeed : BannerStyle.dark,
                     in: RoundedRectangle(cornerRadius: 20))
         .foregroundStyle(.white)
@@ -55,9 +67,9 @@ struct SectionBanner: View {
     let currentSpeed: Int
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 14) {
-                SpeedLimitSign(limit: status.section.speedLimit, size: 64)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 14) {
+                SpeedLimitSign(limit: status.section.speedLimit, size: BannerLayout.iconSize)
                 VStack(alignment: .leading, spacing: 0) {
                     if status.remainingSeconds > 0 {
                         // 秒數最大，看一眼就懂
@@ -65,7 +77,7 @@ struct SectionBanner: View {
                             Text("區間倒數")
                                 .font(.system(size: 24, weight: .heavy, design: .rounded))
                             Text(String(status.remainingWholeSeconds))
-                                .font(.system(size: 46, weight: .heavy, design: .rounded))
+                                .font(BannerLayout.primaryFont)
                                 .monospacedDigit()
                             Text("秒")
                                 .font(.system(size: 24, weight: .heavy, design: .rounded))
@@ -73,10 +85,14 @@ struct SectionBanner: View {
                         .foregroundStyle(.orange)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
+                        .frame(minHeight: BannerLayout.primaryLineHeight, alignment: .leading)
                     } else {
                         Text("可依速限行駛")
                             .font(.system(size: 34, weight: .heavy, design: .rounded))
                             .foregroundStyle(.green)
+                            .lineLimit(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(minHeight: BannerLayout.primaryLineHeight, alignment: .leading)
                     }
                 }
                 Spacer(minLength: 0)
@@ -99,6 +115,7 @@ struct SectionBanner: View {
             }
         }
         .padding(14)
+        .frame(maxWidth: .infinity, minHeight: BannerLayout.minimumHeight, alignment: .topLeading)
         .background(BannerStyle.dark, in: RoundedRectangle(cornerRadius: 20))
         .foregroundStyle(.white)
     }
@@ -118,7 +135,7 @@ struct SectionBanner: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
         .background(tooFast ? BannerStyle.caution : BannerStyle.good, in: RoundedRectangle(cornerRadius: 14))
         .foregroundStyle(.white)
     }
@@ -129,11 +146,11 @@ struct NavigationBanner: View {
     let destination: String?
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(alignment: .top, spacing: 14) {
             Image(systemName: progress.isOffRoute ? "arrow.triangle.2.circlepath"
                   : NavigationController.symbol(for: progress.nextInstruction))
                 .font(.system(size: 40, weight: .bold))
-                .frame(width: 56)
+                .frame(width: BannerLayout.iconSize, height: BannerLayout.iconSize)
             VStack(alignment: .leading, spacing: 2) {
                 if progress.isOffRoute {
                     // 舊路線的下一步已經不對了，不要繼續顯示
@@ -141,13 +158,18 @@ struct NavigationBanner: View {
                         .font(.system(size: 34, weight: .heavy, design: .rounded))
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
+                        .frame(minHeight: BannerLayout.primaryLineHeight, alignment: .leading)
                 } else {
                     Text(AnnouncementFormatter.displayDistance(progress.distanceToNextManeuver))
-                        .font(.system(size: 34, weight: .heavy, design: .rounded))
+                        .font(BannerLayout.primaryFont)
                         .monospacedDigit()
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .frame(minHeight: BannerLayout.primaryLineHeight, alignment: .leading)
                     Text(progress.maneuverText)
                         .font(.headline)
                         .lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
                 if let destination {
                     Text("往 \(destination)・剩 \(AnnouncementFormatter.displayDistance(progress.distanceRemaining))")
@@ -159,6 +181,7 @@ struct NavigationBanner: View {
             Spacer(minLength: 0)
         }
         .padding(14)
+        .frame(maxWidth: .infinity, minHeight: BannerLayout.minimumHeight, alignment: .topLeading)
         .background(BannerStyle.good, in: RoundedRectangle(cornerRadius: 20))
         .foregroundStyle(.white)
     }
