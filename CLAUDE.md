@@ -270,6 +270,8 @@ App 的啟動參數（CI 截圖用）：
   - `@ViewBuilder` 一層最多 10 個子項（超過要 iOS 17）。設定頁的 `Form` 已經剛好 10 個，再加要用 `Group` 包。
   - `.onChange` 用一個參數的舊寫法（兩個參數的要 iOS 17）。
   - 新的 SF Symbols 舊系統沒有，畫面會空白；編譯時看不出來，要有備用圖示（`Symbols`）。
+- **ViewBuilder 裡不能宣告型別**：預覽用的 `struct` 要放在檔案層級；只加 `@available` 不會讓它離開 builder，
+  也不會讓其他檔案看得到。`StaleActivityGalleryView` 曾同時造成 builder 宣告錯誤與 `SpeedCamApp` 找不到型別。
 - **`MKAnnotationView.image` 不能直接放 SF Symbol**：它用符號圖的黑色底圖，上的顏色都會不見，要先畫成點陣圖。
 - **CI 腳本不要寫 `指令 | grep -q`**：`grep -q` 比對到就結束，配上 `pipefail` 會因為 SIGPIPE 判斷成失敗，曾經把正常的 App 誤判成閃退。先存成變數再比對。
 - **3D 建物遮線**：MapKit 的 `aboveLabels` 仍在 3D 建物下，沒有把 overlay 強制蓋到建物上的公開 API。`muted` 只降低底圖顯著度，不保證建物變平；iOS 16 以上 `showsBuildings` 在有 overlay 時不生效。B 輪保留 3D，沒有以改層級或關開關冒稱修好；需看 `36-route-navigation3d-*.png` 對照及實機。
@@ -281,6 +283,14 @@ App 的啟動參數（CI 截圖用）：
 - commit 訊息用繁體中文：第一行寫做了什麼，內文寫原因。
 
 ## 目前進度和下一步（2026-11-12 更新；IPA 仍是 11/07 版本）
+
+**11/08 第二階段 B 退回修正（編譯）**：完整搜尋 `build\ci-r4.log`、`build\ios15-r4.log` 的 `error:`／`warning:`，
+實際 Swift 診斷只有 ViewBuilder 內宣告型別及找不到 `StaleActivityGalleryView`，沒有其他實際 warning。
+已將該型別移到同檔案的檔案層級，保留 iOS 17 門檻與原畫面。依 `55fcf5b..919facd` 逐檔複查全部 **17** 個 Swift 檔，
+涵蓋型別／API 可用性、單參數 `.onChange`、builder 子項、import、App／Widget 共用檔及 XcodeGen／SPM sources；
+iOS 15 的設定 Form 是 10 項，13 項的橫幅 gallery 已限 iOS 17，未再發現需要修改的編譯問題。
+Swift 核心 **206** 項通過、0 跳過；Windows 沒有 iOS SDK，本輪未重編 iOS 15／26 App 或 Widget，
+不能把核心測試或靜態複查當成 Xcode 建置通過。依本輪規則不 push、不觸發 workflow，待驗收者重跑。
 
 **11/08 第二階段 B**：補測 03 的起點移到提示點前約 735 m，保留原案例及檢查器門檻，待驗收者重跑。第 12 項已接過期畫面、啟動清理與停止巡航取消預覽；第 14 項已統一橫幅比例並加入同屏及放大字截圖入口；第 15 項已接三種線樣式／兩種底圖、同幾何 3×2 預覽與固定 3D 導航對照，預設不變；第 16 項已接分版本 POI／長按選點卡、原預覽流程及導航／預覽中禁選點。Swift **206**／Python **274** 全通過，均 0 跳過，紀錄在 `build\test2-b-swift.log`、`build\test2-b-pytest.log`；未刪除／放寬既有測試。30 張新截圖入口已加入腳本，但尚未取得 iOS 26／15 編譯、實際圖片或手勢操作結果，不能宣稱畫面驗收完成。詳見 `docs\test2_1108_analysis.md` B 節；不做第 13 項、不新增 Xcode 測試 target。
 
