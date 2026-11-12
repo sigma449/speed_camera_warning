@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""檢查 route-probe.swift 的 REPLAY1108 JSON log；舊 log、缺案例或未涵蓋一律失敗。"""
+"""檢查 REPLAY1108 log；六點須有實際覆蓋，整線未經過的點另列資訊。"""
 from __future__ import annotations
 
 import argparse
@@ -14,7 +14,7 @@ BEIYI_CASES = {f"北宜{number}{direction}": f"beiyi-{number}-{suffix}"
                for number in range(1, 5) for direction, suffix in (("去程", "f"), ("回程", "r"))}
 REQUIRED_CASES = ("去程01", "去程02", "去程03", "去程04", *BEIYI_CASES,
                   "回程01", "回程02", "回程03", "回程04", "折返01", "折返02",
-                  "語音01", "歸零01", "補測01", "補測02", "補測03")
+                  "語音01", "歸零01", "補測01", "補測02", "補測03", "補測04")
 # 126156 方向別官方門架；不以 log 自報的 gateLat/gateLon 當作正確位置。
 GATES = {
     "beiyi-2-f": ((24.9504174, 121.6477995), (24.9429879, 121.6708659), 5835.3),
@@ -29,8 +29,14 @@ HINT_POINTS = {
     "huanhe-underpass": ((24.963436, 121.536824), "huanhe-underpass", "中間車道 下地下道", "走中間車道下地下道，往北宜路"),
     "shuiyuan-north-entry": ((24.991771, 121.533305), "shuiyuan-north-entry", "上匝道 水源快速道路", "上匝道，接水源快速道路"),
 }
-HINT_CASES = {"補測01": tuple(HINT_POINTS)[:5], "補測02": ("shuiyuan-north-entry",),
-              "補測03": ("huanhe-underpass",)}
+CONTINUOUS_HINT_CASES = {"補測01": tuple(HINT_POINTS)[:5], "補測02": ("shuiyuan-north-entry",)}
+FIXED_HINT_CASES = {
+    "去程03": ("shuiyuan-south-exit", "xiulang-fork"),
+    "回程03": ("shuiyuan-north-entry",),
+    "補測03": ("huanhe-underpass",),
+    "補測04": ("jianguo-descent", "shida-underpass"),
+}
+HINT_CASES = CONTINUOUS_HINT_CASES | FIXED_HINT_CASES
 ADDRESS_QUERY = "台北市中山區長春路128號"
 STORE_QUERY = "坪林 7-ELEVEN"
 
@@ -53,7 +59,7 @@ def spoken_distance(meters: float) -> str:
     return f"{max(10, math.floor(meters / 10 + 0.5) * 10)}公尺"
 
 
-def check_records(records: list[dict]) -> list[str]:
+def check_records(records: list[dict], *, information: list[str] | None = None) -> list[str]:
     errors = []
 
     def require(condition, message):
@@ -235,6 +241,7 @@ def check_records(records: list[dict]) -> list[str]:
                     for r in selected["去程02"] if r["event"] in {"nav_display", "nav_speech"}),
             "去程02 水源動作仍說「上高速公路」")
 
+    covered_points = set()
     for prefix, ids in HINT_CASES.items():
         rows = selected[prefix]
         reports = events(prefix, "hint_check")
@@ -243,20 +250,17 @@ def check_records(records: list[dict]) -> list[str]:
         if len(starts) == 1:
             require(sorted(starts[0].get("hintCheckIDs", [])) == sorted(ids), f"{prefix} 未宣告完整提示點清單")
         for r in reports:
+            previous_errors = len(errors)
             if r.get("id") not in HINT_POINTS:
                 require(False, f"{prefix} 未知提示點 {r.get('id')}")
                 continue
             point, hint_id, short, instruction = HINT_POINTS[r["id"]]
             require(distance((r["lat"], r["lon"]), point) <= 1, f"{prefix} {r['id']} 不是使用者提供的位置")
             route_distance, along = r.get("routeDistance"), r.get("along")
-            require(is_number(route_distance) and route_distance >= 0 and is_number(along),
+            require(is_number(route_distance) and route_distance >= 0 and is_number(along) and along >= 0,
                     f"{prefix} {r['id']} 缺少路線最近距離／沿路位置")
-            require(r.get("coverage") == "covered" and is_number(route_distance) and route_distance <= 30,
-                    f"{prefix} {r['id']} 未涵蓋：{r.get('coverage')}，路線最近距離 {route_distance!r} m；不能當成通過")
-            require(r.get("hintID") == hint_id and r.get("matched") is True and r.get("triggered") is True,
-                    f"{prefix} {r['id']} 沒有在正確分支觸發提示")
-            require(r.get("shortText") == r.get("displayedHint") == r.get("liveActivityHint") == short,
-                    f"{prefix} {r['id']} 手機／Live Activity 短句不符")
+            require(r.get("hintID") == hint_id, f"{prefix} {r['id']} 提示 ID 不符")
+            require(r.get("shortText") == short, f"{prefix} {r['id']} 短句不符")
             require(r.get("instruction") == instruction, f"{prefix} {r['id']} 語音全文不符")
             context = r.get("appleSteps")
             require(isinstance(context, list) and bool(context) and all(
@@ -265,6 +269,24 @@ def check_records(records: list[dict]) -> list[str]:
                 f"{prefix} {r['id']} 缺少 Apple 原文與前後步驟位置")
             require(isinstance(r.get("displayAtPoint"), str) and bool(r["displayAtPoint"]),
                     f"{prefix} {r['id']} 缺少經過當時的下一步")
+            coverage = r.get("coverage")
+            if prefix in CONTINUOUS_HINT_CASES and coverage in {"not_on_route", "different_branch"}:
+                require(is_number(route_distance) and (
+                    route_distance > 30 if coverage == "not_on_route" else
+                    route_distance <= 30 and r.get("matched") is False and r.get("triggered") is False),
+                    f"{prefix} {r['id']} 未涵蓋狀態與距離／分支證據不符")
+                if information is not None:
+                    offset = f"{route_distance:.1f} m" if is_number(route_distance) else repr(route_distance)
+                    information.append(f"{prefix} {r['id']} 未經過（{coverage}，最近 {offset}）；仍須其他案例涵蓋")
+                continue
+            if prefix in FIXED_HINT_CASES:
+                require(is_number(along) and along >= 500, f"{prefix} {r['id']} 定向案例起點距提示點不足 500 m")
+            require(r.get("coverage") == "covered" and is_number(route_distance) and route_distance <= 30,
+                    f"{prefix} {r['id']} 未涵蓋：{r.get('coverage')}，路線最近距離 {route_distance!r} m；不能當成通過")
+            require(r.get("hintID") == hint_id and r.get("matched") is True and r.get("triggered") is True,
+                    f"{prefix} {r['id']} 沒有在正確分支觸發提示")
+            require(r.get("displayedHint") == r.get("liveActivityHint") == short,
+                    f"{prefix} {r['id']} 手機／Live Activity 短句不符")
             if not is_number(along):
                 continue
             windows = [event for event in rows if event["event"] == "nav_hint" and event.get("hintID") == hint_id]
@@ -282,6 +304,8 @@ def check_records(records: list[dict]) -> list[str]:
                     require(any(isinstance(speech, dict) and speech.get("text") == event.get("text")
                                 and speech.get("hintID") == hint_id and speech.get("t") == event["t"] for speech in speeches),
                             f"{prefix} {r['id']} 語音清單遺漏實際事件")
+            if len(errors) == previous_errors:
+                covered_points.add(r["id"])
         by_hint = defaultdict(list)
         for r in rows:
             if r["event"] == "nav_speech" and r.get("hintID"):
@@ -290,6 +314,9 @@ def check_records(records: list[dict]) -> list[str]:
             markers = [r.get("announcement") for r in spoken]
             require(all(is_number(marker) for marker in markers) and len(markers) == len(set(markers)),
                     f"{prefix} {hint_id} 同一點重複播報相同距離門檻")
+
+    for key in HINT_POINTS:
+        require(key in covered_points, f"提示點 {key} 所有案例都沒有通過實際覆蓋檢查")
 
     endpoints = []
     for prefix, expected in (("補測01", (ADDRESS_QUERY, STORE_QUERY)), ("補測02", (STORE_QUERY, ADDRESS_QUERY))):
@@ -311,7 +338,7 @@ def check_records(records: list[dict]) -> list[str]:
     return errors
 
 
-def check_text(text: str) -> list[str]:
+def check_text(text: str, *, information: list[str] | None = None) -> list[str]:
     records, errors = [], []
     for line_number, line in enumerate(text.splitlines(), 1):
         if MARKER not in line:
@@ -320,20 +347,23 @@ def check_text(text: str) -> list[str]:
             records.append(json.loads(line.split(MARKER, 1)[1]))
         except ValueError as exc:
             errors.append(f"log 第 {line_number} 行 JSON 損壞：{exc}")
-    return errors + check_records(records)
+    return errors + check_records(records, information=information)
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("log", type=Path)
     args = parser.parse_args(argv)
+    information = []
     try:
         raw = args.log.read_bytes()
         encoding = "utf-16" if raw.startswith((b"\xff\xfe", b"\xfe\xff")) else "utf-8-sig"
-        errors = check_text(raw.decode(encoding))
+        errors = check_text(raw.decode(encoding), information=information)
     except (OSError, UnicodeError) as exc:
         print(f"[失敗] 無法讀取 log：{exc}", file=sys.stderr)
         return 1
+    for message in information:
+        print(f"[資訊] {message}")
     for error in errors:
         print(f"[失敗] {error}", file=sys.stderr)
     if errors:

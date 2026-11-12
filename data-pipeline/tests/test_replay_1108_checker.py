@@ -71,7 +71,7 @@ def records():
             ids = checker.HINT_CASES[prefix]
             start = out[-1]
             start["hintCheckIDs"] = ids
-            if prefix != "補測03":
+            if prefix in checker.CONTINUOUS_HINT_CASES:
                 address = dict(Name="長春路128號", Query=checker.ADDRESS_QUERY, Lat=25.05478, Lon=121.531)
                 store = dict(Name="7-ELEVEN 坪林門市", Query=checker.STORE_QUERY, Lat=24.935, Lon=121.711)
                 for side, place in zip(("from", "to"), (address, store) if prefix == "補測01" else (store, address)):
@@ -103,12 +103,19 @@ def row(records, prefix, event, index=0):
     return [r for r in records if r["case"].startswith(prefix + " ") and r["event"] == event][index]
 
 
-def test_underpass_replay_starts_before_announcement_window():
+@pytest.mark.parametrize("prefix,ids", checker.FIXED_HINT_CASES.items())
+def test_fixed_hint_replays_start_before_announcement_window(prefix, ids):
     cases = json.loads(CHECKER.with_name("route-replay-1108.json").read_text(encoding="utf-8"))
-    case = next(case for case in cases if case["name"].startswith("補測03 "))
-    point = checker.HINT_POINTS["huanhe-underpass"][0]
-    assert checker.distance((case["from"]["lat"], case["from"]["lon"]), point) >= 500
-    assert any(hint["hintID"] == "huanhe-underpass" for hint in case["hintChecks"])
+    assert sorted(case["name"].split(" ", 1)[0] for case in cases) == sorted(checker.REQUIRED_CASES)
+    case = next(case for case in cases if case["name"].startswith(prefix + " "))
+    assert not case["from"].get("query") and not case["to"].get("query")
+    assert sorted(hint["id"] for hint in case["hintChecks"]) == sorted(ids)
+    for key in ids:
+        point, hint_id, _, _ = checker.HINT_POINTS[key]
+        assert checker.distance((case["from"]["lat"], case["from"]["lon"]), point) >= 500
+        hint = next(hint for hint in case["hintChecks"] if hint["id"] == key)
+        assert hint["hintID"] == hint_id
+        assert checker.distance((hint["lat"], hint["lon"]), point) <= 1
 
 
 def test_complete_synthetic_log_is_accepted_by_checker_only(records, tmp_path, capsys):
@@ -178,7 +185,7 @@ def test_missing_case_or_truncated_end_fails(records):
     assert checker.check_records(records[:-1])
 
 
-@pytest.mark.parametrize("prefix", list(checker.BEIYI_CASES) + ["去程03", "回程04", "補測01", "補測02", "補測03"])
+@pytest.mark.parametrize("prefix", list(checker.BEIYI_CASES) + ["去程03", "回程03", "回程04", "補測01", "補測02", "補測03", "補測04"])
 def test_unchanged_cases_cannot_be_dropped_or_abort_vacuously(records, prefix):
     remaining = [r for r in records if not r["case"].startswith(prefix + " ")]
     assert any("缺少案例" in error for error in checker.check_records(remaining))
@@ -206,8 +213,61 @@ def test_incomplete_lifecycle_counts_and_disabled_city_alerts_fail(records):
     ({"speeches": []}, "語音清單"),
 ])
 def test_hint_reports_cannot_pass_missing_route_branch_or_evidence(records, changes, reason):
-    row(records, "補測01", "hint_check").update(changes)
+    row(records, "補測03", "hint_check").update(changes)
     assert any(reason in error for error in checker.check_records(records))
+
+
+def skip_hint(records, prefix, key, coverage="not_on_route"):
+    report = next(r for r in records if r["case"].startswith(prefix + " ")
+                  and r["event"] == "hint_check" and r["id"] == key)
+    report.update(coverage=coverage, routeDistance=5738.7 if coverage == "not_on_route" else 1,
+                  matched=False, triggered=False, displayedHint="", liveActivityHint="", speeches=[])
+    records[:] = [r for r in records if not (r["case"].startswith(prefix + " ")
+                  and r["event"] in {"nav_hint", "nav_speech"} and r.get("hintID") == report["hintID"])]
+
+
+@pytest.mark.parametrize("coverage", ["not_on_route", "different_branch"])
+def test_continuous_routes_can_skip_points_only_with_other_case_coverage(records, tmp_path, capsys, coverage):
+    for prefix, ids in checker.CONTINUOUS_HINT_CASES.items():
+        for key in ids:
+            skip_hint(records, prefix, key, coverage)
+    information = []
+    assert checker.check_records(records, information=information) == []
+    assert len(information) == len(checker.HINT_POINTS)
+    path = tmp_path / "alternate-route.log"
+    path.write_text("\n".join(checker.MARKER + json.dumps(r) for r in records), encoding="utf-8")
+    assert checker.main([str(path)]) == 0
+    output = capsys.readouterr().out
+    assert "[資訊] 補測01 xiulang-fork 未經過" in output
+    assert "[資訊] 補測01 huanhe-underpass 未經過" in output
+
+
+@pytest.mark.parametrize("key", checker.HINT_POINTS)
+def test_point_without_actual_coverage_in_any_case_fails(records, key):
+    for prefix, ids in checker.HINT_CASES.items():
+        if key in ids:
+            skip_hint(records, prefix, key)
+    assert f"提示點 {key} 所有案例都沒有通過實際覆蓋檢查" in checker.check_records(records)
+
+
+def test_continuous_report_cannot_hide_missing_prompt_with_false_coverage_label(records):
+    report = row(records, "補測01", "hint_check")
+    report["coverage"] = "not_on_route"
+    assert any("未涵蓋狀態與距離／分支證據不符" in error for error in checker.check_records(records))
+
+
+def test_fixed_case_cannot_start_at_the_hint_even_if_another_case_covers_it(records):
+    row(records, "補測04", "hint_check")["along"] = 0
+    assert any("不足 500 m" in error for error in checker.check_records(records))
+
+
+def test_one_combined_speech_covers_both_shuiyuan_and_xiulang_markers(records):
+    for prefix in ("補測01", "去程03"):
+        reports = {r["id"]: r for r in records if r["case"].startswith(prefix + " ") and r["event"] == "hint_check"}
+        first, fork = (reports[key] for key in ("shuiyuan-south-exit", "xiulang-fork"))
+        fork["along"] = first["along"] + 38.23
+        assert first["speeches"] == fork["speeches"]
+    assert checker.check_records(records) == []
 
 
 def test_hint_report_self_claims_do_not_replace_actual_events(records):
