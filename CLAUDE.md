@@ -204,7 +204,7 @@ App 的啟動參數（CI 截圖用）：
     **`mode=replay`（模擬開車）**：`-f mode=replay -f cases=scripts/ci/route-replay-1107.json`。沿著 Apple 的路線每秒給一筆定位，用真實的照相點和區間資料跑核心程式，印出每個語音和提醒的位置，並檢查每個動作點畫面顯示的對不對（log 最後有「相符 N／M」）。隧道裡不給定位，只呼叫 `tick`。改了提醒、區間或導航就跑一次；使用者回報實測問題時，把路線加進清單就能重現。
     `route-replay-tunnels.json` 專門測隧道（辛亥、文山、懷恩、萬里、過港、東澳、雪山），可以用 `tunnelSpeedFactor` 模擬隧道裡車速變慢，提醒後面會印實際離照相點多遠。隧道範圍在 `route-probe.swift` 的 `tunnels`。
     **11/08 驗收**：`route-replay-1108.json` 的 23 案包含同核心折返、歸零後折返及同向歸零續行。第二階段 C 強制北宜 1～4 雙向完整進入／完成，所有非折返案例不准中途離開，並核對生命週期、全案例數、原有市區照相仍提醒、全案例節流等不變性；原北宜 2 四個官方門架獨立比對保留。不中斷案例改以 MapKit 搜尋「台北市中山區長春路128號」及「坪林 7-ELEVEN」，快取同一對結果供回程反向，印實際門市／地址／座標；門市尚待驗收者核對，搜尋失敗直接失敗、不用搜尋中心冒充。
-    `REPLAY1108 ` 的 `hint_check` 逐一列六點的完整路線最近距離、Apple 前後步驟、當時下一步、前後 300 m 語音候選、補充短句及觸發情況；另比對實際 `nav_hint`／`nav_speech` 事件，未經過或不同分支明列「未涵蓋」並非零，不當成通過。replay 的 JSONL 保存完整折線，不再只保留 50 m 取樣。下次 macOS 完整回放後執行 `python -I -X utf8 scripts\ci\check-replay-1108.py build\replay-1108-phase-c.log`，支援 UTF-16 BOM。**舊 `build\replay-1108-fixed.log` 已被新檢查器拒絕（北宜 4 回程誤中止，另缺新提示點報告）**；本輪禁止觸發 workflow，尚無 C 版真 MapKit／iOS 結果，人工 log 單測不能充當驗收。
+    `REPLAY1108 ` 的 `hint_check` 逐一列六點的完整路線最近距離、Apple 前後步驟、當時下一步、前後 300 m 語音候選、補充短句及觸發情況；另比對實際 `nav_hint`／`nav_speech` 事件，未經過或不同分支明列「未涵蓋」並非零，不當成通過。replay 的 JSONL 保存完整折線，不再只保留 50 m 取樣。完整回放後執行 `python -I -X utf8 scripts\ci\check-replay-1108.py build\replay-1108-r3.log`，支援 UTF-16 BOM。**舊 `build\replay-1108-fixed.log` 已被新檢查器拒絕（北宜 4 回程誤中止，另缺新提示點報告）**。驗收者提供的 r3 log 六點在不中斷案例已有覆蓋，但補測 03 從提示點開始而失敗（62／63）；B 輪保留 23 案及原門檻，改從 r3 去程 t792、提示點前約 735 m 的位置開始。新起點尚待 macOS 重跑，不修改舊 log，人工 log 單測不能充當驗收。
   - `iOS 15 實際執行`（手動，約 20 分鐘）：`gh workflow run ios15-test.yml --repo sigma449/speed_camera_warning --ref main`。從 Apple 官方 CDN 安裝 iOS 15.5 模擬器（不用登入），在 iPhone 7 模擬器上實際開啟 App 並截圖。改了舊系統的程式就跑一次。截圖一樣在 log 裡。
 - 用 `gh run watch <id> --exit-status` 等結果，`gh run view <id> --log` 讀 log。
 - 環境：runner `macos-26`、Xcode 26.6、App 最低 iOS 15.0、Widget 最低 iOS 26.0、`SWIFT_VERSION 5.0`、`SWIFT_STRICT_CONCURRENCY minimal`。
@@ -266,10 +266,12 @@ App 的啟動參數（CI 截圖用）：
 ## Git
 
 - 單人專案，直接 commit 到 `main` 再 push。`Build IPA` 是手動觸發的 workflow，要在預設分支上才會出現在 Actions 頁面。
-- **本輪例外**：11/08 第二階段 C（接續 A）只在本機 `copilot/test2-1108` commit，不 push、不觸發 workflow、不動 main；`docs/speed_camera_detector_test2_1108.docx`、`docs/copilot_review.md` 不加入 git。
+- **本輪例外**：11/08 第二階段 B（接續 A／C）只在本機 `copilot/test2-1108` commit，一項一個 commit，不 push、不觸發 workflow、不動 main；`docs/speed_camera_detector_test2_1108.docx`、`docs/copilot_review.md` 不加入 git。
 - commit 訊息用繁體中文：第一行寫做了什麼，內文寫原因。
 
 ## 目前進度和下一步（2026-11-12 更新；IPA 仍是 11/07 版本）
+
+**11/08 第二階段 B**：補測 03 的起點移到提示點前約 735 m，保留原案例及檢查器門檻，待驗收者重跑。第 12／14／15／16 項的本輪狀態見 `docs\test2_1108_analysis.md` B 節；不做第 13 項、不新增 Xcode 測試 target、不改地圖預設值。
 
 **11/08 第二階段 C**：修正第 8 項髮夾彎錯投影與路形／公告長度不一致的誤中止；舊 IPA 全部 79 段正向完整生命週期回歸通過。第 9 項人工相機已補、速限待詢；第 3／5／10 項及兩個新點以 5 筆定向分支提示接上手機與 Live Activity。Swift **199**／Python **273** 全通過、0 跳過，既有測試未刪除或放寬；詳見 `docs\test2_1108_analysis.md` C 節。尚未取得新 macOS／iOS 編譯、六點真 MapKit 最近距離／提示覆蓋、gallery 截圖或實播；不能宣稱六點已在 Apple 新路線通過。
 

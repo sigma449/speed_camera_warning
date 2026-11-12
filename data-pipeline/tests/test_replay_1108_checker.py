@@ -103,6 +103,14 @@ def row(records, prefix, event, index=0):
     return [r for r in records if r["case"].startswith(prefix + " ") and r["event"] == event][index]
 
 
+def test_underpass_replay_starts_before_announcement_window():
+    cases = json.loads(CHECKER.with_name("route-replay-1108.json").read_text(encoding="utf-8"))
+    case = next(case for case in cases if case["name"].startswith("補測03 "))
+    point = checker.HINT_POINTS["huanhe-underpass"][0]
+    assert checker.distance((case["from"]["lat"], case["from"]["lon"]), point) >= 500
+    assert any(hint["hintID"] == "huanhe-underpass" for hint in case["hintChecks"])
+
+
 def test_complete_synthetic_log_is_accepted_by_checker_only(records, tmp_path, capsys):
     text = "\n".join("2026-11-12T00:00:00Z job " + checker.MARKER + json.dumps(r, ensure_ascii=False) for r in records)
     assert checker.check_text(text) == []
