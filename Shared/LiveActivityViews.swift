@@ -6,6 +6,24 @@ import WidgetKit
 
 typealias ActivityState = SpeedCamActivityState
 
+struct StaleActivityView: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("已停止更新")
+                .font(.system(size: 24, weight: .bold))
+                .minimumScaleFactor(0.7)
+                .lineLimit(1)
+            Text("請開啟 App")
+                .font(.system(size: 15, weight: .semibold))
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .foregroundStyle(.white)
+        .accessibilityElement(children: .combine)
+    }
+}
+
 enum ActivityFormat {
     static func distance(_ meters: Double?) -> String {
         guard let m = meters else { return "--" }
@@ -47,12 +65,21 @@ struct SpeedLimitSign: View {
 @available(iOS 16.1, *)
 struct SmallActivityView: View {
     let state: ActivityState
+    var isStale = false
     /// 動態島展開時，上面已經有速限標誌或圖示，這裡就不再顯示一次。
     var showsLeading = true
     /// 超速時自己加一層紅色。鎖定畫面整張卡片已經是紅底，再加會多出一塊方框。
     var tintsOverspeed = true
 
     var body: some View {
+        if isStale {
+            StaleActivityView()
+        } else {
+            liveContent
+        }
+    }
+
+    private var liveContent: some View {
         HStack(spacing: 10) {
             if showsLeading {
                 leading
@@ -173,13 +200,14 @@ struct SmallActivityView: View {
 @available(iOS 16.1, *)
 struct LockScreenActivityView: View {
     let state: ActivityState
+    var isStale = false
 
     var body: some View {
         HStack(spacing: 14) {
-            SmallActivityView(state: state, tintsOverspeed: false)
+            SmallActivityView(state: state, isStale: isStale, tintsOverspeed: false)
                 .frame(height: 70)
             // 巡航時大字已經是車速，不再顯示一次
-            if state.mode != .idle {
+            if !isStale && state.mode != .idle {
                 VStack(alignment: .trailing, spacing: 2) {
                     Text("\(state.currentSpeedKmh)")
                         .font(.system(size: 34, weight: .heavy, design: .rounded))
@@ -193,7 +221,7 @@ struct LockScreenActivityView: View {
             }
         }
         .padding(14)
-        .activityBackgroundTint(state.isOverspeed ? Color.red.opacity(0.8) : Color.black.opacity(0.75))
+        .activityBackgroundTint(!isStale && state.isOverspeed ? Color.red.opacity(0.8) : Color.black.opacity(0.75))
         .activitySystemActionForegroundColor(.white)
     }
 }
@@ -203,8 +231,19 @@ struct LockScreenActivityView: View {
 /// 展開時左上角：速限標誌或圖示（下方的 SmallActivityView 就不再顯示）。
 struct ExpandedLeadingView: View {
     let state: ActivityState
+    var isStale = false
 
     var body: some View {
+        if isStale {
+            Image(systemName: "pause.circle.fill")
+                .font(.system(size: 26, weight: .bold))
+                .accessibilityLabel("已停止更新")
+        } else {
+            liveContent
+        }
+    }
+
+    @ViewBuilder private var liveContent: some View {
         switch state.mode {
         case .camera:
             SpeedLimitSign(limit: state.speedLimit, size: 40)
@@ -223,9 +262,10 @@ struct ExpandedLeadingView: View {
 /// 展開時右上角：目前車速。巡航時下方的大字已經是車速，這裡不顯示。
 struct ExpandedTrailingView: View {
     let state: ActivityState
+    var isStale = false
 
     var body: some View {
-        if state.mode != .idle {
+        if !isStale && state.mode != .idle {
             VStack(alignment: .trailing, spacing: 0) {
                 Text("\(state.currentSpeedKmh)")
                     .font(.system(size: 30, weight: .heavy, design: .rounded))
@@ -238,7 +278,17 @@ struct ExpandedTrailingView: View {
 
 struct CompactLeadingView: View {
     let state: ActivityState
+    var isStale = false
     var body: some View {
+        if isStale {
+            Image(systemName: "pause.circle.fill")
+                .accessibilityLabel("已停止更新")
+        } else {
+            liveContent
+        }
+    }
+
+    @ViewBuilder private var liveContent: some View {
         switch state.mode {
         case .camera:
             Image(systemName: state.cameraSymbol ?? "camera.fill")
@@ -256,25 +306,34 @@ struct CompactLeadingView: View {
 @available(iOS 16.1, *)
 struct CompactTrailingView: View {
     let state: ActivityState
+    var isStale = false
     var body: some View {
         Group {
-            switch state.mode {
-            case .camera:
-                Text(ActivityFormat.distance(state.distanceMeters))
-            case .section:
-                if state.sectionZero {
-                    Text("OK")
-                } else {
-                    Text(timerInterval: ActivityFormat.countdownRange(until: state.sectionEarliestExit), countsDown: true)
-                        .frame(maxWidth: 44)
-                }
-            case .navigation:
-                Text(ActivityFormat.distance(state.maneuverDistance))
-            case .idle:
-                Text("\(state.currentSpeedKmh)")
+            if isStale {
+                Text("已停止")
+            } else {
+                liveContent
             }
         }
         .font(.system(.body, design: .rounded).weight(.bold))
         .monospacedDigit()
+    }
+
+    @ViewBuilder private var liveContent: some View {
+        switch state.mode {
+        case .camera:
+            Text(ActivityFormat.distance(state.distanceMeters))
+        case .section:
+            if state.sectionZero {
+                Text("OK")
+            } else {
+                Text(timerInterval: ActivityFormat.countdownRange(until: state.sectionEarliestExit), countsDown: true)
+                    .frame(maxWidth: 44)
+            }
+        case .navigation:
+            Text(ActivityFormat.distance(state.maneuverDistance))
+        case .idle:
+            Text("\(state.currentSpeedKmh)")
+        }
     }
 }

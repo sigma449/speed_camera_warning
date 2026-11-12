@@ -117,7 +117,11 @@ struct RootView: View {
 
     /// 地點階段：鏡頭移到目的地；路線階段：整條路線放進畫面（下方留位置給卡片）。
     private func movePreviewCamera() {
-        guard let p = model.preview else { return }
+        guard let p = model.preview else {
+            previewCountdown = nil
+            follow.endPreview()
+            return
+        }
         switch p.stage {
         case .place:
             follow.preview(region: MKCoordinateRegion(center: p.coordinate, latitudinalMeters: 900, longitudinalMeters: 900))
@@ -158,13 +162,11 @@ struct RootView: View {
     private func startPreviewedNavigation() {
         previewCountdown = nil
         model.confirmPreview()
-        follow.endPreview()
     }
 
     private func cancelPreview() {
         previewCountdown = nil
         model.cancelPreview()
-        follow.endPreview()
     }
 
     /// 右下角的「回到目前位置」按鈕。跟隨中再按一次會切換顯示方式（行進方向朝上 → 北方朝上 → 3D）。

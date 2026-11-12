@@ -193,6 +193,9 @@ final class AppModel: ObservableObject {
                 startCruise()
             }
         }
+        if !isCruising || !settings.liveActivityEnabled || demoMode {
+            activity.end()
+        }
     }
 
     func sceneBecameActive() {
@@ -222,12 +225,14 @@ final class AppModel: ObservableObject {
         tickTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
+                guard !Task.isCancelled else { return }
                 self?.tick()
             }
         }
     }
 
     private func tick() {
+        guard isCruising else { return }
         restartLiveActivityIfNeeded()
         // 隧道裡沒有定位：照相提醒、區間倒數和語音都依時間繼續
         let now = Date()
@@ -283,15 +288,19 @@ final class AppModel: ObservableObject {
     }
 
     func stopCruise() {
-        guard isCruising else { return }
+        cancelPreview()
         endNavigation(silently: true)
         isCruising = false
+        demoTask?.cancel()
+        demoTask = nil
         tickTask?.cancel()
         tickTask = nil
         UIApplication.shared.isIdleTimerDisabled = false
         location.stop()
         activity.end()
         announcer.stopAll()
+        alertEngine.reset()
+        sectionTracker.reset()
         cameraTarget = nil
         sectionStatus = nil
         sectionApproach = nil

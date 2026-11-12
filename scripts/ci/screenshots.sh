@@ -84,6 +84,12 @@ shot "01f-lock-top"
 launch_app -gallery -galleryLock -galleryBottom
 sleep 8
 shot "01g-lock-bottom"
+launch_app -autoStartCruise NO -gallery -galleryStale -galleryLock
+sleep 8
+shot "27-stale-activity-lock"
+launch_app -autoStartCruise NO -gallery -galleryStale
+sleep 8
+shot "28-stale-activity-small"
 
 # 2) 展示模式：假軌跡以 62 km/h 往北開，600 m 處有速限 50 的測速照相，1.2 km 處進入區間
 launch_app -demo

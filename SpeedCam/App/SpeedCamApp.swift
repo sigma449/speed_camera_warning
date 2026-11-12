@@ -28,7 +28,9 @@ struct SpeedCamApp: App {
 @available(iOS 17, *)
 private struct GalleryRoot: View {
     var body: some View {
-        if ProcessInfo.processInfo.arguments.contains("-galleryBanners") {
+        if ProcessInfo.processInfo.arguments.contains("-galleryStale") {
+            StaleActivityGalleryView()
+        } else if ProcessInfo.processInfo.arguments.contains("-galleryBanners") {
             BannerGalleryView()
         } else if ProcessInfo.processInfo.arguments.contains("-galleryLock") {
             LockScreenGalleryView()

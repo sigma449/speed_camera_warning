@@ -9,27 +9,27 @@ import WidgetKit
 struct SpeedCamLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: SpeedCamActivityAttributes.self) { context in
-            FamilyAdaptiveView(state: context.state)
+            FamilyAdaptiveView(state: context.state, isStale: context.isStale)
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    ExpandedLeadingView(state: context.state)
+                    ExpandedLeadingView(state: context.state, isStale: context.isStale)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
-                    ExpandedTrailingView(state: context.state)
+                    ExpandedTrailingView(state: context.state, isStale: context.isStale)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    SmallActivityView(state: context.state, showsLeading: false)
+                    SmallActivityView(state: context.state, isStale: context.isStale, showsLeading: false)
                         .frame(height: 64)
                 }
             } compactLeading: {
-                CompactLeadingView(state: context.state)
+                CompactLeadingView(state: context.state, isStale: context.isStale)
             } compactTrailing: {
-                CompactTrailingView(state: context.state)
+                CompactTrailingView(state: context.state, isStale: context.isStale)
             } minimal: {
-                CompactLeadingView(state: context.state)
+                CompactLeadingView(state: context.state, isStale: context.isStale)
             }
-            .keylineTint(context.state.isOverspeed ? Color.red : Color.yellow)
+            .keylineTint(context.isStale ? Color.gray : (context.state.isOverspeed ? Color.red : Color.yellow))
         }
         .supplementalActivityFamilies([.small])
     }
@@ -39,14 +39,15 @@ struct SpeedCamLiveActivity: Widget {
 private struct FamilyAdaptiveView: View {
     @Environment(\.activityFamily) private var family
     let state: ActivityState
+    let isStale: Bool
 
     var body: some View {
         switch family {
         case .small:
-            SmallActivityView(state: state)
-                .activityBackgroundTint(state.isOverspeed ? Color.red.opacity(0.85) : Color.black)
+            SmallActivityView(state: state, isStale: isStale)
+                .activityBackgroundTint(!isStale && state.isOverspeed ? Color.red.opacity(0.85) : Color.black)
         default:
-            LockScreenActivityView(state: state)
+            LockScreenActivityView(state: state, isStale: isStale)
         }
     }
 }

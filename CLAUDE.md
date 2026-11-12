@@ -92,6 +92,7 @@ Live Activity 在 iOS 26 會出現在 CarPlay 儀表板，**不需要 entitlemen
   - 新增方式：編輯 `data-pipeline\manual\route_hints.csv`，填行向、後續點（至少相距 20 m）、12～15 m 匹配半徑、短句／語音／來源；OSM 沒有的車道資訊標「依使用者實測」。必要的取代片段以 `|` 分隔，不能空白萬用比對。執行 `python -I -X utf8 data-pipeline\build_route_hints.py` 並一併提交 `SpeedCam\Resources\route_hints.json`；pytest 檢查兩者完全一致。新增 OSM 分支正／反例及 replay 提示點檢查，不憑座標猜橋上橋下。
 - **偏離路線**：離路線 50 m 持續 5 秒，或方向差 50° 以上、離路線 30 m 持續 3 秒（路口轉錯比較快發現）。還沒回到路線上每 15 秒再規劃一次；重新規劃中畫面不顯示舊路線的下一步。
 - **Live Activity 開始和更新**：開始失敗會每 5 秒重試（只能在前景開始，剛開 App 太早會被拒絕）；App 重開時接著用已經在跑的，不結束再開；更新不排隊，只留最新一筆；距離和車速最多每 2 秒更新；接上 CarPlay（音訊路徑出現 carAudio）時主動更新一次；設定頁顯示目前狀態和失敗原因。
+- **滑掉 App（第二階段 B）**：保留背景巡航；初次 request 與每次更新都設 120 秒 `staleDate`。Widget 各版型（含 `.small` 與動態島）過期顯示「已停止更新」，不再顯示舊車速、距離、倒數或超速底色；過期不等於移除。重開會接手 active／stale 活動，若這次不巡航或已關 Live Activity，就結束殘留活動。按「停止巡航」一併取消預覽與每秒工作、重設核心；要移除卡片可回 App 停止巡航或在鎖定畫面滑掉卡片。不能靠強制結束時收尾清理。
 - **Live Activity 提醒**（`ActivityAlertPolicy`）：預告、近距、超速、進入區間、區間歸零時用 `alertConfiguration` 更新，
   一次定位只發一則；每分鐘倒數和持續嗶聲只靠聲音，不跳提醒。Apple 文件說 CarPlay 不在 Dashboard 頁面時會顯示成畫面底部的通知。
   聲音是系統預設音（文件沒有靜音選項），設定頁可以關（`liveActivityAlertsEnabled`，預設開啟）。
@@ -182,6 +183,7 @@ App 的啟動參數（CI 截圖用）：
 - `-gallery -galleryBanners`：手機橫幅預覽頁，用真實資料裡最長的文字（可再加 `-galleryBottom`）
 - `-gallery -galleryBanners -galleryHints`：內建人工提示的手機橫幅及 170×78 pt 導航／照相＋navHint 預覽；可加 `-galleryBottom`，本輪尚未取得截圖
 - `-gallery -galleryLock`：鎖定畫面和動態島展開的預覽頁，動態島外框是示意（可再加 `-galleryBottom`）
+- `-gallery -galleryStale`：已停止更新的 `.small` 三種尺寸；再加 `-galleryLock` 顯示鎖定畫面及動態島。CI 新增 `27-stale-activity-lock.png`、`28-stale-activity-small.png`，尚待截圖驗收
 - `-search 文字`：打開搜尋並輸入
 - `-mapCenter 緯度,經度 -mapSpan 度數`：指定地圖範圍
 - `-settings`：打開設定頁
@@ -271,7 +273,7 @@ App 的啟動參數（CI 截圖用）：
 
 ## 目前進度和下一步（2026-11-12 更新；IPA 仍是 11/07 版本）
 
-**11/08 第二階段 B**：補測 03 的起點移到提示點前約 735 m，保留原案例及檢查器門檻，待驗收者重跑。第 12／14／15／16 項的本輪狀態見 `docs\test2_1108_analysis.md` B 節；不做第 13 項、不新增 Xcode 測試 target、不改地圖預設值。
+**11/08 第二階段 B**：補測 03 的起點移到提示點前約 735 m，保留原案例及檢查器門檻，待驗收者重跑。第 12 項已接過期畫面、啟動清理與停止巡航取消預覽，尚待 iOS／Widget 驗收。第 12／14／15／16 項的本輪狀態見 `docs\test2_1108_analysis.md` B 節；不做第 13 項、不新增 Xcode 測試 target、不改地圖預設值。
 
 **11/08 第二階段 C**：修正第 8 項髮夾彎錯投影與路形／公告長度不一致的誤中止；舊 IPA 全部 79 段正向完整生命週期回歸通過。第 9 項人工相機已補、速限待詢；第 3／5／10 項及兩個新點以 5 筆定向分支提示接上手機與 Live Activity。Swift **199**／Python **273** 全通過、0 跳過，既有測試未刪除或放寬；詳見 `docs\test2_1108_analysis.md` C 節。尚未取得新 macOS／iOS 編譯、六點真 MapKit 最近距離／提示覆蓋、gallery 截圖或實播；不能宣稱六點已在 Apple 新路線通過。
 
@@ -288,6 +290,7 @@ App 的啟動參數（CI 截圖用）：
    - **第 3 項（iPhone 7 和 12 Pro 提示位置不同）**：同一條汽車路線 iOS 15.5 和 iOS 26 拿到的步驟完全相同（CI log 的 `route plan steps`），排除路線不同。修了累積誤差，原因還沒確定，也還沒確認使用者說的是路上還是畫面上的位置。
    - **第 4、8 項（至善路一段、國安局前的照相點沒收錄）**：警政署 7320、臺北市 130111（2026-03 更新）、立法院 2026-05 清單都沒有這兩支，OSM 也沒有。**等使用者提供位置**，再加進 `manual/cameras_extra.csv`。國安局在 25.1073,121.5360 附近，Apple 的路線經過 25.1058,121.5374。
 3. **等使用者實機回報**（使用者只有週末能上車測）：
+   - 從 App 切換器滑掉後，約 2 分鐘卡片是否顯示「已停止更新」、隱藏舊數值，以及定位箭頭是否仍留著。iOS 不保證呼叫收尾，定位箭頭無法由程式控制，也無法在 CI 驗證；請分開記錄正常鎖屏、App 內停止巡航與強制結束。
    - iPhone 7（iOS 15.8.8）：2026-11-07 使用者回報裝得上、開起來正常。還沒回報：背景定位、語音、實機的流暢度
    - 主力手機：狀態管理改成 `ObservableObject` 之後，地圖跟隨順不順（CI 截圖看不出動畫）
    - 上述功能

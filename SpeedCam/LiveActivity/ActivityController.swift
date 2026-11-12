@@ -57,6 +57,7 @@ final class ActivityController: LiveActivityControlling {
     /// 還沒送出的最新內容。系統處理得慢時只留最新一筆，不要排隊，否則畫面會越來越落後。
     private var pending: (content: ActivityContent<State>, alert: AlertConfiguration?)?
     private var isSending = false
+    private var updateGeneration = 0
 
     var enabled = true
 
@@ -89,7 +90,8 @@ final class ActivityController: LiveActivityControlling {
         let existing = Activity<SpeedCamActivityAttributes>.activities
         // App 重新開啟時已經有一個在跑：接著用，不要結束再開新的，CarPlay 上才不會消失又出現。
         if let current = existing.first(where: {
-            $0.activityState == .active && Date().timeIntervalSince($0.attributes.startedAt) < 7.5 * 3600
+            ($0.activityState == .active || $0.activityState == .stale)
+                && Date().timeIntervalSince($0.attributes.startedAt) < 7.5 * 3600
         }) {
             for other in existing where other.id != current.id {
                 Task { await other.end(nil, dismissalPolicy: .immediate) }
@@ -105,7 +107,7 @@ final class ActivityController: LiveActivityControlling {
         do {
             let now = Date()
             activity = try Activity.request(attributes: SpeedCamActivityAttributes(startedAt: now),
-                                            content: ActivityContent(state: initial, staleDate: nil),
+                                            content: ActivityContent(state: initial, staleDate: now.addingTimeInterval(120)),
                                             pushType: nil)
             startedAt = now
             lastState = initial
@@ -162,15 +164,10 @@ final class ActivityController: LiveActivityControlling {
     }
 
     func end() {
-        guard let activity else { return }
-        let final = lastState ?? State()
-        pending = nil
-        Task {
-            await activity.end(ActivityContent(state: final, staleDate: nil), dismissalPolicy: .immediate)
-        }
-        self.activity = nil
+        endAllExisting()
         startedAt = nil
         lastState = nil
+        lastUpdate = .distantPast
     }
 
     private func send(_ state: State, alert: ActivityAlertContent?) {
@@ -187,16 +184,19 @@ final class ActivityController: LiveActivityControlling {
         pending = (ActivityContent(state: state, staleDate: now.addingTimeInterval(120)), configuration ?? pending?.alert)
         guard !isSending else { return }
         isSending = true
+        let generation = updateGeneration
         Task { [weak self] in
-            while let self, let next = self.pending {
+            while let self, self.updateGeneration == generation, let next = self.pending {
                 self.pending = nil
                 await activity.update(next.content, alertConfiguration: next.alert)
             }
-            self?.isSending = false
+            if self?.updateGeneration == generation { self?.isSending = false }
         }
     }
 
     private func endAllExisting() {
+        updateGeneration += 1
+        isSending = false
         pending = nil
         for existing in Activity<SpeedCamActivityAttributes>.activities {
             Task {
