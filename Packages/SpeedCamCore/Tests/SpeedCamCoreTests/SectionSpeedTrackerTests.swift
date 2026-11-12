@@ -574,6 +574,26 @@ final class SectionSpeedTrackerTests: XCTestCase {
         XCTAssertTrue(tracker.isActive)
     }
 
+    func testReliableRetreatPastStartAfterGpsGapStillAbortsWithOrWithoutPath() {
+        for s in [mappedSection(), section(limit: 40)] {
+            let tracker = SectionSpeedTracker(sections: [s])
+            _ = runSections(tracker, straightTrack(from: origin, bearing: 0, speedKmh: 60, seconds: 40))
+            _ = tracker.tick(now: t0.addingTimeInterval(70))
+            var aborted = 0
+            for i in 0...4 {
+                let point = GeoMath.destination(from: s.start, bearing: 180, distance: 70 + Double(i) * 10)
+                let result = tracker.process(VehicleFix(point: point, speedMps: 10, course: 180,
+                    horizontalAccuracy: 5, timestamp: t0.addingTimeInterval(71 + Double(i))))
+                if i < 3 {
+                    XCTAssertFalse(result.events.contains { if case .aborted = $0 { return true }; return false })
+                }
+                aborted += result.events.filter { if case .aborted = $0 { return true }; return false }.count
+            }
+            XCTAssertEqual(aborted, 1)
+            XCTAssertFalse(tracker.isActive)
+        }
+    }
+
     func testSnappedPathUpdatePreservesActiveCountdown() throws {
         let s = mappedSection()
         let tracker = SectionSpeedTracker(sections: [s])

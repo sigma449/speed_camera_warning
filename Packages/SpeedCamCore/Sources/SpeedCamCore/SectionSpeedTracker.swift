@@ -127,6 +127,7 @@ public final class SectionSpeedTracker {
         var zeroAnnounced: Bool
         var minEndDistance: Double
         var minEndTime: Date?
+        var expectedTravelMeters: Double
         var isOverspeed = false
         var lastBeep: Date?
         var lastOverspeedVoice: Date?
@@ -182,11 +183,13 @@ public final class SectionSpeedTracker {
     public func updatePath(_ path: [GeoPoint], forSectionID id: String) {
         guard path.count >= 2 else { return }
         for i in sections.indices where sections[i].id == id { sections[i].path = path }
-        if active?.section.id == id {
-            active?.section.path = path
-            active?.progress = nil
-            active?.reverseSince = nil
-            active?.reverseSamples = 0
+        if var a = active, a.section.id == id {
+            a.section.path = path
+            a.expectedTravelMeters = max(a.section.lengthMeters, GeoMath.length(of: path))
+            a.progress = nil
+            a.reverseSince = nil
+            a.reverseSamples = 0
+            active = a
         }
         if arming?.section.id == id { arming?.section.path = path }
         if approaching?.section.id == id { approaching?.section.path = path }
@@ -271,6 +274,7 @@ public final class SectionSpeedTracker {
             }
             a.reverseSince = nil
             a.reverseSamples = 0
+            a.progress = nil
             active = a
             return SectionResult(events: events, status: makeStatus(a, now: now, assumedSpeed: last.speedMps))
         }
@@ -305,7 +309,7 @@ public final class SectionSpeedTracker {
                       pendingMilestones: Self.milestones(forMinimumSeconds: minSec,
                                                          finalCountdown: settings.sectionFinalCountdown),
                       zeroAnnounced: false, minEndDistance: .greatestFiniteMagnitude,
-                      minEndTime: nil)
+                      minEndTime: nil, expectedTravelMeters: max(s.lengthMeters, GeoMath.length(of: s.displayPath)))
     }
 
     /// 預告距離：和一般照相點相同的規則。
@@ -501,8 +505,9 @@ public final class SectionSpeedTracker {
         }
 
         // 中途離開：跑太遠、離終點太遠，或時間太久。
-        let wentTooFar = a.traveled > a.section.lengthMeters + 600
-        let farFromEnd = dEnd > a.section.lengthMeters + 1_000
+        // 公告偵測長度不一定等於資料路形的長度；仍沿著已知路形前進不能只因里程超額而中止。
+        let wentTooFar = a.traveled > a.expectedTravelMeters + 600
+        let farFromEnd = dEnd > a.expectedTravelMeters + 1_000
         let timedOut = elapsed > a.minimumSeconds * 4 + 600
         if wentTooFar || farFromEnd || timedOut {
             if a.isOverspeed { events.append(.overspeedEnded) }
@@ -529,16 +534,18 @@ public final class SectionSpeedTracker {
         let maxStep = max(40, fix.speedMps * max(0, dt) * 1.8) + fix.horizontalAccuracy * 2
         let path = a.section.displayPath
         var best: (along: Double, lateral: Double, bearing: Double)?
+        var hasForwardCandidate = false
         var walked = 0.0
         for (start, end) in zip(path, path.dropFirst()) {
             let length = GeoMath.distance(start, end)
             let projection = GeoMath.project(fix.point, ontoSegment: start, end)
             let along = walked + projection.t * length
             walked += length
-            guard length > 0, projection.distance <= onPathDistance,
-                  !continuous || abs(along - (previous?.along ?? along)) <= maxStep else { continue }
+            guard length > 0, projection.distance <= onPathDistance else { continue }
+            let bearing = GeoMath.bearing(from: start, to: end)
+            if GeoMath.angleDifference(course, bearing) <= 60 { hasForwardCandidate = true }
             if projection.distance < (best?.lateral ?? .infinity) {
-                best = (along, projection.distance, GeoMath.bearing(from: start, to: end))
+                best = (along, projection.distance, bearing)
             }
         }
         // 折線投影會夾在起點；加一小段起點後方的延伸線，才能辨識退回門架之前。
@@ -549,12 +556,24 @@ public final class SectionSpeedTracker {
            beforeStart.distance < (best?.lateral ?? .infinity),
            GeoMath.distance(fix.point, a.section.start) <= 150 {
             let along = (beforeStart.t - 1) * 150
-            if !continuous || abs(along - (previous?.along ?? along)) <= maxStep {
-                best = (along, beforeStart.distance, a.section.entryHeading)
-            }
+            best = (along, beforeStart.distance, a.section.entryHeading)
+            if GeoMath.angleDifference(course, a.section.entryHeading) <= 60 { hasForwardCandidate = true }
         }
         guard let spot = best,
-              !continuous || previous.map({ GeoMath.distance($0.point, fix.point) <= maxStep }) == true else {
+              !continuous || previous.map({
+                  GeoMath.distance($0.point, fix.point) <= maxStep && abs(spot.along - $0.along) <= maxStep
+              }) == true else {
+            a.progress = nil
+            a.reverseSince = nil
+            a.reverseSamples = 0
+            return false
+        }
+        // 稀疏里程牌會把髮夾彎畫成相交的直線。存在正向支線時不能用另一條線的反向投影中止。
+        // 不能先按進度排除候選再找最近線段，否則會鎖在錯的支線；段內失配後需重新取得正向證據。
+        // 起點後方延伸線不依賴稀疏路形的切線，仍可重新採樣確認退過門架。
+        if hasForwardCandidate && GeoMath.angleDifference(course, spot.bearing) > 120
+            || !continuous && spot.along >= 0 && GeoMath.angleDifference(course, spot.bearing) > 60 {
+            a.progress = nil
             a.reverseSince = nil
             a.reverseSamples = 0
             return false
@@ -562,7 +581,7 @@ public final class SectionSpeedTracker {
         a.progress = ProgressSample(along: spot.along, point: fix.point, time: fix.timestamp)
         guard continuous, let previous, spot.along < previous.along - 1.5,
               fix.speedKmh >= settings.minimumSpeedForCourse,
-              GeoMath.angleDifference(course, spot.bearing) > 120 else {
+              GeoMath.angleDifference(course, spot.bearing) > 120, !hasForwardCandidate else {
             a.reverseSince = nil
             a.reverseSamples = 0
             return false
