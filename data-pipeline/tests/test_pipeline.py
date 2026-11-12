@@ -258,7 +258,7 @@ def test_bundled_manual_files_are_valid():
     assert north["speedLimit"] == 50 and north["lengthMeters"] == 900
 
 
-def test_yinhe_manual_camera_keeps_unknown_limit_and_does_not_merge_with_348():
+def test_yinhe_manual_camera_has_user_limit_and_does_not_merge_with_348():
     rows = sources.read_local_rows([os.path.join(HERE, "..", "manual", "cameras_extra.csv")])
     reported = next(row for row in rows if row["座標緯度"] == "24.9555732")
     old = {"設置地點": "北宜路2段348號對面（往新店）", "座標緯度": "24.953762",
@@ -268,7 +268,7 @@ def test_yinhe_manual_camera_keeps_unknown_limit_and_does_not_merge_with_348():
     assert len(cameras) == 2 and report.duplicates_merged == 0
     new = next(camera for camera in cameras if camera.address == reported["設置地點"])
     assert new.heading == pytest.approx(240.6)
-    assert new.speedLimit is None and new.type == "fixed"
+    assert new.speedLimit == 40 and new.type == "fixed"  # 2026-11-12 使用者確認速限 40
     assert new.id != next(camera.id for camera in cameras if camera.address == old["設置地點"])
 
 
