@@ -196,7 +196,7 @@ App 的啟動參數（CI 截圖用）：
 - `-previewTo 緯度,經度,名稱`：導航預覽
 - `-selectPlace 緯度,經度,名稱`：走正式選點狀態與反查地址，顯示選點卡、尚未開始預覽；與 `-previewTo` 同時指定時以預覽優先。CI 新增 `39`／`40` 新舊地圖選點卡、`41`／`42` 卡片狀態、`43`／`44` POI＋相機＋區間同屏及 `ios15-15`；不把此參數當成手勢測試
 - `-routeLineStyle current|whiteCasing|darkCasing`、`-mapEmphasis current|muted`：新舊地圖的內部對照樣式，不存進設定；未指定就是原樣
-- `-routeComparison preview|navigation3D` 搭配 `-previewTo`：CI 固定起點 `(25.0468,121.5366)`；前者停住整線預覽、後者開始導航並固定 700 m／朝南／55° 視角，不改一般預覽倒數。`35`／`36` 各六張，`37`／`38` 舊地圖及 `ios15-14` 檢查備案；同組路線簽章不符就失敗
+- `-routeStyleDemo -routeComparison preview|navigation3D`：直接畫 App 內建的師大市區至河岸示意折線，不呼叫導航、搜尋或區間貼齊，也不開始巡航；不代表可行駛路線。兩組都固定中心 `(25.0165,121.5310)`、朝南；預覽為 5,000 m／0°，導航樣式為 3,800 m／55°。新地圖 `35`／`36`、舊地圖 `37`／`38` 各有六張 3×2 對照，iOS 15 用 `ios15-14`／`ios15-16` 檢查預覽與 3D 備案；未指定模式預設預覽。一般 `-previewTo` 的預覽與倒數不變
 - `-typeSearch 文字`：搜尋壓力測試（反覆輸入、刪除約 45 秒）
 - `-autoStartCruise NO`：不自動巡航
 - `-legacyUI`：在新系統上也走舊系統的做法（地圖、定位、NavigationView、不要求避開高速），CI 截圖用
@@ -265,6 +265,7 @@ App 的啟動參數（CI 截圖用）：
 - **`Int(...)` 轉換無限大或 NaN 會閃退**：距離、偏差這類可能是 `.infinity` 的值，轉成 Int 前先限制範圍。
 - **CI 截圖的啟動參數會被吃掉**：巡航中的 App 被結束後，iOS 會在背景重新叫起它（背景定位），
   下一次 launch 只會把它帶到前景。`screenshots.sh` 的 `launch_app` 會先結束兩次，不需要巡航的截圖加 `-autoStartCruise NO`。
+- **截圖不能依賴 Apple 當下的規劃結果**：樣式對照只用 `-routeStyleDemo` 的固定折線與鏡頭，不能每張重新規劃再比路線簽章。`screenshots.sh`／`ios15-run.sh` 讀不到 UI log、等待標記逾時或 Apple 路線／搜尋改變時只警告，仍拍圖；App 停止執行、啟動失敗或截圖無法產生才失敗。一般搜尋、真實導航預覽、反查地址與底圖內容仍依賴 Apple，截圖成功不代表外部結果或手勢已驗收。
 - **剛啟動時太早開 sheet 或改地圖範圍會被系統忽略**：CI 截圖用的啟動參數改在 `.task` 裡等 1.2 秒再做。
 - **App 最低 iOS 15 帶來的限制**：
   - 不能用 `@Observable`（要 iOS 17），狀態用 `ObservableObject`。新系統才有的 API 要包 `#available`，型別不能直接當儲存屬性（存成 `Any` 或 `AnyObject`）。
@@ -284,6 +285,12 @@ App 的啟動參數（CI 截圖用）：
 - commit 訊息用繁體中文：第一行寫做了什麼，內文寫原因。
 
 ## 目前進度和下一步（2026-11-12 更新；IPA 仍是 11/07 版本）
+
+**11/08 第二階段 B 第二次退回（固定樣式截圖）**：驗收者提供 r5：iOS 15 建置／執行與 iOS 26 編譯已通過，
+截圖在 `35-route-preview-current-muted` 之後因 Apple 改變路線幾何而停止。已改用內建示意折線，
+新舊地圖共用同一條線與固定 2D／55° 3D 鏡頭，兩邊皆有完整 3×2 對照；iOS 15 保留 muted 原底圖備案。
+取消路線簽章失敗條件，UI 狀態等待及讀取失敗改為警告，每張仍檢查 App 是否執行及圖片是否產生。
+本輪沒有 iOS SDK，不將靜態複查當成新版本編譯或截圖通過；只在本機分支提交，不 push、不觸發 workflow。
 
 **11/08 第二階段 B 退回修正（編譯）**：完整搜尋 `build\ci-r4.log`、`build\ios15-r4.log` 的 `error:`／`warning:`，
 實際 Swift 診斷只有 ViewBuilder 內宣告型別及找不到 `StaleActivityGalleryView`，沒有其他實際 warning。

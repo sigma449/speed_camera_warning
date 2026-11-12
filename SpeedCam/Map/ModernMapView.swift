@@ -76,12 +76,14 @@ struct ModernMapView: View {
                 .stroke(Color.orange.opacity(0.75),
                         style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round, dash: [10, 7]))
         }
-        if let route = model.route {
-            routeContent(route, isPreview: false)
+        if let mode = model.mapAppearance.comparison {
+            routeContent(MapAppearance.demoPolyline, isPreview: mode == .preview)
+        } else if let route = model.route {
+            routeContent(route.polyline, isPreview: false)
         }
         if let preview = model.preview {
             if preview.stage == .route, let route = preview.route {
-                routeContent(route, isPreview: true)
+                routeContent(route.polyline, isPreview: true)
             }
             Marker(preview.name, coordinate: preview.coordinate).tint(.red)
         } else if let place = model.selectedMapPlace {
@@ -100,17 +102,17 @@ struct ModernMapView: View {
     }
 
     @MapContentBuilder
-    private func routeContent(_ route: MKRoute, isPreview: Bool) -> some MapContent {
+    private func routeContent(_ polyline: MKPolyline, isPreview: Bool) -> some MapContent {
         let width = RouteLineStyle.lineWidth(isPreview: isPreview)
         if let color = model.mapAppearance.routeLineStyle.casingColor {
-            MapPolyline(route.polyline)
+            MapPolyline(polyline)
                 .stroke(Color(color), style: StrokeStyle(lineWidth: width + 6, lineCap: .round, lineJoin: .round))
         }
         if isPreview {
-            MapPolyline(route.polyline)
+            MapPolyline(polyline)
                 .stroke(.blue.opacity(0.85), style: StrokeStyle(lineWidth: width, lineCap: .round, lineJoin: .round))
         } else {
-            MapPolyline(route.polyline).stroke(.blue, lineWidth: width)
+            MapPolyline(polyline).stroke(.blue, lineWidth: width)
         }
     }
 

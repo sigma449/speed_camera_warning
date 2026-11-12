@@ -46,7 +46,7 @@ final class AppModel: ObservableObject {
     @Published private var mapPlaceSelection = MapPlaceSelection()
 
     var selectedMapPlace: MapPlaceSelection.Place? { mapPlaceSelection.place }
-    var canSelectMapPlace: Bool { mapPlaceMode == .browsing }
+    var canSelectMapPlace: Bool { mapAppearance.comparison == nil && mapPlaceMode == .browsing }
     private var mapPlaceMode: MapPlaceSelection.Mode {
         if preview != nil { return .previewing }
         return route != nil ? .navigating : .browsing
@@ -208,7 +208,7 @@ final class AppModel: ObservableObject {
         didAppear = true
         if demoMode {
             startDemo()
-        } else {
+        } else if mapAppearance.comparison == nil {
             refineSectionLengths()
             requestRoadSnapping(near: searchCenter.map { GeoPoint(lat: $0.latitude, lon: $0.longitude) })
             // 打開 App 就開始測速偵測（可在設定關閉）。
@@ -437,9 +437,7 @@ final class AppModel: ObservableObject {
                 if self.preview?.item === item { self.isCalculatingRoute = false }
             }
             do {
-                let source = self.mapAppearance.comparison == nil ? nil
-                    : MapItems.item(name: "地圖對照起點", coordinate: MapAppearance.comparisonSource)
-                let plan = try await self.navigation.calculateRoute(to: item, mode: self.settings.vehicleMode, from: source)
+                let plan = try await self.navigation.calculateRoute(to: item, mode: self.settings.vehicleMode)
                 guard !Task.isCancelled, self.preview?.item === item else { return }
                 self.preview?.route = plan.route
                 self.preview?.routeWarning = plan.warning?.text
@@ -722,7 +720,7 @@ final class AppModel: ObservableObject {
 
     /// 請 Apple 地圖把區間路形貼齊道路（只處理還沒做過的，近的先做）。地圖移動後由 RootView 呼叫。
     func requestRoadSnapping(near center: GeoPoint?) {
-        guard !demoMode, !database.sections.isEmpty else { return }
+        guard !demoMode, mapAppearance.comparison == nil, !database.sections.isEmpty else { return }
         pathSnapper.enqueue(database.sections, near: center ?? lastFix?.point)
     }
 

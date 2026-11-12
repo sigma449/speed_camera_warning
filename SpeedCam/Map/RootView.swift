@@ -51,9 +51,9 @@ struct RootView: View {
                     } else if let camera = selectedCamera {
                         CameraDetailCard(camera: camera) { selectedCameraID = nil }
                     }
-                    if model.selectedMapPlace == nil { recenterRow }
+                    if model.selectedMapPlace == nil && model.mapAppearance.comparison == nil { recenterRow }
                 }
-                if model.selectedMapPlace == nil {
+                if model.selectedMapPlace == nil && model.mapAppearance.comparison == nil {
                     BottomBar(showSearch: $showSearch, showSettings: $showSettings)
                 }
             }
@@ -90,9 +90,17 @@ struct RootView: View {
             // 剛啟動時畫面還沒準備好，太早開 sheet 或改地圖範圍會被系統忽略，稍等一下再做（CI 截圖用的啟動參數）。
             guard model.initialSearchQuery != nil || model.initialMapRegion != nil
                     || model.initialPreviewTarget != nil || model.initialShowSettings
-                    || model.initialSelectedPlace != nil || model.searchTypingTest != nil else { return }
+                    || model.initialSelectedPlace != nil || model.searchTypingTest != nil
+                    || model.mapAppearance.comparison != nil else { return }
             try? await Task.sleep(nanoseconds: 1_200_000_000)
             guard !Task.isCancelled else { return }
+            if let mode = model.mapAppearance.comparison {
+                follow.preview(cameraCenter: MapAppearance.demoCameraCenter,
+                               distance: mode == .preview ? 5_000 : 3_800,
+                               heading: 180, pitch: mode == .preview ? 0 : 55)
+                reportComparisonReady(mode: mode)
+                return
+            }
             if model.initialShowSettings {
                 showSettings = true
             }
@@ -134,11 +142,6 @@ struct RootView: View {
                 follow.endPlaceSelection()
             }
         }
-        .onChange(of: model.routeProgress != nil) { hasProgress in
-            if hasProgress, model.mapAppearance.comparison == .navigation3D, let route = model.route {
-                reportComparisonReady(route: route, mode: .navigation3D)
-            }
-        }
         .task(id: model.preview?.key) {
             await runPreviewTimer()
         }
@@ -150,13 +153,7 @@ struct RootView: View {
     private func movePreviewCamera() {
         guard let p = model.preview else {
             previewCountdown = nil
-            if model.mapAppearance.comparison == .navigation3D, let route = model.route {
-                follow.preview(cameraCenter: CLLocationCoordinate2D(latitude: 25.0458, longitude: 121.5366),
-                               distance: 700, heading: 180, pitch: 55)
-                if model.routeProgress != nil { reportComparisonReady(route: route, mode: .navigation3D) }
-            } else {
-                follow.endPreview()
-            }
+            follow.endPreview()
             return
         }
         switch p.stage {
@@ -169,17 +166,16 @@ struct RootView: View {
             // 卡片蓋住畫面下方約三分之一，往下多留空間
             let rect = MKMapRect(x: padded.minX, y: padded.minY, width: padded.width, height: padded.height + r.height * 0.7 + 800)
             follow.preview(rect: rect)
-            if model.mapAppearance.comparison == .preview { reportComparisonReady(route: route, mode: .preview) }
         }
     }
 
-    private func reportComparisonReady(route: MKRoute, mode: RouteComparisonMode) {
+    private func reportComparisonReady(mode: RouteComparisonMode) {
         guard !reportedComparisonReady else { return }
         reportedComparisonReady = true
         let appearance = model.mapAppearance
         let legacy: Bool
         if #available(iOS 17, *), !LegacySupport.forced { legacy = false } else { legacy = true }
-        uiLog.notice("map comparison ready mode=\(mode.rawValue, privacy: .public) style=\(appearance.routeLineStyle.rawValue, privacy: .public) emphasis=\(appearance.emphasis.rawValue, privacy: .public) legacy=\(legacy, privacy: .public) signature=\(MapAppearance.signature(of: route), privacy: .public)")
+        uiLog.notice("map comparison ready mode=\(mode.rawValue, privacy: .public) style=\(appearance.routeLineStyle.rawValue, privacy: .public) emphasis=\(appearance.emphasis.rawValue, privacy: .public) legacy=\(legacy, privacy: .public) source=demo")
     }
 
     /// 地點階段停 3 秒後看路線；路線階段倒數 10 秒後開始導航。使用者拖動地圖就停止自動前進。
@@ -187,14 +183,6 @@ struct RootView: View {
         previewPaused = false
         previewCountdown = nil
         guard let p = model.preview else { return }
-        if let comparison = model.mapAppearance.comparison {
-            if p.stage == .place {
-                model.showRoutePreview()
-            } else if comparison == .navigation3D {
-                startPreviewedNavigation()
-            }
-            return
-        }
         switch p.stage {
         case .place:
             try? await Task.sleep(nanoseconds: 3_000_000_000)
@@ -258,7 +246,7 @@ struct RootView: View {
 
     private var visibleCameras: [Camera] {
         // 導航預覽時暫時不畫照相點，避免擋住目的地和路線（預覽結束就恢復）
-        if model.preview != nil { return [] }
+        if model.preview != nil || model.mapAppearance.comparison != nil { return [] }
         if let region = visibleRegion {
             return model.cameras(in: region)
         }
@@ -306,6 +294,9 @@ struct RootView: View {
     }
 
     private var legacyRouteLine: LegacyMapView.RouteLine? {
+        if let mode = model.mapAppearance.comparison {
+            return LegacyMapView.RouteLine(polyline: MapAppearance.demoPolyline, isPreview: mode == .preview)
+        }
         if let p = model.preview {
             guard p.stage == .route, let route = p.route else { return nil }
             return LegacyMapView.RouteLine(polyline: route.polyline, isPreview: true)

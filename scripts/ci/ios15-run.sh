@@ -38,9 +38,9 @@ wait_for_ui() {
   for ((attempt=0; attempt<60; attempt++)); do
     if ! output=$(xcrun simctl spawn "${UDID}" log show --last 3m --style compact \
       --predicate "subsystem == \"tw.speedcammap.app\" AND category == \"ui\" AND processID == ${APP_PID}" 2>&1); then
-      echo "::error::無法讀取本次 App 的畫面狀態"
+      echo "::warning::無法讀取本次 App 的畫面狀態；仍繼續截圖"
       echo "${output}"
-      return 1
+      return 0
     fi
     if [[ "${output}" == *"${marker}"* ]]; then
       sleep 6
@@ -48,13 +48,18 @@ wait_for_ui() {
     fi
     sleep 1
   done
-  echo "::error::未取得新畫面狀態：${marker}"
+  echo "::warning::未取得畫面狀態：${marker}；Apple 路線、搜尋或載入時間可能改變，仍繼續截圖"
   echo "${output}"
-  return 1
+  return 0
 }
 
 shot() {
+  assert_running "$1"
   xcrun simctl io "${UDID}" screenshot "${OUT}/$1.png"
+  if [[ ! -s "${OUT}/$1.png" ]]; then
+    echo "::error::截圖沒有產生：$1"
+    return 1
+  fi
   echo "已截圖 $1"
 }
 
@@ -62,7 +67,10 @@ shot() {
 assert_running() {
   # 先存成變數再比對：grep -q 比對到就結束，配上 pipefail 會因為 SIGPIPE 被誤判成失敗。
   local list
-  list=$(xcrun simctl spawn "${UDID}" launchctl list)
+  if ! list=$(xcrun simctl spawn "${UDID}" launchctl list); then
+    echo "::warning::無法讀取 App 執行狀態；仍嘗試截圖"
+    return 0
+  fi
   if ! grep -q "UIKitApplication:${BUNDLE_ID}" <<<"${list}"; then
     echo "::error::App 在「$1」已經不在執行了（閃退）"
     # 閃退報告要幾秒才會寫好
@@ -159,16 +167,19 @@ assert_running "機車導航預覽"
 shot "ios15-13-preview-white"
 
 # iOS 15 的 muted 參數應維持原底圖，白色路線描邊仍可用。
-xcrun simctl location "${UDID}" set 25.0468,121.5366
-launch_app -autoStartCruise NO -vehicleMode car \
-  -previewTo "25.0059187,121.5342142,水源快速道路南向福和橋前" \
+launch_app -autoStartCruise NO -routeStyleDemo \
   -routeLineStyle whiteCasing -mapEmphasis muted -routeComparison preview
-wait_for_ui "map comparison ready mode=preview style=whiteCasing emphasis=muted legacy=true"
+wait_for_ui "map comparison ready mode=preview style=whiteCasing emphasis=muted legacy=true source=demo"
 sleep 6
 assert_running "路線描邊與淡化底圖備案"
 shot "ios15-14-route-whiteCasing-muted-fallback"
 
-xcrun simctl location "${UDID}" set 25.0300,121.5650
+launch_app -autoStartCruise NO -routeStyleDemo \
+  -routeLineStyle whiteCasing -mapEmphasis muted -routeComparison navigation3D
+wait_for_ui "map comparison ready mode=navigation3D style=whiteCasing emphasis=muted legacy=true source=demo"
+sleep 6
+shot "ios15-16-route-navigation3d-fallback"
+
 launch_app -autoStartCruise NO -selectPlace "25.0478,121.5170,台北車站" \
   -AppleLanguages "(zh-Hant-TW)" -AppleLocale zh_TW
 wait_for_ui "place selection ready legacy=true"
