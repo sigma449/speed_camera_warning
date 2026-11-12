@@ -18,6 +18,7 @@ struct RootView: View {
     @State private var previewCountdown: Int?
     /// 預覽時使用者拖動了地圖：停止自動前進，等使用者按。
     @State private var previewPaused = false
+    @State private var reportedComparisonReady = false
 
     var body: some View {
         ZStack {
@@ -108,6 +109,11 @@ struct RootView: View {
         .onChange(of: model.preview?.key) { _ in
             movePreviewCamera()
         }
+        .onChange(of: model.routeProgress != nil) { hasProgress in
+            if hasProgress, model.mapAppearance.comparison == .navigation3D, let route = model.route {
+                reportComparisonReady(route: route, mode: .navigation3D)
+            }
+        }
         .task(id: model.preview?.key) {
             await runPreviewTimer()
         }
@@ -119,7 +125,13 @@ struct RootView: View {
     private func movePreviewCamera() {
         guard let p = model.preview else {
             previewCountdown = nil
-            follow.endPreview()
+            if model.mapAppearance.comparison == .navigation3D, let route = model.route {
+                follow.preview(cameraCenter: CLLocationCoordinate2D(latitude: 25.0458, longitude: 121.5366),
+                               distance: 700, heading: 180, pitch: 55)
+                if model.routeProgress != nil { reportComparisonReady(route: route, mode: .navigation3D) }
+            } else {
+                follow.endPreview()
+            }
             return
         }
         switch p.stage {
@@ -132,7 +144,17 @@ struct RootView: View {
             // 卡片蓋住畫面下方約三分之一，往下多留空間
             let rect = MKMapRect(x: padded.minX, y: padded.minY, width: padded.width, height: padded.height + r.height * 0.7 + 800)
             follow.preview(rect: rect)
+            if model.mapAppearance.comparison == .preview { reportComparisonReady(route: route, mode: .preview) }
         }
+    }
+
+    private func reportComparisonReady(route: MKRoute, mode: RouteComparisonMode) {
+        guard !reportedComparisonReady else { return }
+        reportedComparisonReady = true
+        let appearance = model.mapAppearance
+        let legacy: Bool
+        if #available(iOS 17, *), !LegacySupport.forced { legacy = false } else { legacy = true }
+        uiLog.notice("map comparison ready mode=\(mode.rawValue, privacy: .public) style=\(appearance.routeLineStyle.rawValue, privacy: .public) emphasis=\(appearance.emphasis.rawValue, privacy: .public) legacy=\(legacy, privacy: .public) signature=\(MapAppearance.signature(of: route), privacy: .public)")
     }
 
     /// 地點階段停 3 秒後看路線；路線階段倒數 10 秒後開始導航。使用者拖動地圖就停止自動前進。
@@ -140,6 +162,14 @@ struct RootView: View {
         previewPaused = false
         previewCountdown = nil
         guard let p = model.preview else { return }
+        if let comparison = model.mapAppearance.comparison {
+            if p.stage == .place {
+                model.showRoutePreview()
+            } else if comparison == .navigation3D {
+                startPreviewedNavigation()
+            }
+            return
+        }
         switch p.stage {
         case .place:
             try? await Task.sleep(nanoseconds: 3_000_000_000)
@@ -230,6 +260,7 @@ struct RootView: View {
                       highlightedCameraID: model.cameraTarget?.camera.id,
                       selectedCameraID: $selectedCameraID,
                       routeLine: legacyRouteLine,
+                      appearance: model.mapAppearance,
                       pin: legacyPin,
                       sections: model.sectionOverlays,
                       demoPosition: model.demoMode ? model.lastFix?.point.coordinate : nil,
@@ -278,29 +309,40 @@ struct RootView: View {
                 .tag(camera.id)
             }
 
+            // 新舊地圖一致：區間虛線在導航路線及描邊下方。
+            ForEach(model.sectionOverlays) { section in
+                MapPolyline(coordinates: section.displayPath.map(\.coordinate))
+                    .stroke(Color.orange.opacity(0.75),
+                            style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round, dash: [10, 7]))
+            }
+
             if let route = model.route {
+                if let color = model.mapAppearance.routeLineStyle.casingColor {
+                    MapPolyline(route.polyline)
+                        .stroke(Color(color), style: StrokeStyle(lineWidth: RouteLineStyle.lineWidth(isPreview: false) + 6,
+                                                                 lineCap: .round, lineJoin: .round))
+                }
                 MapPolyline(route.polyline)
-                    .stroke(.blue, lineWidth: 7)
+                    .stroke(.blue, lineWidth: RouteLineStyle.lineWidth(isPreview: false))
             }
 
             // 導航預覽：目的地和預覽路線
             if let p = model.preview {
                 if p.stage == .route, let route = p.route {
+                    if let color = model.mapAppearance.routeLineStyle.casingColor {
+                        MapPolyline(route.polyline)
+                            .stroke(Color(color), style: StrokeStyle(lineWidth: RouteLineStyle.lineWidth(isPreview: true) + 6,
+                                                                     lineCap: .round, lineJoin: .round))
+                    }
                     MapPolyline(route.polyline)
-                        .stroke(.blue.opacity(0.85), style: StrokeStyle(lineWidth: 8, lineCap: .round, lineJoin: .round))
+                        .stroke(.blue.opacity(0.85), style: StrokeStyle(lineWidth: RouteLineStyle.lineWidth(isPreview: true),
+                                                                       lineCap: .round, lineJoin: .round))
                 }
                 Marker(p.name, coordinate: p.coordinate)
                     .tint(.red)
             } else if let destination = model.destinationCoordinate {
                 Marker(model.destinationName ?? "目的地", systemImage: "flag.checkered", coordinate: destination)
                     .tint(.red)
-            }
-
-            // 區間順著路形畫（有里程牌資料時）；同一段的兩個方向只畫一次。
-            ForEach(model.sectionOverlays) { section in
-                MapPolyline(coordinates: section.displayPath.map(\.coordinate))
-                    .stroke(Color.orange.opacity(0.75),
-                            style: StrokeStyle(lineWidth: 6, lineCap: .round, lineJoin: .round, dash: [10, 7]))
             }
 
             // 展示模式沒有真實定位，用一台車的圖示代表目前位置。
@@ -313,7 +355,8 @@ struct RootView: View {
                 .annotationTitles(.hidden)
             }
         }
-        .mapStyle(.standard(pointsOfInterest: .excludingAll, showsTraffic: true))
+        .mapStyle(.standard(emphasis: model.mapAppearance.emphasis == .muted ? .muted : .automatic,
+                            pointsOfInterest: .excludingAll, showsTraffic: true))
         .mapControls {
             // 系統的「回到目前位置」按鈕不會調整縮放，改用右下角自己的按鈕
             MapCompass()

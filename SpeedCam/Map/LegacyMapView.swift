@@ -23,6 +23,7 @@ struct LegacyMapView: UIViewRepresentable {
     let highlightedCameraID: String?
     @Binding var selectedCameraID: String?
     let routeLine: RouteLine?
+    let appearance: MapAppearance
     let pin: Pin?
     let sections: [SpeedSection]
     /// 展示模式沒有真實定位，用一台車的圖示代表目前位置。
@@ -43,6 +44,13 @@ struct LegacyMapView: UIViewRepresentable {
         map.showsScale = true
         map.showsTraffic = true
         map.pointOfInterestFilter = .excludingAll
+        if #available(iOS 16, *), appearance.emphasis == .muted {
+            let configuration = MKStandardMapConfiguration()
+            configuration.emphasisStyle = .muted
+            configuration.pointOfInterestFilter = .excludingAll
+            configuration.showsTraffic = true
+            map.preferredConfiguration = configuration
+        }
         // 目前位置的圓點跟著 tintColor，不設定的話會變成 App 的強調色（黃色），和照相點的黃色混淆
         map.tintColor = .systemBlue
         context.coordinator.attachGestures(to: map)
@@ -63,7 +71,9 @@ struct LegacyMapView: UIViewRepresentable {
         private var cameraAnnotations: [String: CameraAnnotation] = [:]
         private var highlightedID: String?
         private var routeOverlay: MKPolyline?
+        private var routeCasingOverlay: MKPolyline?
         private var routeIsPreview = false
+        private var routeStyle: RouteLineStyle = .current
         private var sectionOverlays: [String: (path: [GeoPoint], polyline: MKPolyline)] = [:]
         private var pinAnnotation: PinAnnotation?
         private var demoAnnotation: DemoVehicleAnnotation?
@@ -141,11 +151,23 @@ struct LegacyMapView: UIViewRepresentable {
 
         private func syncRoute(_ map: MKMapView) {
             let line = parent.routeLine
-            routeIsPreview = line?.isPreview ?? false
-            guard line?.polyline !== routeOverlay else { return }
+            let isPreview = line?.isPreview ?? false
+            let style = parent.appearance.routeLineStyle
+            guard line?.polyline !== routeOverlay || isPreview != routeIsPreview || style != routeStyle else { return }
+            routeIsPreview = isPreview
+            routeStyle = style
             if let old = routeOverlay { map.removeOverlay(old) }
+            if let old = routeCasingOverlay { map.removeOverlay(old) }
             routeOverlay = line?.polyline
-            if let new = routeOverlay { map.addOverlay(new, level: .aboveRoads) }
+            routeCasingOverlay = nil
+            if let new = routeOverlay {
+                if style.casingColor != nil {
+                    let casing = MKPolyline(points: new.points(), count: new.pointCount)
+                    routeCasingOverlay = casing
+                    map.addOverlay(casing, level: .aboveRoads)
+                }
+                map.addOverlay(new, level: .aboveRoads)
+            }
         }
 
         private func syncSections(_ map: MKMapView) {
@@ -280,9 +302,12 @@ struct LegacyMapView: UIViewRepresentable {
             let renderer = MKPolylineRenderer(polyline: polyline)
             renderer.lineCap = .round
             renderer.lineJoin = .round
-            if polyline === routeOverlay {
+            if polyline === routeCasingOverlay {
+                renderer.strokeColor = routeStyle.casingColor
+                renderer.lineWidth = RouteLineStyle.lineWidth(isPreview: routeIsPreview) + 6
+            } else if polyline === routeOverlay {
                 renderer.strokeColor = routeIsPreview ? UIColor.systemBlue.withAlphaComponent(0.85) : .systemBlue
-                renderer.lineWidth = routeIsPreview ? 8 : 7
+                renderer.lineWidth = RouteLineStyle.lineWidth(isPreview: routeIsPreview)
             } else {
                 renderer.strokeColor = UIColor.systemOrange.withAlphaComponent(0.75)
                 renderer.lineWidth = 6

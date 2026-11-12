@@ -118,6 +118,11 @@ final class MapFollowController: ObservableObject {
         move(to: .rect(rect), animated: true)
     }
 
+    func preview(cameraCenter: CLLocationCoordinate2D, distance: Double, heading: Double, pitch: Double) {
+        beginPreview()
+        move(to: .camera(center: cameraCenter, distance: distance, heading: heading, pitch: pitch), animated: false)
+    }
+
     /// 預覽結束（開始導航或取消）：回到目前位置並恢復跟隨。
     func endPreview() {
         autoRecenterSuspended = false

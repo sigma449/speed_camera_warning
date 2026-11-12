@@ -107,6 +107,7 @@ Live Activity 在 iOS 26 會出現在 CarPlay 儀表板，**不需要 entitlemen
 - **回到目前位置按鈕**（右下角，`MapFollowController`）：依車速縮放（`MapFollowCamera.distance`），預設行進方向朝上；
   跟隨中再按一次會依序切換「行進方向朝上 → 北方朝上 → 3D」，選擇會記住。巡航中由 App 自己算鏡頭（MapCamera），
   沒有定位時改用系統的 `.userLocation` 跟隨。
+- **地圖對照（第二階段 B，未選新預設）**：內部 `MapAppearance` 支援 `current` 純藍線、`whiteCasing` 白框、`darkCasing` 黑框，及 `current`／`muted` 底圖；只用啟動參數、不持久化。藍線仍 7 pt、預覽 8 pt／0.85，描邊各向外 3 pt；新舊地圖的橘色區間線都在導航線下方。MKMapView 的 muted 限 iOS 16 以上，iOS 15 維持原底圖。3D 選擇、55° 與高度樣式不改，對照圖待驗收者決定。
 - **自動回到中心**（`AutoRecenterPolicy`）：使用者滑走地圖後，GPS 良好（精度 ≤ 30 m）、車速 ≥ 15 km/h 持續 5 秒、
   而且 10 秒沒碰地圖，就回到目前位置。使用者希望搭捷運或大眾運輸時不要跳回來：
   地下捷運和隧道通常沒有 GPS，所以不會觸發；地面或高架的捷運、台鐵、高鐵目前**分辨不出來**
@@ -191,6 +192,8 @@ App 的啟動參數（CI 截圖用）：
 - `-settings`：打開設定頁
 - `-vehicleMode car|motorcycleRedYellow|motorcycleWhite`：指定車種（不會存進設定）
 - `-previewTo 緯度,經度,名稱`：導航預覽
+- `-routeLineStyle current|whiteCasing|darkCasing`、`-mapEmphasis current|muted`：新舊地圖的內部對照樣式，不存進設定；未指定就是原樣
+- `-routeComparison preview|navigation3D` 搭配 `-previewTo`：CI 固定起點 `(25.0468,121.5366)`；前者停住整線預覽、後者開始導航並固定 700 m／朝南／55° 視角，不改一般預覽倒數。`35`／`36` 各六張，`37`／`38` 舊地圖及 `ios15-14` 檢查備案；同組路線簽章不符就失敗
 - `-typeSearch 文字`：搜尋壓力測試（反覆輸入、刪除約 45 秒）
 - `-autoStartCruise NO`：不自動巡航
 - `-legacyUI`：在新系統上也走舊系統的做法（地圖、定位、NavigationView、不要求避開高速），CI 截圖用
@@ -266,6 +269,7 @@ App 的啟動參數（CI 截圖用）：
   - 新的 SF Symbols 舊系統沒有，畫面會空白；編譯時看不出來，要有備用圖示（`Symbols`）。
 - **`MKAnnotationView.image` 不能直接放 SF Symbol**：它用符號圖的黑色底圖，上的顏色都會不見，要先畫成點陣圖。
 - **CI 腳本不要寫 `指令 | grep -q`**：`grep -q` 比對到就結束，配上 `pipefail` 會因為 SIGPIPE 判斷成失敗，曾經把正常的 App 誤判成閃退。先存成變數再比對。
+- **3D 建物遮線**：MapKit 的 `aboveLabels` 仍在 3D 建物下，沒有把 overlay 強制蓋到建物上的公開 API。`muted` 只降低底圖顯著度，不保證建物變平；iOS 16 以上 `showsBuildings` 在有 overlay 時不生效。B 輪保留 3D，沒有以改層級或關開關冒稱修好；需看 `36-route-navigation3d-*.png` 對照及實機。
 
 ## Git
 
@@ -275,7 +279,7 @@ App 的啟動參數（CI 截圖用）：
 
 ## 目前進度和下一步（2026-11-12 更新；IPA 仍是 11/07 版本）
 
-**11/08 第二階段 B**：補測 03 的起點移到提示點前約 735 m，保留原案例及檢查器門檻，待驗收者重跑。第 12 項已接過期畫面、啟動清理與停止巡航取消預覽；第 14 項已統一橫幅比例並加入同屏及放大字截圖入口，尚待 iOS／Widget／畫面驗收。第 12／14／15／16 項的本輪狀態見 `docs\test2_1108_analysis.md` B 節；不做第 13 項、不新增 Xcode 測試 target、不改地圖預設值。
+**11/08 第二階段 B**：補測 03 的起點移到提示點前約 735 m，保留原案例及檢查器門檻，待驗收者重跑。第 12 項已接過期畫面、啟動清理與停止巡航取消預覽；第 14 項已統一橫幅比例並加入同屏及放大字截圖入口；第 15 項已接三種線樣式／兩種底圖、同幾何 3×2 預覽與固定 3D 導航對照，預設不變。尚待 iOS／Widget／畫面驗收，詳見 `docs\test2_1108_analysis.md` B 節；不做第 13 項、不新增 Xcode 測試 target。
 
 **11/08 第二階段 C**：修正第 8 項髮夾彎錯投影與路形／公告長度不一致的誤中止；舊 IPA 全部 79 段正向完整生命週期回歸通過。第 9 項人工相機已補、速限待詢；第 3／5／10 項及兩個新點以 5 筆定向分支提示接上手機與 Live Activity。Swift **199**／Python **273** 全通過、0 跳過，既有測試未刪除或放寬；詳見 `docs\test2_1108_analysis.md` C 節。尚未取得新 macOS／iOS 編譯、六點真 MapKit 最近距離／提示覆蓋、gallery 截圖或實播；不能宣稱六點已在 Apple 新路線通過。
 

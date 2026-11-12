@@ -51,7 +51,49 @@ launch_app() {
   sleep 2
   xcrun simctl terminate "${UDID}" "${BUNDLE_ID}" 2>/dev/null || true
   sleep 1
-  xcrun simctl launch --terminate-running-process "${UDID}" "${BUNDLE_ID}" "$@"
+  local result
+  result=$(xcrun simctl launch --terminate-running-process "${UDID}" "${BUNDLE_ID}" "$@")
+  echo "${result}"
+  APP_PID="${result##*: }"
+  if [[ ! "${APP_PID}" =~ ^[0-9]+$ ]]; then
+    echo "::error::無法取得 App PID"
+    return 1
+  fi
+}
+
+wait_for_ui() {
+  local marker="$1"
+  for ((attempt=0; attempt<60; attempt++)); do
+    UI_READY_LOG=$(xcrun simctl spawn "${UDID}" log show --last 3m --style compact \
+      --predicate "subsystem == \"tw.speedcammap.app\" AND category == \"ui\" AND processIdentifier == ${APP_PID}" 2>/dev/null)
+    if [[ "${UI_READY_LOG}" == *"${marker}"* ]]; then
+      return 0
+    fi
+    sleep 1
+  done
+  echo "::error::未取得新畫面狀態：${marker}"
+  echo "${UI_READY_LOG}"
+  return 1
+}
+
+COMPARISON_SIGNATURE=""
+wait_for_comparison() {
+  local marker="map comparison ready mode=$1 style=$2 emphasis=$3 legacy=$4"
+  wait_for_ui "${marker}"
+  local record signature
+  record=$(grep -F "${marker}" <<<"${UI_READY_LOG}" | tail -1)
+  signature="${record##*signature=}"
+  if [[ ! "${signature}" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "::error::地圖對照缺少路線簽章：${record}"
+    return 1
+  fi
+  if [[ -n "${COMPARISON_SIGNATURE}" && "${signature}" != "${COMPARISON_SIGNATURE}" ]]; then
+    echo "::error::Apple 回傳的路線幾何不同，不能當成同路線的樣式對照"
+    return 1
+  fi
+  COMPARISON_SIGNATURE="${signature}"
+  echo "${record}"
+  sleep 6
 }
 
 shot() {
@@ -244,6 +286,37 @@ shot "25-legacy-preview-white"
 launch_app -legacyUI
 sleep 12
 shot "26-legacy-cruise"
+
+# 10) 相同起終點及路線幾何的 3×2 對照；只在本次啟動改樣式。
+xcrun simctl location "${UDID}" set 25.0468,121.5366
+for style in current whiteCasing darkCasing; do
+  for emphasis in current muted; do
+    launch_app -autoStartCruise NO -vehicleMode car \
+      -previewTo "25.0059187,121.5342142,水源快速道路南向福和橋前" \
+      -routeLineStyle "${style}" -mapEmphasis "${emphasis}" -routeComparison preview
+    wait_for_comparison preview "${style}" "${emphasis}" false
+    shot "35-route-preview-${style}-${emphasis}"
+    launch_app -autoStartCruise NO -vehicleMode car \
+      -previewTo "25.0059187,121.5342142,水源快速道路南向福和橋前" \
+      -routeLineStyle "${style}" -mapEmphasis "${emphasis}" -routeComparison navigation3D
+    wait_for_comparison navigation3D "${style}" "${emphasis}" false
+    shot "36-route-navigation3d-${style}-${emphasis}"
+  done
+done
+
+# 舊地圖同樣畫雙層線；舊系統選路可能不同，另核對這組的路線幾何。
+COMPARISON_SIGNATURE=""
+launch_app -legacyUI -autoStartCruise NO -vehicleMode car \
+  -previewTo "25.0059187,121.5342142,水源快速道路南向福和橋前" \
+  -routeLineStyle whiteCasing -mapEmphasis muted -routeComparison preview
+wait_for_comparison preview whiteCasing muted true
+shot "37-route-legacy-whiteCasing-muted"
+launch_app -legacyUI -autoStartCruise NO -vehicleMode car \
+  -previewTo "25.0059187,121.5342142,水源快速道路南向福和橋前" \
+  -routeLineStyle darkCasing -mapEmphasis current -routeComparison preview
+wait_for_comparison preview darkCasing current true
+shot "38-route-legacy-darkCasing-current"
+xcrun simctl location "${UDID}" set 25.0300,121.5650
 
 # App 的紀錄（確認啟動參數、sheet、地圖範圍、區間貼齊、路線選擇有沒有生效）
 xcrun simctl spawn "${UDID}" log show --last 20m --style compact \

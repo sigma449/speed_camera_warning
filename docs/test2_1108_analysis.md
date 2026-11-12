@@ -18,7 +18,7 @@
 | 12 關閉後定位／活動 | B／中 | 背景巡航是設計；強制結束沒有可靠收尾，stale也不是移除。 | 保留背景、明確停止與過期狀態；要實機操作紀錄。 | B 已實作初次過期、Widget 各版型隱藏舊數值、重開清理與停止預覽；待 iOS／實機驗收。 |
 | 13 資料蒐集與新類型 | B／中 | 仍以7320為主；非測速項目不能直接套速限警報。 | 官方多源／品質稽核優先，再加新類型與人工審核回報。 | 僅第1／4項所需官方來源；新類型／回報本輪不做。 |
 | 14 字卡大小 | A／中 | 外寬相同，原導航34pt／56pt圖示欄，測速46pt／64pt。 | 統一視覺比例與最小高度，保留區間三行及文字自適應。 | B 已統一 64pt 圖示欄、46pt 數字／基線槽、176pt 最小高度，新增同屏及放大字截圖；尚未實看。 |
-| 15 3D遮擋與藍線 | B／中 | 55°、無描邊藍線已確認；實際遮擋與夜間畫面未重現。 | 先做底圖／描邊對照，不任選色碼或自動取消3D。 | 本輪不做。 |
+| 15 3D遮擋與藍線 | B／中 | 55°、無描邊藍線已確認；實際遮擋與夜間畫面未重現。 | 先做底圖／描邊對照，不任選預設或自動取消3D。 | B 已加三種線樣式／兩種底圖及同幾何預覽、55° 導航截圖入口；維持原預設，尚未取得圖。 |
 | 16 點地圖導航 | A／高 | POI全排除，只能選照相ID，沒有一般地點／長按選點流程。 | 分版本加入選點，沿用預覽而非直接跳導航。 | 本輪不做。 |
 
 ## 第二階段 B：畫面與停止更新（2026-11-12）
@@ -55,6 +55,24 @@
 可用 `-gallery -galleryBanners -galleryBannerPair camera|section|zero|rerouting -galleryWidth 375|390` 單獨定位，避免被長頁面捲出截圖。
 CI 新增 `29`～`34` 六張同屏圖（含 375／390 pt 與系統放大文字）；現有短句／地址回歸通過。
 **尚未在 Windows 實際渲染；是否截字、基線視覺與最小高度仍須驗收者看 CI 圖，不宣稱畫面驗收完成。**
+
+### 第 15 項：路線與底圖只做對照，不改預設
+
+- `MapAppearance` 只從本次啟動參數讀 `-routeLineStyle current|whiteCasing|darkCasing`、
+  `-mapEmphasis current|muted`，不存設定。預設仍為純藍線及原標準底圖；藍線 7 pt、預覽 8 pt／0.85 透明度不變。
+  描邊是另一層白／黑線，各向外多 3 pt；SwiftUI Map 與 MKMapView 都支援。橘色區間虛線統一放在整條導航路線（含描邊）下方，
+  不再一邊在上、一邊在下。
+- SwiftUI 用 `.standard(emphasis: .muted)`；MKMapView 僅在 iOS 16 以上套 `MKStandardMapConfiguration.emphasisStyle = .muted`。
+  iOS 15 接受參數但維持原底圖，描邊仍可用。沒有改跟隨模式、55°、高度樣式或建物開關。
+- CI 專用 `-routeComparison preview|navigation3D` 搭配 `-previewTo`，固定從 `(25.0468,121.5366)` 規劃至水源南向福和橋前；
+  preview 直接停在整線預覽、不倒數，navigation3D 則真的開始導航並固定 700 m／朝南／55° 鏡頭。只在此旗標下改計時，
+  一般使用者仍是地點 3 秒、路線 10 秒。`35-route-preview-{樣式}-{底圖}.png` 與
+  `36-route-navigation3d-{樣式}-{底圖}.png` 各六張，另兩張 `37`／`38` 舊地圖及 `ios15-14` 備案圖。
+  腳本依本次 App PID 等待規劃／導航狀態，並比較完整路線點列的 SHA256；Apple 回傳不同幾何就明確失敗，不用不同路線湊對照。
+- [Apple muted 說明](https://developer.apple.com/documentation/mapkit/mapstyle/standardemphasis/muted) 只承諾降低底圖影像顯著度，沒有承諾把建物變平；
+  [aboveLabels](https://developer.apple.com/documentation/mapkit/mkoverlaylevel) 仍低於 3D 建物。
+  [showsBuildings](https://developer.apple.com/documentation/mapkit/mkmapview/showsbuildings) 說 iOS 16 以上有 overlay 時此開關不生效、建物與樹應透明。
+  本輪沒有改這些設定，也沒有取得實際對照圖，**不能宣稱 muted 已解決遮線**；由驗收者看 `36` 系列後再決定。
 
 ## 第二階段 A 實作與驗收狀態（歷史紀錄）
 
@@ -299,6 +317,8 @@ OSM way **655367014 北宜路三段**最近線段 `(24.9556947,121.5702034)→(2
 - **修正／規格／測試**：統一圖示欄、距離字級、基線與最小高度，不固定死高度造成截字，也不刪區間三行。若要求任何狀態都絕對等高，須另決定空白／文字取捨。下一階段以 `-gallery -galleryBanners` 加同時導航＋相機／區間的組合，375pt／390pt、最長路名／類型、歸零／重規劃及放大字體實看截圖；保留不透明BannerStyle與白字對比，不在本輪改UI。
 
 ## 15. 3D建物遮線、夜間辨識 — B／中（靜態設定高；實際遮擋低）
+
+**B 狀態**：已加上方 B 節的內部切換與同場景截圖；預設及 3D 模式不變，以下為修改前分析。
 
 - **重現**：尚未實機／截圖重現。`Packages\SpeedCamCore\Sources\SpeedCamCore\MapFollow.swift:33` 3D為55°；`SpeedCam\Map\RootView.swift:279` 路線藍色7pt、預覽8pt／0.85透明，無外框，區間橘虛線畫在後面；`SpeedCam\App\SpeedCamApp.swift:22` 強制dark。`SpeedCam\Map\LegacyMapView.swift:148` 用aboveRoads，`:278` 同樣systemBlue且無描邊。
 - **MapKit能力**：[MKOverlayLevel](https://developer.apple.com/documentation/mapkit/mkoverlaylevel) 說aboveLabels仍低於3D建物，不能承諾改層級就解決；[showsBuildings](https://developer.apple.com/documentation/mapkit/mkmapview/showsbuildings) 又註明iOS16+有overlay時不生效、建物／樹應透明，與回報需同場景對照。本輪未找到可「指定建物高度」的公開API；[SwiftUI elevation.flat](https://developer.apple.com/documentation/mapkit/mapstyle/elevation/flat) 定義2D渲染，不等於已驗證55°仍能按預期保留前向視角。

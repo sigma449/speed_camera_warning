@@ -23,7 +23,30 @@ launch_app() {
   sleep 2
   xcrun simctl terminate "${UDID}" "${BUNDLE_ID}" 2>/dev/null || true
   sleep 1
-  xcrun simctl launch --terminate-running-process "${UDID}" "${BUNDLE_ID}" "$@"
+  local result
+  result=$(xcrun simctl launch --terminate-running-process "${UDID}" "${BUNDLE_ID}" "$@")
+  echo "${result}"
+  APP_PID="${result##*: }"
+  if [[ ! "${APP_PID}" =~ ^[0-9]+$ ]]; then
+    echo "::error::無法取得 App PID"
+    return 1
+  fi
+}
+
+wait_for_ui() {
+  local marker="$1" output
+  for ((attempt=0; attempt<60; attempt++)); do
+    output=$(xcrun simctl spawn "${UDID}" log show --last 3m --style compact \
+      --predicate "subsystem == \"tw.speedcammap.app\" AND category == \"ui\" AND processIdentifier == ${APP_PID}" 2>/dev/null)
+    if [[ "${output}" == *"${marker}"* ]]; then
+      sleep 6
+      return 0
+    fi
+    sleep 1
+  done
+  echo "::error::未取得新畫面狀態：${marker}"
+  echo "${output}"
+  return 1
 }
 
 shot() {
@@ -130,6 +153,15 @@ launch_app -autoStartCruise NO -vehicleMode motorcycleWhite -previewTo "24.8016,
 sleep 10
 assert_running "機車導航預覽"
 shot "ios15-13-preview-white"
+
+# iOS 15 的 muted 參數應維持原底圖，白色路線描邊仍可用。
+xcrun simctl location "${UDID}" set 25.0468,121.5366
+launch_app -autoStartCruise NO -vehicleMode car \
+  -previewTo "25.0059187,121.5342142,水源快速道路南向福和橋前" \
+  -routeLineStyle whiteCasing -mapEmphasis muted -routeComparison preview
+wait_for_ui "map comparison ready mode=preview style=whiteCasing emphasis=muted legacy=true"
+assert_running "路線描邊與淡化底圖備案"
+shot "ios15-14-route-whiteCasing-muted-fallback"
 
 xcrun simctl spawn "${UDID}" log show --last 20m --style compact \
   --predicate 'subsystem == "tw.speedcammap.app"' 2>/dev/null | grep -E "arguments|appeared|applied|opened|preview|typing|route plan|road_lines" | tail -60 || true

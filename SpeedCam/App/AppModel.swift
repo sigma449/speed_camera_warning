@@ -58,6 +58,7 @@ final class AppModel: ObservableObject {
     let searchTypingTest: String?
     /// 啟動後直接預覽到這個地點的導航（CI 截圖用：`-previewTo 25.0478,121.5170,台北車站`）。
     let initialPreviewTarget: (coordinate: CLLocationCoordinate2D, name: String)?
+    let mapAppearance: MapAppearance
 
     var vehicleMode: VehicleMode {
         get { settings.vehicleMode }
@@ -118,6 +119,7 @@ final class AppModel: ObservableObject {
         }
         initialMapRegion = Self.parseMapRegion(arguments)
         initialPreviewTarget = Self.parsePreviewTarget(arguments)
+        mapAppearance = MapAppearance(arguments: arguments)
         initialShowSettings = arguments.contains("-settings")
         if let i = arguments.firstIndex(of: "-typeSearch"), i + 1 < arguments.count {
             searchTypingTest = arguments[i + 1]
@@ -359,7 +361,9 @@ final class AppModel: ObservableObject {
             guard let self else { return }
             defer { self.isCalculatingRoute = false }
             do {
-                let plan = try await self.navigation.calculateRoute(to: item, mode: self.settings.vehicleMode)
+                let source = self.mapAppearance.comparison == nil ? nil
+                    : MapItems.item(name: "地圖對照起點", coordinate: MapAppearance.comparisonSource)
+                let plan = try await self.navigation.calculateRoute(to: item, mode: self.settings.vehicleMode, from: source)
                 guard !Task.isCancelled, self.preview?.item === item else { return }
                 self.preview?.route = plan.route
                 self.preview?.routeWarning = plan.warning?.text
