@@ -46,85 +46,21 @@ final class CameraAlertEngineTests: XCTestCase {
         XCTAssertFalse(result.target?.isOverspeed ?? true)
     }
 
-    func testHotspotVoiceSpacingKeepsNextBannerButDoesNotReplayOrPlayItsPassTone() {
+    func testAdjacentHotspotsEachAnnounceOnceWithoutVoiceSpacingOrOverspeedBeeping() {
         let cameras = [camera("first", north: 250, type: .mobile),
-                       camera("silent", north: 650, type: .mobile),
-                       camera("later", north: 1_350, type: .mobile)]
-        let engine = engine(cameras)
-        var announced: [String] = []
-        var passed: [String] = []
-        var sawSilentBanner = false
-        for fix in straightTrack(from: origin, bearing: 0, speedKmh: 36, seconds: 160) {
-            let result = engine.process(fix)
-            if result.target?.camera.id == "silent", result.target?.phase == .pre {
-                sawSilentBanner = true
-            }
-            for event in result.events {
-                if case let .preAlert(cam, _) = event { announced.append(cam.id) }
-                if case let .passed(cam) = event { passed.append(cam.id) }
-            }
+                       camera("second", north: 650, type: .mobile),
+                       camera("third", north: 850, type: .mobile)]
+        let events = runAlerts(engine(cameras), straightTrack(from: origin, bearing: 0, speedKmh: 70, seconds: 60))
+        let announced = events.compactMap { timed -> String? in
+            if case let .preAlert(cam, _) = timed.event { return cam.id }
+            return nil
         }
-        XCTAssertEqual(announced, ["first", "later"])
-        XCTAssertEqual(passed, ["first", "later"])
-        XCTAssertTrue(sawSilentBanner)
+        XCTAssertEqual(announced, ["first", "second", "third"])
+        XCTAssertEqual(events.filter { $0.event.isPassed }.count, 3)
+        XCTAssertFalse(events.contains { $0.event.isNear || $0.event.isOverspeedStarted || $0.event.isBeep })
     }
 
-    func testHotspotVoiceDistanceIsConfigurableAndResetClearsOnlyItsHistory() {
-        var settings = AlertSettings()
-        settings.mobileHotspotVoiceDistance = 500
-        let cameras = [camera("first", north: 250, type: .mobile),
-                       camera("second", north: 850, type: .mobile)]
-        let engine = engine(cameras, settings: settings)
-        let events = runAlerts(engine, straightTrack(from: origin, bearing: 0, speedKmh: 36, seconds: 100))
-        XCTAssertEqual(events.filter { $0.event.isPre }.count, 2)
-        engine.reset()
-        XCTAssertTrue(engine.process(VehicleFix(point: origin, speedMps: 10, course: 0,
-                                                timestamp: t0.addingTimeInterval(200))).events.contains(where: \.isPre))
-    }
-
-    func testHotspotSpacingAccumulatesDrivenPathRatherThanDisplacementOrTime() {
-        let start = camera("first", north: 200, type: .mobile)
-        let secondPoint = GeoMath.destination(from: origin, bearing: 270, distance: 150)
-        let second = Camera(id: "return", type: .mobile, lat: secondPoint.lat, lon: secondPoint.lon, heading: 90)
-        let track = segmentedTrack(from: origin, segments: [
-            (0, 36, 40), (270, 36, 40), (180, 36, 40), (90, 36, 40),
-        ])
-        let events = runAlerts(engine([start, second]), track).filter { $0.event.isPre }
-        XCTAssertEqual(events.count, 2)
-        if let last = events.last {
-            let fix = track.first { $0.timestamp.timeIntervalSince(t0) == last.time }!
-            XCTAssertLessThan(GeoMath.distance(origin, fix.point), 500)
-            XCTAssertGreaterThanOrEqual(last.time * 10, 1_000)
-        }
-    }
-
-    func testStationaryJitterGpsJumpsAndNoFixEstimatesCannotUnlockHotspotVoice() {
-        for mode in ["stationary", "jump", "gap", "tick"] {
-            let first = camera("first", north: 250, type: .mobile)
-            let next = camera("next", north: 1_350, type: .mobile)
-            let engine = engine([first, next])
-            XCTAssertTrue(engine.process(VehicleFix(point: origin, speedMps: 20, course: 0,
-                                                    timestamp: t0)).events.contains(where: \.isPre))
-            var later: [CameraAlertEvent] = []
-            if mode == "stationary" {
-                for second in 1...600 {
-                    let jitter = GeoMath.destination(from: origin, bearing: second.isMultiple(of: 2) ? 0 : 180, distance: 5)
-                    later += engine.process(VehicleFix(point: jitter, speedMps: 0, course: 0,
-                                                       timestamp: t0.addingTimeInterval(Double(second)))).events
-                }
-            }
-            if mode == "tick" {
-                for second in 3...60 { later += engine.tick(now: t0.addingTimeInterval(Double(second)))?.events ?? [] }
-            }
-            let point = GeoMath.destination(from: origin, bearing: 0, distance: 1_100)
-            let time = mode == "jump" ? 1.0 : 700
-            later += engine.process(VehicleFix(point: point, speedMps: 20, course: 0,
-                                               timestamp: t0.addingTimeInterval(time))).events
-            XCTAssertFalse(later.contains(where: \.isPre), mode)
-        }
-    }
-
-    func testHotspotCooldownDoesNotAffectOtherCameraTypesOrSectionEvents() {
+    func testHotspotAlertsDoNotAffectOtherCameraTypesOrSectionEvents() {
         for type in [CameraType.fixed, .section, .tech, .noise, .redLight] {
             let cameras = [camera("hotspot", north: 250, type: .mobile),
                            camera("other", north: 750, type: type)]
@@ -146,7 +82,7 @@ final class CameraAlertEngineTests: XCTestCase {
         for fix in straightTrack(from: origin, bearing: 0, speedKmh: 60, seconds: 110) {
             let result = tracker.process(fix)
             sectionEvents += result.events
-            _ = engine.process(fix, sectionActive: tracker.isActive)
+            _ = engine.process(fix)
         }
         XCTAssertEqual(sectionEvents.filter { if case .approaching = $0 { return true }; return false }.count, 1)
         XCTAssertEqual(sectionEvents.filter { if case .entered = $0 { return true }; return false }.count, 1)
@@ -174,69 +110,81 @@ final class CameraAlertEngineTests: XCTestCase {
         }
     }
 
-    func testHotspotCoverageUsesNarrowRoadCorridorAndDirectionWithoutHidingOtherTypes() {
+    func testHotspotsOnKnownSectionStillAlertWithDirectionFiltering() {
         let start = camera(north: 500).point
         let end = camera(north: 2_500).point
         let section = SpeedSection(id: "s-f", name: "測試", start: start, end: end,
                                    lengthMeters: 2_000, speedLimit: 50)
-        let covered = camera("covered", north: 1_500, type: .mobile)
-        var bidirectional = covered
-        bidirectional.id = "both"
-        bidirectional.heading = nil
-        bidirectional.axis = 0
-        var parallel = covered
-        parallel.id = "parallel"
-        let outside = GeoMath.destination(from: covered.point, bearing: 90, distance: 120)
-        parallel.lon = outside.lon
-        var crossing = covered
-        crossing.id = "crossing"
-        crossing.heading = 90
-        var opposite = covered
-        opposite.id = "opposite"
-        opposite.heading = 180
-        let engine = engine([covered, bidirectional])
-        engine.sections = [section]
-        XCTAssertTrue(engine.isCoveredBySection(covered))
-        XCTAssertTrue(engine.isCoveredBySection(bidirectional))
-        XCTAssertFalse(engine.isCoveredBySection(parallel))
-        XCTAssertFalse(engine.isCoveredBySection(crossing))
-        XCTAssertFalse(engine.isCoveredBySection(opposite))
-        for type in [CameraType.fixed, .tech, .noise] {
-            var other = covered
-            other.type = type
-            XCTAssertFalse(engine.isCoveredBySection(other))
+        let directions: [(heading: Double?, axis: Double?, alerts: Bool)] = [
+            (0, nil, true), (nil, 0, true), (180, nil, false), (90, nil, false),
+        ]
+        for direction in directions {
+            var cam = camera(north: 1_500, heading: direction.heading, type: .mobile)
+            cam.axis = direction.axis
+            let engine = engine([cam])
+            engine.sections = [section]
+            XCTAssertFalse(engine.isCoveredBySection(cam))
+            let events = runAlerts(engine, straightTrack(from: origin, bearing: 0, speedKmh: 70, seconds: 100))
+            XCTAssertEqual(events.filter { $0.event.isPre }.count, direction.alerts ? 1 : 0)
+            XCTAssertFalse(events.contains { $0.event.isNear || $0.event.isOverspeedStarted || $0.event.isBeep })
         }
-        XCTAssertTrue(runAlerts(engine, straightTrack(from: origin, bearing: 0, speedKmh: 60, seconds: 120)).isEmpty)
-        engine.sections = []
-        XCTAssertFalse(engine.isCoveredBySection(covered))
-        let tunnel = self.engine([covered])
-        tunnel.sections = [section]
-        _ = tunnel.process(VehicleFix(point: origin, speedMps: 20, course: 0, timestamp: t0))
-        XCTAssertEqual(tunnel.tick(now: t0.addingTimeInterval(65))?.events, [])
-        tunnel.settings.directionTolerance = 100
-        XCTAssertTrue(tunnel.isCoveredBySection(crossing))
-        tunnel.settings.directionTolerance = 45
-        XCTAssertFalse(tunnel.isCoveredBySection(crossing), "方向容差改變時須重算覆蓋")
-        var moved = covered
-        moved.lon = outside.lon
-        tunnel.replaceIndex(SpatialIndex(cameras: [moved]))
-        XCTAssertFalse(tunnel.isCoveredBySection(moved), "同 ID 更新位置時不能沿用舊覆蓋")
     }
 
-    func testActiveSectionAlsoSilencesHotspotBeyondTheSectionEndpointAndDuringNoFix() {
-        let cam = camera(north: 250, type: .mobile)
-        let engine = engine([cam])
-        let active = engine.process(VehicleFix(point: origin, speedMps: 20, course: 0, timestamp: t0), sectionActive: true)
-        XCTAssertEqual(active.target?.phase, .pre)
-        XCTAssertTrue(active.events.isEmpty)
-        XCTAssertTrue(engine.process(VehicleFix(point: origin, speedMps: 20, course: 0,
-                                                timestamp: t0.addingTimeInterval(1)), sectionActive: false).events.isEmpty)
-        let noFix = self.engine([camera(north: 600, type: .mobile)])
-        _ = noFix.process(VehicleFix(point: origin, speedMps: 20, course: 0, timestamp: t0))
-        XCTAssertTrue(noFix.tick(now: t0.addingTimeInterval(20), sectionActive: true)?.events.isEmpty == true)
-        let fixed = self.engine([camera(north: 250)])
-        XCTAssertTrue(fixed.process(VehicleFix(point: origin, speedMps: 20, course: 0, timestamp: t0),
-                                    sectionActive: true).events.contains(where: \.isPre))
+    func testActiveSectionKeepsInsideAndBeyondEndpointHotspotPreAlerts() {
+        let section = SpeedSection(id: "s-f", name: "測試", start: camera(north: 600).point,
+                                   end: camera(north: 1_600).point, lengthMeters: 1_000, speedLimit: 50)
+        let tracker = SectionSpeedTracker(sections: [section])
+        let cameras = [camera("inside", north: 1_000, type: .mobile),
+                       camera("beyond-end", north: 1_850, type: .mobile)]
+        let engine = engine(cameras)
+        engine.sections = [section]
+        var announced: [String] = []
+        var sectionEvents: [SectionEvent] = []
+        for fix in straightTrack(from: origin, bearing: 0, speedKmh: 36, seconds: 210) {
+            sectionEvents += tracker.process(fix).events
+            let result = engine.process(fix)
+            for event in result.events {
+                if case let .preAlert(cam, _) = event {
+                    announced.append(cam.id)
+                    XCTAssertTrue(tracker.isActive, cam.id)
+                }
+            }
+            XCTAssertFalse(result.events.contains { $0.isNear || $0.isOverspeedStarted || $0.isBeep })
+        }
+        XCTAssertEqual(announced, ["inside", "beyond-end"])
+        XCTAssertEqual(sectionEvents.filter { if case .approaching = $0 { return true }; return false }.count, 1)
+        XCTAssertEqual(sectionEvents.filter { if case .entered = $0 { return true }; return false }.count, 1)
+        XCTAssertEqual(sectionEvents.filter { if case .completed = $0 { return true }; return false }.count, 1)
+    }
+
+    func testAdjacentHotspotsStillAlertDuringSectionNoFixCountdown() {
+        let section = SpeedSection(id: "s-f", name: "測試隧道", start: camera(north: 200).point,
+                                   end: camera(north: 2_200).point, lengthMeters: 2_000, speedLimit: 50)
+        let tracker = SectionSpeedTracker(sections: [section])
+        let engine = engine([camera("first", north: 900, type: .mobile),
+                             camera("second", north: 1_300, type: .mobile)])
+        engine.sections = [section]
+        for fix in straightTrack(from: origin, bearing: 0, speedKmh: 36, seconds: 30) {
+            _ = tracker.process(fix)
+            XCTAssertFalse(engine.process(fix).events.contains(where: \.isPre))
+        }
+        XCTAssertTrue(tracker.isActive)
+        var events: [CameraAlertEvent] = []
+        for second in 33...150 {
+            let now = t0.addingTimeInterval(Double(second))
+            let sectionResult = tracker.tick(now: now)
+            let cameraResult = engine.tick(now: now)
+            if cameraResult?.events.contains(where: \.isPre) == true {
+                XCTAssertNotNil(sectionResult?.status)
+            }
+            events += cameraResult?.events ?? []
+        }
+        let announced = events.compactMap { event -> String? in
+            if case let .preAlert(cam, _) = event { return cam.id }
+            return nil
+        }
+        XCTAssertEqual(announced, ["first", "second"])
+        XCTAssertFalse(events.contains { $0.isNear || $0.isOverspeedStarted || $0.isBeep })
     }
 
     func testParkingOnlyTechnologyRemainsInMapIndexButNeverBecomesAlertTargetIncludingNoFix() {

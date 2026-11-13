@@ -261,7 +261,7 @@ final class AppModel: ObservableObject {
         // 隧道裡沒有定位：照相提醒、區間倒數和語音都依時間繼續
         let now = Date()
         let sec = sectionTracker.tick(now: now)
-        let cam = alertEngine.tick(now: now, sectionActive: sectionTracker.isActive)
+        let cam = alertEngine.tick(now: now)
         guard cam != nil || sec != nil else { return }
 
         if let cam { cameraTarget = cam.target }
@@ -269,10 +269,7 @@ final class AppModel: ObservableObject {
             sectionStatus = sec.status
             sectionApproach = sec.approach
         }
-        if let cam, let fix = alertEngine.lastFix {
-            handleCameraResult(cam, fix: fix)
-        }
-        for event in sec?.events ?? [] { handleSectionEvent(event) }
+        handleAlertResults(camera: cam, section: sec, fix: alertEngine.lastFix)
 
         let alert = settings.liveActivityAlertsEnabled
             ? ActivityAlertPolicy.alert(cameraEvents: cam?.events ?? [], sectionEvents: sec?.events ?? [],
@@ -570,7 +567,7 @@ final class AppModel: ObservableObject {
 
         // 隧道裡的基地台定位不能判斷照相點和區間，當作沒有定位，由 tick 依時間推算
         let sec = fix.isReliable ? sectionTracker.process(fix) : nil
-        let cam = fix.isReliable ? alertEngine.process(fix, sectionActive: sectionTracker.isActive) : nil
+        let cam = fix.isReliable ? alertEngine.process(fix) : nil
         let nav = navigation.process(fix)
 
         if let cam { cameraTarget = cam.target }
@@ -581,8 +578,7 @@ final class AppModel: ObservableObject {
         routeProgress = nav?.progress
 
         // 語音優先順序：近距 / 超速 > 區間 > 預告 > 導航
-        if let cam { handleCameraResult(cam, fix: fix) }
-        for event in sec?.events ?? [] { handleSectionEvent(event) }
+        handleAlertResults(camera: cam, section: sec, fix: fix)
         if let nav {
             for event in nav.events { handleRouteEvent(event) }
         }
@@ -592,6 +588,16 @@ final class AppModel: ObservableObject {
                                         cameraOverspeedActive: cameraTarget?.isOverspeed == true)
             : nil
         activity.update(activityState(), alert: alert)
+    }
+
+    private func handleAlertResults(camera: CameraAlertResult?, section: SectionResult?, fix: VehicleFix?) {
+        let hotspotPre = camera?.events.contains {
+            if case let .preAlert(camera, _) = $0 { return camera.type == .mobile }
+            return false
+        } == true
+        if !hotspotPre, let camera, let fix { handleCameraResult(camera, fix: fix) }
+        for event in section?.events ?? [] { handleSectionEvent(event) }
+        if hotspotPre, let camera, let fix { handleCameraResult(camera, fix: fix) }
     }
 
     private func handleCameraResult(_ result: CameraAlertResult, fix: VehicleFix) {

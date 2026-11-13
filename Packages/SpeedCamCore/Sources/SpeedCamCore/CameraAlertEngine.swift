@@ -4,7 +4,7 @@ import Foundation
 public enum AlertPhase: Int, Comparable, Sendable {
     /// 已經偵測到但還沒進入預告距離
     case approaching = 0
-    /// 已進入預告階段（熱點可能僅顯示、不播報）
+    /// 已播過預告提醒
     case pre = 1
     /// 已播過近距提醒
     case near = 2
@@ -54,13 +54,7 @@ public struct CameraAlertResult: Equatable, Sendable {
 /// 3. 接近期間若超速，每隔固定秒數嗶一聲
 /// 4. 通過後進入冷卻，不會重複提醒
 public final class CameraAlertEngine {
-    public var settings: AlertSettings {
-        didSet {
-            if settings.directionTolerance != oldValue.directionTolerance {
-                coveredBySection.removeAll()
-            }
-        }
-    }
+    public var settings: AlertSettings
     public private(set) var index: SpatialIndex
     /// 區間清單：區間測速的照相機會套用附近區間（起點或終點 500 m 內）的個別容許值。
     public var sections: [SpeedSection] = [] {
@@ -68,10 +62,6 @@ public final class CameraAlertEngine {
     }
     /// 區間照相機離區間路線多近，就算是那一段的一部分（公尺）。
     public var sectionCameraCoverage: Double = 300
-    /// 熱點的覆蓋半徑較窄，避免把鄰近平行道路一併消音。
-    public var sectionHotspotCoverage: Double = 100 {
-        didSet { coveredBySection.removeAll() }
-    }
     /// 超過這個秒數沒有定位，就依最後的車速推算（和區間倒數相同）。
     public var gpsGapSeconds: TimeInterval = 2.5
     /// 最後的車速低於這個值不推算：多半是停車或開進停車場，不是進隧道。
@@ -98,7 +88,6 @@ public final class CameraAlertEngine {
         var distance: Double
         /// 這段沒有定位時推算過：定位回來時如果已經在後面，就算通過。
         var estimated = false
-        var didAnnounce = false
     }
 
     private struct Cooldown {
@@ -117,7 +106,6 @@ public final class CameraAlertEngine {
     public private(set) var lastFix: VehicleFix?
     /// 這段沒有定位已經找過照相點了（記最後一筆定位的時間）。
     private var searchedWithoutFix: Date?
-    private var mobileDistanceSinceAnnouncement: Double?
 
     public init(index: SpatialIndex, settings: AlertSettings = AlertSettings()) {
         self.index = index
@@ -139,15 +127,13 @@ public final class CameraAlertEngine {
         lastBeep = nil
         lastFix = nil
         searchedWithoutFix = nil
-        mobileDistanceSinceAnnouncement = nil
     }
 
     /// 目前採用的行進方向（低速時沿用上一次的有效方向）。
     public var currentCourse: Double? { lastCourse }
 
-    public func process(_ fix: VehicleFix, sectionActive: Bool = false) -> CameraAlertResult {
+    public func process(_ fix: VehicleFix) -> CameraAlertResult {
         var events: [CameraAlertEvent] = []
-        accumulateMobileTravel(to: fix)
         lastFix = fix
 
         if let course = fix.course, course >= 0, fix.speedKmh >= settings.minimumSpeedForCourse {
@@ -169,7 +155,7 @@ public final class CameraAlertEngine {
 
         var target: CameraTarget?
         if let key = targetKey, var t = tracked[key] {
-            advancePhase(&t, speedKmh: fix.speedKmh, sectionActive: sectionActive, events: &events)
+            advancePhase(&t, speedKmh: fix.speedKmh, events: &events)
             tracked[key] = t
             updateOverspeed(target: t, fix: fix, events: &events)
             target = CameraTarget(camera: t.camera, distance: t.distance, phase: t.phase, isOverspeed: isOverspeed)
@@ -187,7 +173,7 @@ public final class CameraAlertEngine {
     /// 不推算位置：隧道有弧度（觀音隧道 8 km 偏離直線 1 km），照直線走會離照相點越來越遠。
     /// 直線距離比實際路程短，誤差是提早提醒，不會太晚。
     /// 「通過」要等定位回來才判斷，因為車速是舊的，不能確定真的過了。
-    public func tick(now: Date, sectionActive: Bool = false) -> CameraAlertResult? {
+    public func tick(now: Date) -> CameraAlertResult? {
         guard let last = lastFix, let heading = lastCourse else { return nil }
         let elapsed = now.timeIntervalSince(last.timestamp)
         guard elapsed >= gpsGapSeconds, last.speedKmh >= noFixMinimumSpeedKmh else { return nil }
@@ -229,7 +215,7 @@ public final class CameraAlertEngine {
 
         var target: CameraTarget?
         if let key = preferredTarget(candidates, speedKmh: last.speedKmh), var t = tracked[key] {
-            advancePhase(&t, speedKmh: last.speedKmh, sectionActive: sectionActive, events: &events)
+            advancePhase(&t, speedKmh: last.speedKmh, events: &events)
             tracked[key] = t
             target = CameraTarget(camera: t.camera, distance: t.distance, phase: t.phase,
                                   isOverspeed: isOverspeed && t.camera.enforcesSpeed)
@@ -240,19 +226,11 @@ public final class CameraAlertEngine {
     // MARK: - 內部流程
 
     /// 到了預告或近距的距離就提醒（每段只提醒一次）。
-    private func advancePhase(_ t: inout Tracked, speedKmh: Double, sectionActive: Bool,
-                              events: inout [CameraAlertEvent]) {
+    private func advancePhase(_ t: inout Tracked, speedKmh: Double, events: inout [CameraAlertEvent]) {
         let th = settings.thresholds(speedLimit: t.camera.speedLimit, currentSpeedKmh: speedKmh)
         if !t.camera.usesTwoStageAlert {
             if t.distance <= th.pre && t.phase < .pre {
                 t.phase = .pre
-                if t.camera.type == .mobile {
-                    guard !sectionActive,
-                          mobileDistanceSinceAnnouncement.map({ $0 >= settings.mobileHotspotVoiceDistance }) ?? true
-                    else { return }
-                    mobileDistanceSinceAnnouncement = 0
-                }
-                t.didAnnounce = true
                 events.append(.preAlert(camera: t.camera, distance: t.distance))
             }
             return
@@ -260,26 +238,11 @@ public final class CameraAlertEngine {
         if t.distance <= th.near && t.phase < .near {
             let afterPre = t.phase == .pre
             t.phase = .near
-            t.didAnnounce = true
             events.append(.nearAlert(camera: t.camera, distance: t.distance, afterPre: afterPre))
         } else if t.distance <= th.pre && t.phase < .pre {
             t.phase = .pre
-            t.didAnnounce = true
             events.append(.preAlert(camera: t.camera, distance: t.distance))
         }
-    }
-
-    private func accumulateMobileTravel(to fix: VehicleFix) {
-        guard let distance = mobileDistanceSinceAnnouncement, let previous = lastFix,
-              previous.isReliable, fix.isReliable else { return }
-        let elapsed = fix.timestamp.timeIntervalSince(previous.timestamp)
-        // 失聯不以舊車速解鎖語音；定位恢復也不把跳點／整段缺口當成已行駛距離。
-        guard elapsed > 0, elapsed <= gpsGapSeconds else { return }
-        let step = GeoMath.distance(previous.point, fix.point)
-        let plausible = max(80, max(previous.speedMps, fix.speedMps) * elapsed * 1.8)
-        guard step.isFinite, step <= plausible else { return }
-        let speedDistance = max(0, (previous.speedMps + fix.speedMps) / 2) * elapsed
-        mobileDistanceSinceAnnouncement = distance + min(step, speedDistance)
     }
 
     private func preferredTarget(_ candidates: [(key: String, distance: Double)], speedKmh: Double) -> String? {
@@ -356,7 +319,7 @@ public final class CameraAlertEngine {
             if behindAndClose || movingAwayAfterClose || passedWithoutFix {
                 tracked[key] = nil
                 cooldown[key] = Cooldown(point: t.camera.point, time: fix.timestamp)
-                if t.camera.type != .mobile || t.didAnnounce {
+                if t.camera.type != .mobile || t.phase >= .pre {
                     events.append(.passed(camera: t.camera))
                 }
                 continue
@@ -406,24 +369,13 @@ public final class CameraAlertEngine {
     /// 這裡不再當成一支固定照相提醒，否則隧道中段的那支會在隧道裡才跳出來，也會和倒數重複。
     /// 資料裡沒有對應區間的區間照相機（無法解析的那些）仍然照一般照相提醒。
     func isCoveredBySection(_ camera: Camera) -> Bool {
-        guard camera.type == .section || camera.type == .mobile else { return false }
+        guard camera.type == .section else { return false }
         if let known = coveredBySection[camera.id] { return known }
         let covered = sections.contains { section in
-            if camera.type == .section, camera.sectionGroupID == section.groupID { return true }
+            if camera.sectionGroupID == section.groupID { return true }
             let path = section.displayPath
             return zip(path, path.dropFirst()).contains { a, b in
-                let radius = camera.type == .mobile ? sectionHotspotCoverage : sectionCameraCoverage
-                guard GeoMath.project(camera.point, ontoSegment: a, b).distance <= radius else { return false }
-                guard camera.type == .mobile else { return true }
-                let course = GeoMath.bearing(from: a, to: b)
-                if let heading = camera.heading {
-                    return GeoMath.angleDifference(heading, course) <= settings.directionTolerance
-                }
-                if let axis = camera.axis {
-                    let difference = GeoMath.angleDifference(axis, course)
-                    return min(difference, 180 - difference) <= settings.directionTolerance
-                }
-                return true
+                GeoMath.project(camera.point, ontoSegment: a, b).distance <= sectionCameraCoverage
             }
         }
         coveredBySection[camera.id] = covered

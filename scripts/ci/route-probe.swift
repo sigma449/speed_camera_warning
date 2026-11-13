@@ -732,7 +732,7 @@ func runReplay(legs: [ReplayLeg], databasePath: String, rules: RouteRules?,
             }
             if tunnelNow {
                 let sectionResult = sections.tick(now: now)
-                let cameraResult = engine.tick(now: now, sectionActive: sections.isActive)
+                let cameraResult = engine.tick(now: now)
                 let spoken = logReplay(camera: cameraResult, section: sectionResult, stamp: stamp,
                           point: point, showStatus: Int(second) % 30 == 0, estimated: true,
                           leg: leg.name, second: second, speedKmh: actualSpeed * 3.6, traveledMeters: traveled, settings: settings,
@@ -780,7 +780,7 @@ func runReplay(legs: [ReplayLeg], databasePath: String, rules: RouteRules?,
                 }
             }
             let sectionResult = sections.process(fix)
-            let cameraResult = engine.process(fix, sectionActive: sections.isActive)
+            let cameraResult = engine.process(fix)
             let spoken = logReplay(camera: cameraResult, section: sectionResult, stamp: stamp,
                       point: point, showStatus: Int(second) % 30 == 0, estimated: false,
                       leg: leg.name, second: second, speedKmh: actualSpeed * 3.6, traveledMeters: traveled, settings: settings,

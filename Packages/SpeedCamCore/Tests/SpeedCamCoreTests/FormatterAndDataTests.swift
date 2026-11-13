@@ -169,11 +169,16 @@ final class ToneGeneratorTests: XCTestCase {
 }
 
 final class DatabaseTests: XCTestCase {
-    func testHotspotVoiceDistanceMigratesOldSettingsAndRoundTripsCustomValue() throws {
-        var settings = try JSONDecoder().decode(AlertSettings.self, from: Data("{}".utf8))
-        XCTAssertEqual(settings.mobileHotspotVoiceDistance, 1_000)
-        settings.mobileHotspotVoiceDistance = 750
-        XCTAssertEqual(try JSONDecoder().decode(AlertSettings.self, from: JSONEncoder().encode(settings)), settings)
+    func testRetiredHotspotVoiceDistanceIsIgnoredWithoutLosingOtherSettings() throws {
+        let json = #"{"mobileHotspotVoiceDistance":750,"mobileHotspotsEnabled":false,"generalPreDistance":420,"sectionToleranceKmh":15}"#
+        let settings = try JSONDecoder().decode(AlertSettings.self, from: Data(json.utf8))
+        XCTAssertFalse(settings.mobileHotspotsEnabled)
+        XCTAssertEqual(settings.generalPreDistance, 420)
+        XCTAssertEqual(settings.sectionToleranceKmh, 15)
+        let encoded = try JSONEncoder().encode(settings)
+        let fields = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        XCTAssertNil(fields["mobileHotspotVoiceDistance"])
+        XCTAssertEqual(try JSONDecoder().decode(AlertSettings.self, from: encoded), settings)
     }
 
     func testMultiSourceCameraAndNewSettingsRoundTrip() throws {
