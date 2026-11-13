@@ -395,6 +395,63 @@ def test_missing_malformed_or_conflicting_hotspot_evidence_cannot_pass(e_return_
     assert any(reason in error for error in checker.check_text(text))
 
 
+@pytest.fixture
+def douliu_hotspot_reports():
+    """F 真實回放的五列報告；事件仍用人工紀錄測檢查器，不代表斗六實車回放。"""
+    return "\n".join((
+        "[熱點行向] douliu-mobile｜莿桐鄉 莿桐鄉台1線往莿桐方向234.5K處,速限50公里/小時。｜unresolved"
+        "｜heading=None axis=11.7｜同路官方行政區「莿桐」里程 232–234.5K跨越／接近熱點，無法唯一判向",
+        "[熱點行向] douliu-mobile｜莿桐鄉 莿桐鄉台1線232K處,速限70公里/小時。｜unresolved"
+        "｜heading=None axis=129.3｜公告未載可核單向",
+        "[熱點行向] douliu-mobile｜莿桐鄉 莿桐鄉台1丁線2.5K處,速限60公里/小時。｜unresolved"
+        "｜heading=None axis=157.8｜公告未載可核單向",
+        "[熱點行向] douliu-mobile｜莿桐鄉 莿桐鄉台1線234.5K處,速限50公里/小時。｜unresolved"
+        "｜heading=None axis=11.7｜公告未載可核單向",
+        "[熱點行向] douliu-mobile｜ 台3線北往南240K處,速限70公里/小時。｜directional"
+        "｜heading=180.0 axis=None｜公告明載方位「南」",
+    ))
+
+
+@pytest.mark.parametrize("address_format", ["original", "cleaned", "spaced"])
+def test_douliu_empty_district_report_is_consumed_and_still_rejects_opposite_heading(
+        records, douliu_hotspot_reports, address_format):
+    reports = douliu_hotspot_reports
+    address = "台3線北往南240K處,速限70公里/小時。"
+    if address_format == "cleaned":
+        for limit in (50, 60, 70):
+            reports = reports.replace(f",速限{limit}公里/小時。", "")
+        address = address.split(",", 1)[0]
+    elif address_format == "spaced":
+        reports = reports.replace("台3線北往南240K處", "台3線 北往南 240K處")
+    points = [[23.78, 120.627804], shift([23.78, 120.627804], 180, 400)]
+    replace_route(records, "回程01", points)
+    point = shift(points[0], 180, 100)
+    add_hotspot(records, "回程01", 5, address=address, source="douliu-mobile", lat=point[0], lon=point[1])
+    text = reports + "\n" + "\n".join(checker.MARKER + json.dumps(r, ensure_ascii=False) for r in records)
+    assert checker.check_text(text) == []
+    assert any("反向／橫向" in error for error in checker.check_text(text.replace("heading=180.0", "heading=0")))
+
+
+@pytest.mark.parametrize("old,new,reason", [
+    ("douliu-mobile｜", " ｜", "報告格式無效"),
+    ("｜ 台3線", "｜台3線", "報告格式無效"),
+    ("台3線北往南240K處,速限70公里/小時。", " ", "報告格式無效"),
+    ("｜directional｜", "｜unknown｜", "報告格式無效"),
+    ("heading=180.0 axis=None", "heading=180.0", "報告格式無效"),
+    ("axis=None｜", "axis=None", "報告格式無效"),
+    ("heading=180.0", "heading=bad", "行向數值無效"),
+    ("heading=180.0", "heading=nan", "行向數值無效"),
+    ("heading=180.0", "heading=360", "行向數值無效"),
+    ("axis=None", "axis=180", "行向數值無效"),
+    ("｜公告明載方位「南」", "｜", "報告格式無效"),
+])
+def test_douliu_optional_district_does_not_make_other_report_fields_optional(
+        records, douliu_hotspot_reports, old, new, reason):
+    report = douliu_hotspot_reports.splitlines()[-1].replace(old, new)
+    text = report + "\n" + "\n".join(checker.MARKER + json.dumps(r, ensure_ascii=False) for r in records)
+    assert any(reason in error for error in checker.check_text(text))
+
+
 def test_returning_hotspot_course_is_reversed_from_trip_metadata_not_case_name(records):
     prefix, address = "折返01", "臺9線18.4K(往新店)"
     a, _, _, _, course = checker.RouteGeometry(case_path(prefix)).segments[0]

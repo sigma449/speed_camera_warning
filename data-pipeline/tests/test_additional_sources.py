@@ -1,6 +1,7 @@
 import gzip
 import hashlib
 import json
+import math
 from pathlib import Path
 import sys
 
@@ -8,7 +9,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import build_cameras
-from speedcam_data import additional_sources as extra, osm_cameras as osm, sources
+from speedcam_data import additional_sources as extra, mileposts, osm_cameras as osm, sources
 from speedcam_data.normalize import Camera
 from speedcam_data.source_merge import SourceReport, merge_sources
 
@@ -559,6 +560,72 @@ def test_douliu_only_single_provincial_mileage_uses_index_and_never_road_or_coun
     assert cameras[-1].heading == 180
     assert not any("154縣道" in c.address or "145乙線" in c.address or "新榮橋" in c.address for c in cameras)
     assert report.counts["douliu-mobile"]["locationSuccess"] == 5
+
+
+@pytest.fixture
+def douliu_milepost_index():
+    """依 F CI 發布點合成前後 100 m 里程牌；不是 7040 原始列或實測桿位。"""
+    rows = []
+    for road, km, lat, lon, axis in (
+        ("台1", 232, 23.766745, 120.487465, 129.3),
+        ("台1", 234.5, 23.748389, 120.496176, 11.7),
+        ("台1丁", 2.5, 23.742439, 120.512756, 157.8),
+        ("台3", 240, 23.771687, 120.627804, 180),
+    ):
+        for offset in (-0.1, 0.1):
+            rows.append({
+                "公路編號": road, "起點樁號": str(km + offset),
+                "坐標-N-WGS84": str(lat + offset * 1000 * math.cos(math.radians(axis)) / 111195),
+                "坐標-E-WGS84": str(lon + offset * 1000 * math.sin(math.radians(axis))
+                                   / (111195 * math.cos(math.radians(lat)))),
+            })
+    return mileposts.build_index(rows, log=lambda _: None)
+
+
+def test_douliu_milepost_fixture_publishes_four_deduplicated_hotspots_with_clean_addresses(douliu_milepost_index):
+    rows = extra.parse_douliu_mobile((extra.SNAPSHOTS / "douliu-mobile.raw").read_bytes())
+    report = SourceReport()
+    candidates = extra.adapt_mobile(rows, "douliu-mobile", report, resolve=douliu_milepost_index.resolve)
+    cameras = merge_sources([], candidates, report)
+    expected = {
+        "douliu-mobile-213fc176856a": ("莿桐鄉台1線232K處", "莿桐鄉", None, 129.3,
+                                      (23.766745, 120.487465), 70),
+        "douliu-mobile-39626731dd14": ("台3線北往南240K處", "", 180, None,
+                                      (23.771687, 120.627804), 70),
+        "douliu-mobile-4818a938bf50": ("莿桐鄉台1線往莿桐方向234.5K處", "莿桐鄉", None, 11.7,
+                                      (23.748389, 120.496176), 50),
+        "douliu-mobile-90179b1d2878": ("莿桐鄉台1丁線2.5K處", "莿桐鄉", None, 157.8,
+                                      (23.742439, 120.512756), 60),
+    }
+    assert len(candidates) == 5 and {c.id for c in cameras} == set(expected)
+    assert report.counts["douliu-mobile"]["locationSuccess"] == 5
+    assert report.counts["douliu-mobile"]["added"] == 4 and report.counts["douliu-mobile"]["merged"] == 1
+    assert [r["address"] for r in report.mobile_directions] == [c.address for c in candidates]
+    for camera in cameras:
+        address, district, heading, axis, point, limit = expected[camera.id]
+        assert (camera.address, camera.district, camera.heading, camera.axis) == (address, district, heading, axis)
+        assert (camera.lat, camera.lon) == pytest.approx(point)
+        assert camera.city == "雲林縣" and camera.positionMethod == "milestone" and camera.type == "mobile"
+        assert camera.speedLimit is None and not camera.enforces_speed
+        assert f"速限{limit}公里/小時" in camera.conditions and "原公告：" in camera.conditions
+
+
+def test_douliu_missing_mileposts_cannot_publish_those_same_announcements():
+    rows = extra.parse_douliu_mobile((extra.SNAPSHOTS / "douliu-mobile.raw").read_bytes())
+    report = SourceReport()
+    assert extra.adapt_mobile(rows, "douliu-mobile", report, resolve=mileposts.MilepostIndex().resolve) == []
+    assert report.location_failures["douliu-mobile"]["milestone_unavailable"] == 5
+    assert report.mobile_directions == []
+
+
+def test_douliu_conditional_speed_suffix_stays_complete_in_conditions_not_address(douliu_milepost_index):
+    address = "莿桐鄉台1線西往東232K處,快車道速限60公里/小時,慢車道速限40公里/小時。"
+    cameras = extra.adapt_mobile([dict(address=address, district="莿桐鄉")], "douliu-mobile", SourceReport(),
+                                 resolve=douliu_milepost_index.resolve)
+    assert len(cameras) == 1
+    assert cameras[0].address == "莿桐鄉台1線西往東232K處" and cameras[0].heading == 90
+    assert cameras[0].speedLimit is None and not cameras[0].enforces_speed
+    assert "原公告：" + address in cameras[0].conditions
 
 
 def test_existing_official_point_does_not_bypass_new_same_district_unique_osm_junction_rule():

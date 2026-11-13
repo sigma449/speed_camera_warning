@@ -646,13 +646,16 @@ def check_text(text: str, *, information: list[str] | None = None) -> list[str]:
         if "[熱點行向]" in line:
             match = re.search(
                 r"\[熱點行向\]\s+([^｜]+)｜([^｜]+)｜(?:directional|bidirectional|unresolved)"
-                r"｜heading=(\S+) axis=(\S+)｜", line)
-            place = match[2].split(maxsplit=1) if match else []
-            if not match or len(place) != 2:
+                r"｜heading=(\S+) axis=(\S+)｜\S.*$", line)
+            place = match[2].split(" ", 1) if match else []
+            if not match or not match[1].strip() or len(place) != 2 or not place[1].strip():
                 errors.append(f"log 第 {line_number} 行熱點行向報告格式無效")
             else:
                 try:
                     direction = tuple(None if value == "None" else float(value) for value in match.group(3, 4))
+                    if any(value is not None and (not is_number(value) or not 0 <= value < bound)
+                           for value, bound in zip(direction, (360, 180))):
+                        raise ValueError("行向超出範圍或不是有限數值")
                 except ValueError:
                     errors.append(f"log 第 {line_number} 行熱點行向數值無效")
                 else:

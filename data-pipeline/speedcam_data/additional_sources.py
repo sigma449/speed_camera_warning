@@ -707,6 +707,8 @@ def adapt_mobile(rows: list[dict], source: str, report: SourceReport, resolve=No
         else:
             address, district = r["address"], r["district"]
             direction = address
+        display_address = (re.split(r"[,，]\s*(?:(?:快|慢)車道)?速限", address, maxsplit=1)[0]
+                           if source == "douliu-mobile" else address)
         coords = None
         method = None
         location = None
@@ -772,7 +774,7 @@ def adapt_mobile(rows: list[dict], source: str, report: SourceReport, resolve=No
             heading = None
         status = "directional" if heading is not None else "bidirectional" if both and axis is not None else "unresolved"
         report.count(source, status)
-        report.mobile_directions.append(dict(source=source, address=address, district=district,
+        report.mobile_directions.append(dict(source=source, address=display_address, district=district,
                                              heading=heading, axis=axis if heading is None else None,
                                              status=status, evidence=evidence))
         if status == "unresolved":
@@ -788,13 +790,16 @@ def adapt_mobile(rows: list[dict], source: str, report: SourceReport, resolve=No
         report.location(source, f"{district} {address}", method=method, point=coords, evidence=location_evidence,
                         details=location.details if location else {})
         identity = hashlib.sha1(f"{district}|{address}".encode()).hexdigest()[:12]
+        conditions = ("定位依據：" + location_evidence + "；" + evidence + "；"
+                      + "公告候選地點，非即時執法；原公告有效期間未載明")
+        if display_address != address:
+            conditions = "原公告：" + address + "；" + conditions
         result.append(Camera(id=f"{source}-{identity}", type="mobile", lat=coords[0], lon=coords[1],
                              heading=heading, axis=axis if heading is None else None, speedLimit=None,
-                             address=address, city=city,
+                             address=display_address, city=city,
                              district=district, source=source, sourceID=identity, positionMethod=method,
                              enforcementItems="移動測速公告熱點",
-                             conditions="定位依據：" + location_evidence + "；" + evidence + "；"
-                             + "公告候選地點，非即時執法；原公告有效期間未載明"))
+                             conditions=conditions))
     return result
 
 
