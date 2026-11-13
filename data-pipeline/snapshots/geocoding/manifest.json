@@ -1,0 +1,10 @@
+{
+ "addresses.json": {
+  "sha256": "165e478dfe83a70aaad43bc362b6c598faa2e05e1c88ffdf5587af9943a15200",
+  "downloadedAt": "2026-11-13"
+ },
+ "roads.json.gz": {
+  "sha256": "f81446ccbb05ffb1e91efd161f7782e82d11e9b9e04efe5b78db685910520bda",
+  "downloadedAt": "2026-11-13"
+ }
+}

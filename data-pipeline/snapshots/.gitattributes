@@ -1,2 +1,4 @@
 *.raw binary
 *.json.gz binary
+geocoding/addresses.json binary
+tp-noise.parsed.json binary

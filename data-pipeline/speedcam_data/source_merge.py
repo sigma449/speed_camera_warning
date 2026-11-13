@@ -15,6 +15,8 @@ class SourceReport:
     issues: list[str] = field(default_factory=list)
     conflicts: list[str] = field(default_factory=list)
     mobile_directions: list[dict] = field(default_factory=list)
+    locations: list[dict] = field(default_factory=list)
+    location_failures: dict[str, dict[str, int]] = field(default_factory=dict)
 
     def count(self, source: str, key: str, amount: int = 1) -> None:
         values = self.counts.setdefault(source, {"downloaded": 0, "usable": 0, "added": 0, "merged": 0})
@@ -23,11 +25,30 @@ class SourceReport:
     def issue(self, source: str, row: str, reason: str) -> None:
         self.issues.append(f"{source}｜{row}｜{reason}")
 
+    def location(self, source: str, row: str, *, method: str | None = None,
+                 point: tuple[float, float] | None = None, evidence: str = "",
+                 reason: str = "", code: str = "", details: dict | None = None) -> None:
+        entry = dict(source=source, row=row, method=method, evidence=evidence)
+        if point is not None:
+            self.count(source, "locationSuccess")
+            entry.update(lat=point[0], lon=point[1], details=details or {})
+        else:
+            self.count(source, "locationFailed")
+            entry.update(reason=reason, reasonCode=code)
+            failures = self.location_failures.setdefault(source, {})
+            failures[code] = failures.get(code, 0) + 1
+            self.issue(source, row, reason + "；未發布")
+        self.locations.append(entry)
+
     def print(self, cameras: list[Camera], log=print) -> None:
         log("多來源建置報告（讀入原始列可能含重複表頭／空列；淨新增依下列來源順序）")
         for source, n in self.counts.items():
             log(f"  {source}：原始 {n['downloaded']}，可定位 {n['usable']}，"
                 f"淨新增 {n['added']}，重疊 {n['merged']}")
+            if "locationSuccess" in n or "locationFailed" in n:
+                log(f"    定位成功 {n.get('locationSuccess', 0)}，失敗 {n.get('locationFailed', 0)}，"
+                    f"非設備／不採用列 {n.get('excluded', 0)}；"
+                    + "、".join(f"{key}={value}" for key, value in sorted(self.location_failures.get(source, {}).items())))
             if any(key in n for key in ("directional", "bidirectional", "unresolved")):
                 log(f"    熱點行向：單向 {n.get('directional', 0)}，"
                     f"明載雙向 {n.get('bidirectional', 0)}，無法唯一判向 {n.get('unresolved', 0)}")
