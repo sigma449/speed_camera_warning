@@ -239,6 +239,10 @@ struct CameraDetailCard: View {
                     }
                 }
                 Text(camera.address).font(.subheadline)
+                if ["milestone", "door", "lamp", "intersection", "official-milepost",
+                    "existing-official-junction"].contains(camera.positionMethod ?? "") {
+                    Text("位置依公告地址推定").font(.footnote.weight(.semibold))
+                }
                 if let detail = camera.enforcementDetail {
                     Text(detail).font(.subheadline)
                 }

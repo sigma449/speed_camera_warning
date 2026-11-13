@@ -70,7 +70,8 @@ struct BannerGalleryView: View {
         return Camera(id: "gallery-\(type.rawValue)", type: type, lat: 25, lon: 121.5,
                       address: "長春路與中山北路二段交岔路口（版面示例）",
                       enforcementItems: type == .tech ? "闖紅燈、未依標線行駛、未停讓行人、違規停車" : nil,
-                      conditions: type == .mobile ? "公告候選地點，非即時執法" : nil)
+                      conditions: type == .mobile ? "公告候選地點，非即時執法" : nil,
+                      positionMethod: type == .tech ? "official-coordinate" : "intersection")
     }
 
     @ViewBuilder

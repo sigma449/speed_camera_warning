@@ -148,13 +148,13 @@ struct SettingsView: View {
                     Text(RoadLineStore.attribution).font(.footnote).foregroundStyle(.secondary)
                     Text(RouteHintStore.attribution).font(.footnote).foregroundStyle(.secondary)
                     if let url = URL(string: "https://www.openstreetmap.org/copyright") {
-                        Link("OSM 測速設備：© OpenStreetMap 貢獻者（ODbL 1.0）", destination: url)
+                        Link("OSM 測速設備／公告定位道路：© OpenStreetMap 貢獻者（ODbL 1.0）", destination: url)
                             .font(.footnote)
                     }
                 } header: {
                     Text("資料")
                 } footer: {
-                    Text("照相點資料僅供參考，請依現場標誌與速限行駛。OSM 補充測速設備及融合衍生資料庫依 ODbL 分享；Build IPA 的 SpeedCam-data 附完整機讀資料、來源與建置程式。未知速限只提醒，不發超速警示。")
+                    Text("照相點資料僅供參考，請依現場標誌與速限行駛。門牌、燈桿及路口推定位置不是設備實測座標，詳細資訊會標示。官方定位資料依政府資料開放授權條款－第1版；臺北聲音照相清單依 CC0 1.0。OSM 補充設備、定位道路及融合衍生資料庫依 ODbL 分享；Build IPA 的 SpeedCam-data 附完整機讀資料、來源與建置程式。未知速限只提醒，不發超速警示。")
                 }
 
                 Section {
