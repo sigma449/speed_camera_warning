@@ -192,6 +192,10 @@ public final class CameraAlertEngine {
                 continue
             }
             let fromLast = GeoMath.distance(last.point, t.camera.point)
+            if t.camera.type == .mobile, fromLast < 30,
+               !isRelevant(t.camera, distance: fromLast, from: last.point, heading: heading, isTracked: true) {
+                continue
+            }
             guard fromLast < 30 || isAheadWithoutFix(t.camera, distance: fromLast, from: last.point, heading: heading) else { continue }
             let remaining = fromLast - moved
             if remaining < -noFixForgetDistance {
@@ -349,20 +353,21 @@ public final class CameraAlertEngine {
     func isRelevant(_ camera: Camera, distance: Double, from point: GeoPoint,
                     heading: Double, isTracked: Bool) -> Bool {
         guard settings.isEnabled(camera), !camera.isParkingOnlyTechnology else { return false }
-        // 已經在追蹤、且非常接近時，GPS 方位角不準，直接視為相關。
-        if isTracked && distance < 30 { return true }
+        // 極近時放寬前方位置，但熱點仍須核對取締方向／道路軸向。
+        let closeTracked = isTracked && distance < 30
+        if closeTracked && camera.type != .mobile { return true }
         let aheadDiff = GeoMath.angleDifference(GeoMath.bearing(from: point, to: camera.point), heading)
         if let camHeading = camera.heading {
             return GeoMath.angleDifference(heading, camHeading) <= settings.directionTolerance
-                && aheadDiff <= settings.aheadToleranceWithHeading
+                && (closeTracked || aheadDiff <= settings.aheadToleranceWithHeading)
         }
         if let axis = camera.axis {
             // 雙向照相但已知道路軸向（南北或東西）：兩個方向都算，橫向道路的車不算。
             let d = GeoMath.angleDifference(heading, axis)
             return min(d, 180 - d) <= settings.directionTolerance
-                && aheadDiff <= settings.aheadToleranceWithHeading
+                && (closeTracked || aheadDiff <= settings.aheadToleranceWithHeading)
         }
-        return aheadDiff <= settings.aheadToleranceWithoutHeading
+        return closeTracked || aheadDiff <= settings.aheadToleranceWithoutHeading
     }
 
     /// 區間照相機落在已知的區間路線上：由 `SectionSpeedTracker` 提醒（預告、倒數），

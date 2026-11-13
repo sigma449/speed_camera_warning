@@ -46,6 +46,129 @@ final class CameraAlertEngineTests: XCTestCase {
         XCTAssertFalse(result.target?.isOverspeed ?? true)
     }
 
+    // 原回放的事件定位；彎前樣本與精確方位依同份 route_geometry 及 traveled 還原。
+    private func assertHotspotReplay(point: GeoPoint, matchingHeading: Double, oppositeHeading: Double,
+                                     samples: [(second: Double, lat: Double, lon: Double, course: Double)],
+                                     preSecond: Double, file: StaticString = #filePath, line: UInt = #line) {
+        let matching = Camera(id: "matching", type: .mobile, lat: point.lat, lon: point.lon, heading: matchingHeading)
+        let opposite = Camera(id: "opposite", type: .mobile, lat: point.lat, lon: point.lon, heading: oppositeHeading)
+        let fixes = samples.map {
+            VehicleFix(point: GeoPoint(lat: $0.lat, lon: $0.lon), speedMps: 60 / 3.6, course: $0.course,
+                       timestamp: t0.addingTimeInterval($0.second))
+        }
+        for cameras in [[opposite], [matching], [opposite, matching], [matching, opposite]] {
+            let events = runAlerts(engine(cameras), fixes)
+            let pre = events.filter { $0.event.isPre }
+            let announced = pre.compactMap { timed -> String? in
+                if case let .preAlert(cam, _) = timed.event { return cam.id }
+                return nil
+            }
+            let passed = events.compactMap { timed -> String? in
+                if case let .passed(cam) = timed.event { return cam.id }
+                return nil
+            }
+            let expected = cameras.contains(matching) ? [matching.id] : []
+            XCTAssertEqual(announced, expected, file: file, line: line)
+            XCTAssertEqual(passed, expected, file: file, line: line)
+            if !expected.isEmpty {
+                XCTAssertEqual(pre.first?.time ?? -1, preSecond, accuracy: 0.01, file: file, line: line)
+            }
+            XCTAssertFalse(events.contains { $0.event.isNear || $0.event.isOverspeedStarted || $0.event.isBeep },
+                           file: file, line: line)
+        }
+    }
+
+    func testReplayBeiyi287DoesNotAnnounceOppositeHotspotWhenVeryClose() {
+        let point = GeoPoint(lat: 24.947061, lon: 121.65871)
+        assertHotspotReplay(point: point, matchingHeading: 147.2, oppositeHeading: 327.2, samples: [
+            (194, 24.94870460230898, 121.66146097050338, 295.04215661397),
+            (220, 24.94839425411505, 121.6577252086158, 182.0182075548607),
+            (230, 24.94717153891018, 121.6586169372787, 138.0089225317973),
+            (231, 24.947058413087433, 121.65872528542683, 141.56397824310852),
+        ], preSecond: 220)
+        assertHotspotReplay(point: point, matchingHeading: 147.2, oppositeHeading: 327.2, samples: [
+            (530, 24.948697010616584, 121.6614788921131, 295.04215661397),
+            (556, 24.948412178222107, 121.65772590524601, 182.0182075548607),
+            (566, 24.94718486926805, 121.658603703609, 138.0089225317973),
+            (568, 24.946955055066244, 121.65881575246988, 141.56397824310852),
+        ], preSecond: 556)
+    }
+
+    func testReplayBeiyi355DoesNotAnnounceOppositeHotspotWhenVeryClose() {
+        assertHotspotReplay(point: GeoPoint(lat: 24.93497, lon: 121.687902),
+                           matchingHeading: 68.1, oppositeHeading: 248.1, samples: [
+            (2304, 24.940023266291007, 121.68426610056585, 206.2798286892406),
+            (2346, 24.93531603858042, 121.68605705684874, 112.2818961525398),
+            (2357, 24.934947774826675, 121.68761372360795, 81.91833556677192),
+            (2359, 24.934989917836972, 121.6879410291567, 81.91833556677192),
+        ], preSecond: 2346)
+    }
+
+    func testReplayBeiyi34DoesNotAnnounceOppositeHotspotWhenVeryClose() {
+        assertHotspotReplay(point: GeoPoint(lat: 24.94086, lon: 121.681378),
+                           matchingHeading: 214.6, oppositeHeading: 34.6, samples: [
+            (210, 24.938892909602124, 121.68371426965916, 10.674837795049621),
+            (230, 24.94123506067731, 121.68431835369746, 248.86927913224412),
+            (251, 24.941014113746395, 121.68147318883001, 224.85810433634288),
+            (253, 24.94077716094762, 121.68127425237981, 209.5595724994293),
+        ], preSecond: 230)
+    }
+
+    func testTrackedHotspotCloseKeepsAheadToleranceWhileCheckingHeadingAndAxis() {
+        let directions: [(heading: Double?, axis: Double?)] = [(0, nil), (nil, 0), (nil, nil)]
+        for direction in directions {
+            var cam = camera(north: 500, heading: direction.heading, limit: nil, type: .mobile)
+            cam.axis = direction.axis
+            let e = engine([cam])
+            XCTAssertTrue(e.process(fix(north: 0, at: 0)).events.isEmpty)
+            let side = GeoMath.destination(from: cam.point, bearing: 270, distance: 20)
+            let cross = e.process(VehicleFix(point: side, speedMps: 10, course: 90, timestamp: t0.addingTimeInterval(1)))
+            let unknown = direction.heading == nil && direction.axis == nil
+            XCTAssertEqual(cross.target?.camera.id, unknown ? cam.id : nil)
+            let forward = e.process(VehicleFix(point: side, speedMps: 10, course: 0, timestamp: t0.addingTimeInterval(2)))
+            XCTAssertEqual(forward.target?.camera.id, cam.id, "同向時仍保留極近的前方角度寬容")
+            XCTAssertEqual((cross.events + forward.events).filter(\.isPre).count, 1)
+            let reverse = e.process(VehicleFix(point: side, speedMps: 10, course: 180, timestamp: t0.addingTimeInterval(3)))
+            XCTAssertEqual(reverse.target?.camera.id, direction.heading == nil ? cam.id : nil)
+            XCTAssertFalse(reverse.events.contains(where: \.isPre))
+        }
+    }
+
+    func testNoFixVeryCloseHotspotDoesNotBypassDirectionCheck() {
+        let directions: [(heading: Double?, axis: Double?)] = [(0, nil), (nil, 0), (nil, nil)]
+        for direction in directions {
+            for course in [0.0, 90] {
+                var cam = camera(north: 500, heading: direction.heading, limit: nil, type: .mobile)
+                cam.axis = direction.axis
+                let e = engine([cam])
+                _ = e.process(fix(north: 0, at: 0))
+                let side = GeoMath.destination(from: cam.point, bearing: 270, distance: 29)
+                let last = VehicleFix(point: side, speedMps: 20 / 3.6, course: course, timestamp: t0.addingTimeInterval(1))
+                let result = e.process(last)
+                let estimated = e.tick(now: last.timestamp.addingTimeInterval(3))
+                let relevant = course == 0 || direction.heading == nil && direction.axis == nil
+                XCTAssertEqual(result.target?.camera.id, relevant ? cam.id : nil)
+                XCTAssertEqual(estimated?.target?.camera.id, relevant ? cam.id : nil)
+                XCTAssertEqual((result.events + (estimated?.events ?? [])).filter(\.isPre).count, relevant ? 1 : 0)
+            }
+        }
+    }
+
+    func testNonMobileTrackedCameraKeepsVeryCloseDirectionFallback() {
+        for type in CameraType.allCases where type != .mobile {
+            let cam = camera(north: 500, heading: 0, limit: nil, type: type)
+            let e = engine([cam])
+            _ = e.process(fix(north: 0, at: 0))
+            let side = GeoMath.destination(from: cam.point, bearing: 270, distance: 29)
+            let last = VehicleFix(point: side, speedMps: 20 / 3.6, course: 90, timestamp: t0.addingTimeInterval(1))
+            let result = e.process(last)
+            XCTAssertEqual(result.target?.camera.id, cam.id, type.rawValue)
+            XCTAssertEqual(result.events.contains(where: \.isNear), cam.usesTwoStageAlert, type.rawValue)
+            XCTAssertEqual(result.events.contains(where: \.isPre), !cam.usesTwoStageAlert, type.rawValue)
+            XCTAssertEqual(e.tick(now: last.timestamp.addingTimeInterval(3))?.target?.camera.id, cam.id, type.rawValue)
+        }
+    }
+
     func testAdjacentHotspotsEachAnnounceOnceWithoutVoiceSpacingOrOverspeedBeeping() {
         let cameras = [camera("first", north: 250, type: .mobile),
                        camera("second", north: 650, type: .mobile),
