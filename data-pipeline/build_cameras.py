@@ -132,7 +132,7 @@ def build(rows: list[dict], sections: list[dict], now: dt.datetime | None = None
         extra_sources = tuple(extra_sources) + tuple(attribution) + tuple(mobile_attribution)
         if osm:
             extra_sources += (osm_cameras.ATTRIBUTION,)
-        if any(camera.positionMethod == "official-milepost" for camera in hotspots):
+        if any(camera.positionMethod in ("official-milepost", "milestone") for camera in hotspots):
             extra_sources += (mileposts.ATTRIBUTION,)
     official.audit_cameras(cameras, sections, road_data or {}, log=log)
     db = {
@@ -145,6 +145,8 @@ def build(rows: list[dict], sections: list[dict], now: dt.datetime | None = None
     if supplemental_report:
         db["sourceReport"] = {"sources": supplemental_report.counts, "osmComparison": comparison,
                               "mobileDirections": supplemental_report.mobile_directions,
+                              "locations": supplemental_report.locations,
+                              "locationFailures": supplemental_report.location_failures,
                               "conflicts": supplemental_report.conflicts, "issues": supplemental_report.issues}
         supplemental_report.print(cameras, log=log)
     return db, report

@@ -1,0 +1,148 @@
+{
+ "version": "11509",
+ "originalSHA256": "9013b1145677a8189b9228c6f006931290b0c1e1fa61710d8897da1f95f5676e",
+ "sourceURL": "https://www-ws.gov.taipei/Download.ashx?u=LzAwMS9VcGxvYWQvNDQ4L3JlbGZpbGUvMzM5ODYvODMzMzc0MC83YzBlYWViNS1mMzdhLTRjMmMtYjRmOC1lNGJjMGNlZGYzZTgucGRm&n=6Ie65YyX5biC55Kw5aKD5L%2bd6K235bGA44CM5Zu65a6a5byP6auY5Zmq6Z%2bz6LuK6Lyb5YG15ris5pSd5b2x57O757Wx44CN6Kit572u5Zyw6bueKDExNTA5KS5wZGY%3d&icon=..pdf",
+ "extraction": "以pypdf抽取PDF文字，核對設備1至28連號及原始地址；正式建置僅接受此PDF雜湊",
+ "rows": [
+  {
+   "id": "1",
+   "district": "士林區",
+   "address": "士林區仰德大道1段17號對面(上山方向)"
+  },
+  {
+   "id": "2",
+   "district": "士林區",
+   "address": "士林區至善路2段431號對面"
+  },
+  {
+   "id": "3",
+   "district": "大安區",
+   "address": "大安區建國南路2段125號旁"
+  },
+  {
+   "id": "4",
+   "district": "大安區",
+   "address": "大安區基隆路2段230號前"
+  },
+  {
+   "id": "5",
+   "district": "大安區",
+   "address": "大安區和平東路1段71號前"
+  },
+  {
+   "id": "6",
+   "district": "大同區",
+   "address": "大同區承德路3段270號旁"
+  },
+  {
+   "id": "7",
+   "district": "大同區",
+   "address": "大同區民權西路127號前"
+  },
+  {
+   "id": "8",
+   "district": "內湖區",
+   "address": "內湖區舊宗路2段95號旁"
+  },
+  {
+   "id": "9",
+   "district": "內湖區",
+   "address": "內湖區康寧路3段174號旁"
+  },
+  {
+   "id": "10",
+   "district": "內湖區",
+   "address": "內湖區瑞光路405號旁"
+  },
+  {
+   "id": "11",
+   "district": "中正區",
+   "address": "中正區羅斯福路2段7-1號旁"
+  },
+  {
+   "id": "12",
+   "district": "中正區",
+   "address": "中正區重慶南路1段130號對面(往臺北車站方向)"
+  },
+  {
+   "id": "13",
+   "district": "中山區",
+   "address": "中山區北安路520號對面(往大直橋方向)"
+  },
+  {
+   "id": "14",
+   "district": "中山區",
+   "address": "中山區民族東路166號旁"
+  },
+  {
+   "id": "15",
+   "district": "中山區",
+   "address": "中山區林森北路487號旁"
+  },
+  {
+   "id": "16",
+   "district": "文山區",
+   "address": "文山區木柵路1段68號旁"
+  },
+  {
+   "id": "17",
+   "district": "文山區",
+   "address": "文山區木新路2段213號旁"
+  },
+  {
+   "id": "18",
+   "district": "松山區",
+   "address": "松山區南京東路4段171號前"
+  },
+  {
+   "id": "19",
+   "district": "松山區",
+   "address": "松山區八德路3段25號前"
+  },
+  {
+   "id": "20",
+   "district": "北投區",
+   "address": "北投區中央北路4段266號對面(往新北投方向)"
+  },
+  {
+   "id": "21",
+   "district": "北投區",
+   "address": "北投區大業路462號旁"
+  },
+  {
+   "id": "22",
+   "district": "北投區",
+   "address": "北投區竹子湖路16號旁"
+  },
+  {
+   "id": "23",
+   "district": "南港區",
+   "address": "南港區忠孝東路6段376號旁"
+  },
+  {
+   "id": "24",
+   "district": "南港區",
+   "address": "南港區向陽路182號旁"
+  },
+  {
+   "id": "25",
+   "district": "信義區",
+   "address": "信義區市民大道5段50號旁"
+  },
+  {
+   "id": "26",
+   "district": "信義區",
+   "address": "信義區永吉路195號旁"
+  },
+  {
+   "id": "27",
+   "district": "萬華區",
+   "address": "萬華區西園路2段68號前"
+  },
+  {
+   "id": "28",
+   "district": "萬華區",
+   "address": "萬華區環河南路2段193號旁"
+  }
+ ]
+}

@@ -1,0 +1,471 @@
+﻿
+
+<!DOCTYPE html>
+
+<html id="FormHtml" xmlns="http://www.w3.org/1999/xhtml" lang="zh-Hant-tw">
+<head id="Head1">    
+<script src='https://ylhpb.yunlin.gov.tw/Douliu/Scripts/jquery-3.6.0.min.js'></script>
+<script src='https://ylhpb.yunlin.gov.tw/Douliu/Scripts/select2.full.min.js'></script>
+<script src='https://ylhpb.yunlin.gov.tw/Douliu/Scripts/jquery.lazy.min.js'></script>
+<script src='https://ylhpb.yunlin.gov.tw/Douliu/Scripts/jquery.lazy.plugins.min.js'></script>
+<script src='https://ylhpb.yunlin.gov.tw/Douliu/Scripts/jGMap.js'></script>
+<script src='https://ylhpb.yunlin.gov.tw/Douliu/Scripts/jquery.cookie.js'></script>
+<script src='https://ylhpb.yunlin.gov.tw/Douliu/Scripts/jUtil.js'></script>
+<script src='https://ylhpb.yunlin.gov.tw/Douliu/Scripts/fancybox/jquery.fancybox.js'></script>
+<link rel='stylesheet' type='text/css'  href='https://ylhpb.yunlin.gov.tw/Douliu/Scripts/fancybox/jquery.fancybox.css'> 
+<script src='https://ylhpb.yunlin.gov.tw/Douliu/Scripts/lightGallery/js/lightgallery-all.min.js'></script>
+<link rel='stylesheet' type='text/css'  href='https://ylhpb.yunlin.gov.tw/Douliu/Scripts/lightGallery/css/lightgallery.min.css'> 
+<script src='https://ylhpb.yunlin.gov.tw/Douliu/Scripts/J_Pager.js'></script>
+<script src='https://ylhpb.yunlin.gov.tw/Douliu/Scripts/float.js' defer></script>
+<script  src='https://ylhpb.yunlin.gov.tw/Douliu/Scripts/Chart/highcharts.js'></script> 
+<script  src='https://ylhpb.yunlin.gov.tw/Douliu/Scripts/Chart/map.src.js'></script> 
+<script  src='https://ylhpb.yunlin.gov.tw/Douliu/Scripts/Chart/highcharts_theme.js'></script> 
+<script  src='https://ylhpb.yunlin.gov.tw/Douliu/Scripts/Chart/tw-all.js'></script> 
+<link rel='stylesheet' type='text/css'  href='https://ylhpb.yunlin.gov.tw/Douliu/Scripts/Chart/highcharts.css'> 
+<script  src='https://ylhpb.yunlin.gov.tw/Douliu/Scripts/jquery.mousewheel.min.js'></script> 
+<script  src='https://ylhpb.yunlin.gov.tw/Douliu/Scripts/jquery.touchwipe.min.js'></script> 
+<script  src='https://ylhpb.yunlin.gov.tw/Douliu/Scripts/Chart/chart.js'></script> 
+<script  src='https://ylhpb.yunlin.gov.tw/Douliu/Scripts/Chart/chartjs-plugin-datalabels.js'></script> 
+<script  src='https://ylhpb.yunlin.gov.tw/Douliu/js/airdatepicker/datepicker.min.js'></script> 
+<script  src='https://ylhpb.yunlin.gov.tw/Douliu/js/airdatepicker/datepicker.zh-tw.js'></script> 
+<script  src='https://ylhpb.yunlin.gov.tw/Douliu/js/airdatepicker/datepicker.en.js'></script> 
+<link rel='stylesheet' type='text/css'  href='https://ylhpb.yunlin.gov.tw/Douliu/js/airdatepicker/datepicker.min.css'> 
+<script src='/FormGenerator/Scripts/sweetalert.min.js'></script>
+<script src='https://ylhpb.yunlin.gov.tw/Douliu/js/require.js'></script>
+<script>
+        requirejs.config({  
+             baseUrl:'https://ylhpb.yunlin.gov.tw/Douliu/js'
+        }); 
+        requirejs(['main'], function (func) {
+            func();
+        });
+</script>
+
+                <script>
+                    $(function () {
+                        //$('span[data-src]').lazy({visibleOnly:true});
+                        //$('img[data-src]').lazy({visibleOnly:true});
+                        $('iframe[data-src]').lazy({visibleOnly:true});
+                        $('[data-loader="get"]').lazy({
+                                effect:'fadein',
+                                effectTime:500,
+                                threshold:1,
+                                afterLoad: function(element) {
+                                    element.removeAttr('style');
+                                    $(element).removeAttr('style');
+                                    requirejs(['main'], function(func) { func(); });
+                                }
+                        });
+                    });
+                </script>
+<script>var CCMS_WWWURL='https://ylhpb.yunlin.gov.tw/Douliu';var CCMS_LanguageSN=1;var CCMS_SitesSN_Encryption='618';</script><meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" /><meta name="viewport" content="width=device-width, initial-scale=1" /><meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="DC.Title" content="" />
+<meta name="DC.Subject" content="" />
+<meta name="DC.Creator" content="" />
+<meta name="DC.Publisher" content="" />
+<meta name="DC.Date" content="2026-01-13" />
+<meta name="DC.Type" content="" />
+<meta name="DC.Identifier" content="" />
+<meta name="DC.Description" content="" />
+<meta name="DC.Contributor" content="" />
+<meta name="DC.Format" content="" />
+<meta name="DC.Relation" content="" />
+<meta name="DC.Source" content="" />
+<meta name="DC.Language" content="" />
+<meta name="DC.Coverage.t.min" content="2025-01-13" />
+<meta name="DC.Coverage.t.max" content="2027-01-13" />
+<meta name="DC.Rights" content="" />
+<meta name="Category.Theme" content="" />
+<meta name="Category.Cake" content="" />
+<meta name="Category.Service" content="" />
+<meta name="DC.Keywords" content="" />
+<title>
+	斗六分局115年度移動式測速照相重點取締地點
+</title><link id="likCssGlobal" href="/Douliu/css/global.css" rel="stylesheet" type="text/css" /><link id="likCssPage" href="/Douliu/css/page.css" rel="stylesheet" type="text/css" /><link id="likPrint" href="/Douliu/css/print.css" rel="stylesheet" type="text/css" media="print" /><link id="lnkCssSysDetail" href="/Douliu/css/sys_detail.css" rel="stylesheet" type="text/css" /><link href="/Content/css/select2.min.css" rel="stylesheet" type="text/css" />
+    <script type="text/javascript">
+        $(document).ready(function () {
+            var SupportSpeech = (typeof (speechSynthesis) != "undefined");
+            if (SupportSpeech) {
+                $('.speechSynthesis').click(function (e) {
+                    e.preventDefault();
+                    Recitation(this);
+                });
+                window.onbeforeunload = function () {
+                    if (speechSynthesis) {
+                        speechSynthesis.cancel();
+                    }
+
+                };
+
+                var checkStop = false; // 判斷是否有按下暫停
+                var msg = $("#CCMS_Content").text();
+                let msg1 = new SpeechSynthesisUtterance();
+                msg1.text = msg;
+                function Recitation(that) {
+
+                    if (speechSynthesis) {
+
+                        var IsActive = $(that).hasClass('active');
+
+                        if (!IsActive) {
+                            if (checkStop) {
+                                speechSynthesis.resume(); //從暫停的地方開始撥放
+                                $("#Imgrecitation").attr("src", "images/icon_sound_02.png")
+                                $("#Imgrecitation").attr("alt", "暫停")
+                                $(that).addClass('active');
+
+                                if (!speechSynthesis.speaking) { //判斷是否念完，若唸完則重新開啟念
+                                    speechSynthesis.cancel();
+                                    speechSynthesis.speak(msg1);
+                                    $(that).removeClass('active');
+                                    $("#Imgrecitation").attr("src", "images/icon_sound_01.png")
+                                    $("#Imgrecitation").attr("alt", "播放")
+                                }
+                            } else {
+                                speechSynthesis.cancel();
+                                speechSynthesis.speak(msg1);
+                                $(that).addClass('active');
+                                $("#Imgrecitation").attr("src", "images/icon_sound_02.png")
+                                $("#Imgrecitation").attr("alt", "暫停")
+                            }
+
+                        } else {
+                            var synth = window.speechSynthesis;
+                            synth.pause(); //暫停
+                            checkStop = true;
+                            $(that).removeClass('active');
+                            $("#Imgrecitation").attr("src", "images/icon_sound_01.png")
+                            $("#Imgrecitation").attr("alt", "播放")
+                        }
+                    } else {
+
+                    }
+                }
+            } else {
+                $('#recitation').remove();
+            }
+            window.onload = function ()
+            {
+                setTimeout(function ()
+                { 
+                    $(".area-customize img").attr('alt', 'img name');
+                    $(".tgMapTypeCtrl div:nth-child(2)").remove();
+                }, 10000);
+            }
+        });
+    </script>
+<link href="images/favicon.ico" rel="icon" type="image/x-icon"><meta property="og:title" content="斗六分局115年度移動式測速照相重點取締地點" >
+<meta property="og:type" content="article" >
+<meta property="og:url" content="https://ylhpb.yunlin.gov.tw/Douliu/News_Content.aspx?n=31362&s=577863" >
+<meta property="og:site_name" content="雲林縣警察局斗六分局" >
+<meta property="og:image" content="" >
+<meta property="og:description" content="斗六分局115年度移動式測速照相重點取締地點經主官(管)核准共26處，臚列如下：(一)斗六市石榴路104號前，往林內方向，速限50公里/小時。(二)斗六市石榴路95-2號前，往斗六方向，速限5..." >
+<style>
+        .for_accessibility a {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 99;
+            width: 1px;
+            height: 1px;
+            white-space: nowrap;
+            overflow: hidden;
+            color: #000;
+        }
+            .for_accessibility a:focus {
+                width: auto;
+                height: auto;
+                padding: 6px;
+                background-color: #fff;
+            }
+        .for_accessibility div {
+            position: absolute;
+            width: 2px;
+            height: 2px;
+            background-color: transparent;
+            opacity: .1
+        }
+    </style></head>
+<body id="Formbody" data-js="false"><div class="for_accessibility">
+    <a href="#CCMS_Content" class="" title="跳到主要內容區塊">跳到主要內容區塊</a>    <div>
+    </div>
+    <script>
+        var $a = $('.for_accessibility a');
+        $a.on('click', function (evt) {
+            var $href = $($(this).attr('href')),
+                $target = $href.find('a').eq(0).get(0);
+            setTimeout(function () { try { $target.focus(); } catch (e) { } }, 0);
+        });
+    </script>
+</div>
+<script> document.body.setAttribute("data-js", "true");</script>
+
+    <form method="post" action="./News_Content.aspx?n=31362&amp;s=577863&amp;Create=1" id="form1">
+<div class="aspNetHidden">
+<input type="hidden" name="__VIEWSTATE" id="__VIEWSTATE" value="zhazY5OLJ3YkVzLsCYYFSTHKzidGc50Bb1MnGHIgaI+iXEHHULX2+58QicT5R6SSfXfTjbhyHQ9kuQN6a2sOFWT9X1i7/JAwJCyrFdM39B590ywQkx749wTx6mm5JQZUgEw+0+OlbTPjeZuDZwJX2Z6IwKTXR/c6h0foocN9FFxY3bMlUVrxhy7GKCQ11XfrELIJgCPvkAvrFq2KkV0ps/U+++4gLSI15Qcr7VLAQV2VIt++Vq5TmiR0/q6XvCBwd3qilU2MzQOajSH14IGEy9GCMyoIwxHNd/xjyP+3UEouIrpAG5IxhNjohjOmOVRxvT3N6GGrMY3QTNR4rRDMPe+x7JRNWQEFM5jeN1SrymJ2+QViUCxIBdIj6WZl+SYsBTf1Cd5QSABzsLUGsaGLWfLtznssdar8MjMpih8nkpuSwt+1mQ671CaAqjWPdlobGZ4u4QRt6aGMPTyIzgqbKbsazj8wq0e/X6ZG89cYZ4lX8H7DXcwObhnWcBmB8RfIefK3h4hZ76LY/fuectA9tfr2wggVU1MmMsQisusoHapIdKX36fdNR0VEAjxwWGZmimwlaPoV5Z+fECk93fQdMuTZAj1kDSA1WhkQqi4wuaw9eoBMh6TM5BVflHyPA7S3j64uBCOT/fi8JaCUGeJAPxJ5q4wNZJSfreMfttUpLJPtudxgkz7sj9AOWBzfCm29NaSGP1lKo3F7T7tRgg1iAdmAQwU/Zap0BPKEuLYrr0WIzdVdjcGVL5Z79Go0lJIgmeLy8bHTzRzh1RIxjGb4iqxxlqGcRCecilZKltrM/KBxuNLgzSd53vrJgUWzHfmRhMSdCqnfm3+ggEvqn1gtvzF56JGPNOu6Sl2cZNq2LwyYAJpUrjN3/q7PObG7krZPPe7kvrQZMz1SmdRAmYg9yM48/CemOmwTfaM7woeYe4/xeLL2i1qedCng2UsPuFUUlUQgtrkZKXUzQXo1/VQA9M2zMJegF3N2kovItPuFaaLEOuSaRnx0dCQ9/D3syk9Kv7fgg0m9/h+eZc4eA4VnnsHmBauYFHu95qTVuJ65xf+p3koQlhzQ1l9TbK3QIO+0iKypeyIc4oHNv6QK3v4Z+wjqQKj6oCTyZxl/nT/Vgzo4V2w4ladbdFS+g3h1vNC3yq6KpoVi0PDbTVw8EHbgvPgPEnW+LeHND6pYbrtBweZLx8gZ+vnf3uDZLtCb3GHGn6p6hduhJXxVQswrBwwkd67pR6gAsEpKRwlcQ+OkOrGqT2xz2gN0O5VhuGLA3JHZQiC8lXeEBdvJI8CpFdh9DnKXoiBfviGuwbEtRzk6Bv98S4KJc/iKYhq1HHWpKufqNw0jxxBq2HtlVyHQvqyM+TSBA2C9jTzfup4UIKS6mEbBN9ZC0wxueKkurSN7I72PtlaCxtqpfAfGdkOU7qqQFRSFMQ2KHbzPdIaSBU4AePsa0b8Oj37+JpnJXxZhdzsyNfK2+uw2qRbtQdE3c+ZLdxa6H1LuztQ6iBovNf89vW4=" />
+</div>
+
+        <!--主選單 結束-->
+        <!--標題-->
+
+        <div class="title">
+            
+
+        </div>
+        
+        
+        
+        
+
+        
+     <div class="group sys-root" data-func="{&#39;datePicker&#39;:{&#39;autoClose&#39;:true,&#39;language&#39;:&#39;zh-tw&#39;,&#39;navTitles&#39;:{&#39;days&#39;:&#39;&lt;i&amp;gt;民國 rrr 年&lt;/i&amp;gt; &amp;nbsp; MM&#39;,&#39;months&#39;:&#39;民國 rrr 年&#39;,&#39;years&#39;:&#39;民國 rrr1 至 rrr2 年&#39;}}}" data-nojs="您的瀏覽器似乎不支援 JavaScript 語法，但沒關係，這並不會影響到內容的陳述。如需要選擇適合您的字級大小，可利用鍵盤 Ctrl   ( )放大 (-)縮小。如需要回到上一頁，可使用瀏覽器提供的 Alt   左方向鍵(←)。如需要列印，可利用鍵盤 Ctrl   p 使用瀏覽器提供的列印功能。" data-type="3" data-child="3"><div class="in"><div class="ct"><div class="in"> <div class="group base-mobile" data-func="{&#39;toggleBtn&#39;:{}}" data-index="1" data-type="3"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  class="headH3"  >		<span  ><a  href="#"   title="mobile botton" data-name="mobile botton"  role="button"    >mobile botton</a></span></div></div></div><div class="ct"><div class="in"> <div class="area-form search" data-func="{&#39;toggleBtn&#39;:{&#39;clickToRemove&#39;:true}}" data-index="1" data-type="0" data-child="1"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  >		<span  ><a  href="#"   title="搜尋" data-name="搜尋"  role="button"    >搜尋</a></span></div></div></div><div class="ct"><div class="in"><div class="fieldset">
+  <span class="search"><input data-search="btn_90cb3c2ab831452ab26a1ef33d454a9d" type="search" placeholder="Search"  title="搜尋"></span>
+  <span class="submit"><a href="#" class='CCMS_SearchBtn' data-search="btn_90cb3c2ab831452ab26a1ef33d454a9d"  title="搜尋" role="button">搜尋</a></span>
+</div>
+<div class="list">
+  <ul data-index="5" data-child="0">
+  </ul>
+</div>
+<script>
+$(function () {
+    $('[data-search="90cb3c2ab831452ab26a1ef33d454a9d"]').on("keydown", function (event) {
+        if (event.which == 13) {
+             doSearch($('#btn_90cb3c2ab831452ab26a1ef33d454a9d'));
+            return false;
+        }
+    });
+});
+</script>
+</div></div><div class="ft"><div class="in"><ul data-index="1" data-child="1">
+  <li data-index="1" class="advanced"><span><a target="_blank" href="https://www.google.com.tw/advanced_search?hl=zh-Hant-tw&as_sitesearch=https://ylhpb.yunlin.gov.tw/Douliu" title="進階搜尋[另開新視窗]">進階搜尋</a></span></li>
+</ul>
+</div></div></div></div> <div class="list-text share" data-func="{&#39;toggleBtn&#39;:{&#39;clickToRemove&#39;:true}}" data-index="2" data-type="0" data-child="1"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  >		<span  ><a  href="#"   title="分享" data-name="分享"  role="button"    >分享</a></span></div></div></div><div class="ct"><div class="in"><ul data-index="1" data-child="4"><li   data-index="1"  class="facebook"  >		<span  ><a  href="javascript: void(window.open('http://www.facebook.com/share.php?u='.concat(encodeURIComponent(location.href)) ));"   title="Share to Facebook[另開新視窗]" data-name="Share to Facebook[另開新視窗]"   target="_self"   >Facebook</a></span></li><li   data-index="2"  class="twitter"  >		<span  ><a  href="javascript: void(window.open('http://twitter.com/home/?status='.concat(encodeURIComponent(document.title)) .concat(' ') .concat(encodeURIComponent(location.href))));"   title="Share to twitter[另開新視窗]" data-name="Share to twitter[另開新視窗]"   target="_self"   >Twitter</a></span></li><li   data-index="3"  class="line"  >		<span  ><a  href="javascript: void(window.open('http://line.naver.jp/R/msg/text/?'.concat(encodeURIComponent(location.href)) ));"   title="Share to line[另開新視窗]" data-name="Share to line[另開新視窗]"   target="_self"   >line</a></span></li><li   data-index="4"  class="email"  >		<span  ><a  href="javascript:  void(window.open('mailto:?subject=' + encodeURIComponent(document.title) + '&amp;body=' +  encodeURIComponent(document.URL)));"   title="Share to email[另開新視窗]" data-name="Share to email[另開新視窗]"   target="_self"   >Email</a></span></li></ul>
+</div></div></div></div> <div class="group-list nav" data-func="{&#39;majorNavStraight&#39;:{}}" data-index="3" data-type="4" data-child="9"><div class="in"><div class="ct"><div class="in"><ul data-index="1" data-child="9"><li data-index="1"> <div class="group nav" data-index="1" data-type="3" data-child="1"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  class="headH3"  >		<span  ><a  href="cl.aspx?n=31360"      title="公布欄" data-name="公布欄"  role="button"    >公布欄</a></span></div></div></div><div class="ct"><div class="in"> <div class="list-text nav" data-index="1" data-type="0" data-child="1"><div class="in"><div class="ct"><div class="in"><ul data-index="1" data-child="6"><li   data-index="1"  >		<span  ><a  href="News.aspx?n=31361&sms=22487"      title="警政消息" data-name="警政消息"    >警政消息</a></span></li><li   data-index="2"  >		<span  ><a  href="News.aspx?n=31362&sms=22488"      title="公告資訊" data-name="公告資訊"    >公告資訊</a></span></li><li   data-index="3"  >		<span  ><a  href="News.aspx?n=31363&sms=22489"      title="公益勸募" data-name="公益勸募"    >公益勸募</a></span></li><li   data-index="4"  >		<span  ><a  href="News.aspx?n=31364&sms=22490"      title="活動訊息" data-name="活動訊息"    >活動訊息</a></span></li><li   data-index="5"  >		<span  ><a  href="News.aspx?n=31365&sms=22491"      title="人事動態" data-name="人事動態"    >人事動態</a></span></li><li   data-index="6"  >		<span  ><a  href="News.aspx?n=31366&sms=22492"      title="志工招募" data-name="志工招募"    >志工招募</a></span></li></ul>
+</div></div></div></div></div></div></div></div></li><li data-index="2"> <div class="group nav" data-index="2" data-type="3" data-child="1"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  class="headH3"  >		<span  ><a  href="cl.aspx?n=31367"      title="機關簡介" data-name="機關簡介"  role="button"    >機關簡介</a></span></div></div></div><div class="ct"><div class="in"> <div class="list-text nav" data-index="1" data-type="0" data-child="1"><div class="in"><div class="ct"><div class="in"><ul data-index="1" data-child="6"><li   data-index="1"  >		<span  ><a  href="cp.aspx?n=31368"      title="主管簡介" data-name="主管簡介"    >主管簡介</a></span></li><li   data-index="2"  >		<span  ><a  href="cp.aspx?n=31369"      title="副主管簡介" data-name="副主管簡介"    >副主管簡介</a></span></li><li   data-index="3"  >		<span  ><a  href="cp.aspx?n=31370"      title="轄區概況" data-name="轄區概況"    >轄區概況</a></span></li><li   data-index="4"  >		<span  ><a  href="cp.aspx?n=31371"      title="組織執掌" data-name="組織執掌"    >組織執掌</a></span></li><li   data-index="5"  >		<span  ><a  href="cp.aspx?n=31372"      title="聯絡方式與交通位置" data-name="聯絡方式與交通位置"    >聯絡方式與交通位置</a></span></li><li   data-index="6"  >		<span  ><a  href="cp.aspx?n=31373"      title="轄區分駐派出所" data-name="轄區分駐派出所"    >轄區分駐派出所</a></span></li></ul>
+</div></div></div></div></div></div></div></div></li><li data-index="3"> <div class="group nav" data-index="3" data-type="3" data-child="1"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  class="headH3"  >		<span  ><a  href="cl.aspx?n=31374"      title="主題宣導" data-name="主題宣導"  role="button"    >主題宣導</a></span></div></div></div><div class="ct"><div class="in"> <div class="list-text nav" data-index="1" data-type="0" data-child="1"><div class="in"><div class="ct"><div class="in"><ul data-index="1" data-child="7"><li   data-index="1"  >		<span  ><a  href="News.aspx?n=31375&sms=22493"      title="犯罪預防宣導" data-name="犯罪預防宣導"    >犯罪預防宣導</a></span></li><li   data-index="2"  >		<span  ><a  href="News.aspx?n=31376&sms=22494"      title="交通安全宣導" data-name="交通安全宣導"    >交通安全宣導</a></span></li><li   data-index="3"  >		<span  ><a  href="News.aspx?n=31377&sms=22495"      title="婦幼安全宣導" data-name="婦幼安全宣導"    >婦幼安全宣導</a></span></li><li   data-index="4"  >		<span  ><a  href="News.aspx?n=31378&sms=22496"      title="少年安全宣導" data-name="少年安全宣導"    >少年安全宣導</a></span></li><li   data-index="5"  >		<span  ><a  href="News.aspx?n=31379&sms=22497"      title="安全防護宣導" data-name="安全防護宣導"    >安全防護宣導</a></span></li><li   data-index="6"  >		<span  ><a  href="News.aspx?n=31380&sms=22498"      title="防制人口販運及外僑安全宣導" data-name="防制人口販運及外僑安全宣導"    >防制人口販運及外僑安全宣導</a></span></li><li   data-index="7"  >		<span  ><a  href="News.aspx?n=31381&sms=22499"      title="政風防貪宣導" data-name="政風防貪宣導"    >政風防貪宣導</a></span></li></ul>
+</div></div></div></div></div></div></div></div></li><li data-index="4"> <div class="group nav" data-index="4" data-type="3" data-child="1"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  class="headH3"  >		<span  ><a  href="cl.aspx?n=31382"      title="民意廣場" data-name="民意廣場"  role="button"    >民意廣場</a></span></div></div></div><div class="ct"><div class="in"> <div class="list-text nav" data-index="1" data-type="0" data-child="1"><div class="in"><div class="ct"><div class="in"><ul data-index="1" data-child="2"><li   data-index="1"  >		<span  ><a  href="cl.aspx?n=31383"      title="分局長信箱" data-name="分局長信箱"    >分局長信箱</a></span></li><li   data-index="2"  >		<span  ><a  href="News.aspx?n=31387&sms=22501"      title="FAQ" data-name="FAQ"    >FAQ</a></span></li></ul>
+</div></div></div></div></div></div></div></div></li><li data-index="5"> <div class="group nav" data-index="5" data-type="3" data-child="1"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  class="headH3"  >		<span  ><a  href="cl.aspx?n=31388"      title="便民服務" data-name="便民服務"  role="button"    >便民服務</a></span></div></div></div><div class="ct"><div class="in"> <div class="list-text nav" data-index="1" data-type="0" data-child="1"><div class="in"><div class="ct"><div class="in"><ul data-index="1" data-child="5"><li   data-index="1"  >		<span  ><a  href="News.aspx?n=31389&sms=22502"      title="便民服務相關資訊" data-name="便民服務相關資訊"    >便民服務相關資訊</a></span></li><li   data-index="2"  >		<span  ><a  href="News.aspx?n=31390&sms=22503"      title="民眾申辦服務須知" data-name="民眾申辦服務須知"    >民眾申辦服務須知</a></span></li><li   data-index="3"  >		<span  ><a  href="News.aspx?n=31391&sms=22504"      title="民眾檔案下載" data-name="民眾檔案下載"    >民眾檔案下載</a></span></li><li   data-index="4"  >		<span  ><a  href="cp.aspx?n=31392"      title="受理110報案" data-name="受理110報案"    >受理110報案</a></span></li><li   data-index="5"  >		<span  ><a  href="https://ylhpb.yunlin.gov.tw/cl.aspx?n=31060"      title="[另開新視窗]線上申辦服務" data-name="線上申辦服務"   target="_blank" rel="noopener noreferrer"   >線上申辦服務</a></span></li></ul>
+</div></div></div></div></div></div></div></div></li><li data-index="6"> <div class="group nav" data-index="6" data-type="3" data-child="1"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  class="headH3"  >		<span  ><a  href="https://ylhpb.yunlin.gov.tw/cl.aspx?n=31071"      title="[另開新視窗]政府資訊公開" data-name="政府資訊公開"  role="button"   target="_blank" rel="noopener noreferrer"   >政府資訊公開</a></span></div></div></div><div class="ct"><div class="in"> <div class="list-text nav" data-index="1" data-type="0"><div class="in"><div class="ct"><div class="in"></div></div></div></div></div></div></div></div></li><li data-index="7"> <div class="group nav" data-index="7" data-type="3" data-child="1"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  class="headH3"  >		<span  ><a  href="cl.aspx?n=31395"      title="主題專區" data-name="主題專區"  role="button"    >主題專區</a></span></div></div></div><div class="ct"><div class="in"> <div class="list-text nav" data-index="1" data-type="0" data-child="1"><div class="in"><div class="ct"><div class="in"><ul data-index="1" data-child="6"><li   data-index="1"  >		<span  ><a  href="News.aspx?n=31396&sms=22505"      title="個人資料保護專區" data-name="個人資料保護專區"    >個人資料保護專區</a></span></li><li   data-index="2"  >		<span  ><a  href="https://www.humanrights.moj.gov.tw/"      title="[另開新視窗]人權大步走(兩公約)專區" data-name="人權大步走(兩公約)專區"   target="_blank" rel="noopener noreferrer"   >人權大步走(兩公約)專區</a></span></li><li   data-index="3"  >		<span  ><a  href="cp.aspx?n=31398"      title="性騷擾防治" data-name="性騷擾防治"    >性騷擾防治</a></span></li><li   data-index="4"  >		<span  ><a  href="News.aspx?n=31399&sms=22506"      title="加強重要節日安全維護工作專區" data-name="加強重要節日安全維護工作專區"    >加強重要節日安全維護工作專區</a></span></li><li   data-index="5"  >		<span  ><a  href="cp.aspx?n=31400"      title="警政服務APP下載" data-name="警政服務APP下載"    >警政服務APP下載</a></span></li><li   data-index="6"  >		<span  ><a  href="News.aspx?n=31401&sms=22507"      title="婦幼專區" data-name="婦幼專區"    >婦幼專區</a></span></li></ul>
+</div></div></div></div></div></div></div></div></li><li data-index="8"> <div class="group nav" data-index="8" data-type="3" data-child="1"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  class="headH3"  >		<span  ><a  href="cl.aspx?n=31402"      title="影音出版品" data-name="影音出版品"  role="button"    >影音出版品</a></span></div></div></div><div class="ct"><div class="in"> <div class="list-text nav" data-index="1" data-type="0" data-child="1"><div class="in"><div class="ct"><div class="in"><ul data-index="1" data-child="3"><li   data-index="1"  >		<span  ><a  href="News_Photo.aspx?n=31403&sms=22508"      title="活動相簿" data-name="活動相簿"    >活動相簿</a></span></li><li   data-index="2"  >		<span  ><a  href="https://www.youtube.com/user/ylhpbpolice"      title="[另開新視窗]雲警線上影音" data-name="雲警線上影音"   target="_blank" rel="noopener noreferrer"   >雲警線上影音</a></span></li><li   data-index="3"  >		<span  ><a  href="News_Video.aspx?n=31405&sms=22509"      title="影音多媒體" data-name="影音多媒體"    >影音多媒體</a></span></li></ul>
+</div></div></div></div></div></div></div></div></li><li data-index="9"> <div class="group nav" data-index="9" data-type="3" data-child="1"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  class="headH3"  >		<span  ><a  href="News_Link.aspx?n=31406&sms=22510"      title="相關連結" data-name="相關連結"  role="button"    >相關連結</a></span></div></div></div><div class="ct"><div class="in"> <div class="list-text nav" data-index="1" data-type="0"><div class="in"><div class="ct"><div class="in"></div></div></div></div></div></div></div></div></li></ul></div></div></div></div> <div class="list-text link" data-index="4" data-type="0"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  >		<span  ><a  href="#"   title="上方連結" data-name="上方連結"    >上方連結</a></span></div></div></div><div class="ct"><div class="in"></div></div></div></div> <div class="list-text link" data-index="5" data-type="0"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  >		<span  ><a  href="#"   title="下方連結" data-name="下方連結"    >下方連結</a></span></div></div></div><div class="ct"><div class="in"></div></div></div></div></div></div></div></div> <div class="group base-extend" data-index="2" data-type="3"><div class="in"><div class="ct"><div class="in"></div></div></div></div> <div class="group base-wrapper" data-index="3" data-type="3" data-child="3"><div class="in"><div class="ct"><div class="in"> <div class="group base-header" data-index="1" data-type="3" data-child="1"><div class="in"><div class="ct"><div class="in"> <div class="simple-text accesskey" data-type="0" data-child="1"><div class="in"><div class="ct"><div class="in"><span><a href="#Accesskey_U" id="Accesskey_U" accesskey="U" title="上方選單連結區，此區塊列有本網站的主要連結">:::</a></span></div></div></div></div> <div class="group default info" data-index="1" data-type="3" data-child="1"><div class="in"><div class="ct"><div class="in"> <div class="simple-text major-logo" data-index="1" data-type="0" data-child="1"><div class="in"><div class="ct"><div class="in"><h1><a href="Default.aspx" title="回首頁">雲林縣警察局斗六分局</a><strong style="display: none;">雲林縣警察局斗六分局</strong></h1></div></div></div></div> <div class="group default msg-tool" data-index="1" data-type="3"><div class="in"><div class="ct"><div class="in"> <div class="list-text link" data-index="1" data-type="0"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  >		<span  ><a  href="#"   title="上方連結" data-name="上方連結"    >上方連結</a></span></div></div></div><div class="ct"><div class="in"></div></div></div></div> <div class="department-list" data-index="2" data-type="0" data-child="1"><div class="in"><div class="ct"><div class="in"><div class="yl-anchor">
+<div class="in">
+<div class="ct">
+<div class="in">
+<select id='ddldept' title='請選擇服務網站'><option value=''>請選擇服務網站</option>
+<option value=''>= 府內單位網站 =</option>
+<option value='https://ethics.yunlin.gov.tw/' data-isnewwindow='True'>政風處</option>
+<option value='https://accounting.yunlin.gov.tw/' data-isnewwindow='True'>主計處</option>
+<option value='https://personnel.yunlin.gov.tw/' data-isnewwindow='True'>人事處</option>
+<option value='https://planning.yunlin.gov.tw/' data-isnewwindow='True'>計畫處</option>
+<option value='https://general.yunlin.gov.tw/' data-isnewwindow='True'>行政處</option>
+<option value='https://water.yunlin.gov.tw/' data-isnewwindow='True'>水利處</option>
+<option value='https://content.yunlin.gov.tw/' data-isnewwindow='True'>文化觀光處</option>
+<option value='https://information.yunlin.gov.tw/' data-isnewwindow='True'>新聞處</option>
+<option value='https://land.yunlin.gov.tw/' data-isnewwindow='True'>地政處</option>
+<option value='https://development.yunlin.gov.tw/' data-isnewwindow='True'>城鄉發展處</option>
+<option value='https://labor.yunlin.gov.tw/' data-isnewwindow='True'>勞動暨青年事務發展處</option>
+<option value='https://social.yunlin.gov.tw' data-isnewwindow='True'>社會處</option>
+<option value='https://agriculture.yunlin.gov.tw/' data-isnewwindow='True'>農業處</option>
+<option value='https://education.ylc.edu.tw/' data-isnewwindow='True'>教育處</option>
+<option value='https://economic.yunlin.gov.tw' data-isnewwindow='True'>建設處</option>
+<option value='https://financeweb.yunlin.gov.tw' data-isnewwindow='True'>財政處</option>
+<option value='https://civil.yunlin.gov.tw/' data-isnewwindow='True'>民政處</option>
+<option value=''>= 附屬機關網站 =</option>
+<option value='https://www.ylepb.gov.tw/' data-isnewwindow='True'>環保局</option>
+<option value='https://ylshb.yunlin.gov.tw/' data-isnewwindow='True'>衛生局</option>
+<option value='https://www.yltb.gov.tw/' data-isnewwindow='True'>稅務局</option>
+<option value='https://ylfire.yunlin.gov.tw/' data-isnewwindow='True'>消防局</option>
+<option value='https://ylhpb.yunlin.gov.tw' data-isnewwindow='True'>警察局</option>
+<option value='https://public.yunlin.gov.tw/' data-isnewwindow='True'>交通工務局</option>
+<option value='https://purchase.yunlin.gov.tw' data-isnewwindow='True'>採購中心</option>
+<option value='https://livestock.yunlin.gov.tw' data-isnewwindow='True'>動植物防疫所</option>
+<option value='https://stadium.yunlin.gov.tw' data-isnewwindow='True'>體育場</option>
+<option value='https://family.yunlin.gov.tw' data-isnewwindow='True'>家庭教育中心</option>
+<option value='https://idipc.yunlin.gov.tw/' data-isnewwindow='True'>工商策進會</option>
+<option value=''>= 戶政事務所網站 =</option>
+<option value='https://douliouhousehold.yunlin.gov.tw/' data-isnewwindow='True'>斗六戶政事務所</option>
+<option value='https://dounanhousehold.yunlin.gov.tw/' data-isnewwindow='True'>斗南戶政事務所</option>
+<option value='https://huweihousehold.yunlin.gov.tw/' data-isnewwindow='True'>虎尾戶政事務所</option>
+<option value='https://siluohousehold.yunlin.gov.tw/' data-isnewwindow='True'>西螺戶政事務所</option>
+<option value='https://beiganghousehold.yunlin.gov.tw/' data-isnewwindow='True'>北港戶政事務所</option>
+<option value='https://mailiaohousehold.yunlin.gov.tw/' data-isnewwindow='True'>麥寮戶政事務所</option>
+<option value=''>= 地政事務所網站 =</option>
+<option value='https://dlland.yunlin.gov.tw/' data-isnewwindow='True'>斗六地政事務所</option>
+<option value='https://dounanland.yunlin.gov.tw/' data-isnewwindow='True'>斗南地政事務所</option>
+<option value='https://huweiland.yunlin.gov.tw/' data-isnewwindow='True'>虎尾地政事務所</option>
+<option value='https://siluoland.yunlin.gov.tw/' data-isnewwindow='True'>西螺地政事務所</option>
+<option value='https://beigangland.yunlin.gov.tw/' data-isnewwindow='True'>北港地政事務所</option>
+<option value='https://taisiland.yunlin.gov.tw/' data-isnewwindow='True'>臺西地政事務所</option>
+<option value=''>= 鄉鎮市公所網站 =</option>
+<option value='https://dl.yunlin.gov.tw/' data-isnewwindow='True'>斗六市公所</option>
+<option value='https://dounan.yunlin.gov.tw' data-isnewwindow='True'>斗南鎮公所</option>
+<option value='https://bggov.yunlin.gov.tw/' data-isnewwindow='True'>北港鎮公所</option>
+<option value='https://linnei.yunlin.gov.tw/' data-isnewwindow='True'>林內鄉公所</option>
+<option value='https://cihtong.yunlin.gov.tw/' data-isnewwindow='True'>莿桐鄉公所</option>
+<option value='https://tapi.yunlin.gov.tw/' data-isnewwindow='True'>大埤鄉公所</option>
+<option value='https://gukeng.yunlin.gov.tw' data-isnewwindow='True'>古坑鄉公所</option>
+<option value='https://bjgov.yunlin.gov.tw/' data-isnewwindow='True'>褒忠鄉公所</option>
+<option value='https://dsh.yunlin.gov.tw/' data-isnewwindow='True'>東勢鄉公所</option>
+<option value='https://www.mlvillage.gov.tw/' data-isnewwindow='True'>麥寮鄉公所</option>
+<option value='https://lunbei.yunlin.gov.tw/' data-isnewwindow='True'>崙背鄉公所</option>
+<option value='https://ehlg.yunlin.gov.tw' data-isnewwindow='True'>二崙鄉公所</option>
+<option value='https://shuilin.yunlin.gov.tw/' data-isnewwindow='True'>水林鄉公所</option>
+<option value='https://kouhu.yunlin.gov.tw/' data-isnewwindow='True'>口湖鄉公所</option>
+<option value='https://zuhu.yunlin.gov.tw/' data-isnewwindow='True'>四湖鄉公所</option>
+<option value='https://yuanchang.yunlin.gov.tw/' data-isnewwindow='True'>元長鄉公所</option>
+<option value='https://taihsi.yunlin.gov.tw/' data-isnewwindow='True'>臺西鄉公所</option>
+<option value='https://tuku.yunlin.gov.tw/' data-isnewwindow='True'>土庫鎮公所</option>
+<option value='https://hsilo.yunlin.gov.tw/' data-isnewwindow='True'>西螺鎮公所</option>
+<option value='https://huwei.yunlin.gov.tw/' data-isnewwindow='True'>虎尾鎮公所</option>
+<option value=''>= 警察分局網站 =</option>
+<option value='https://ylhpb.yunlin.gov.tw/' data-isnewwindow='True'>雲林縣警察局全球資訊網</option>
+<option value='https://ylhpb.yunlin.gov.tw/CIC' data-isnewwindow='True'>雲林縣警察局刑事警察大隊</option>
+<option value='https://ylhpb.yunlin.gov.tw/Traffic' data-isnewwindow='True'>雲林縣警察局交通警察隊</option>
+<option value='https://ylhpb.yunlin.gov.tw/JDP' data-isnewwindow='True'>雲林縣警察局少年警察隊</option>
+<option value='https://ylhpb.yunlin.gov.tw/WPB' data-isnewwindow='True'>雲林縣警察局婦幼警察隊</option>
+<option value='https://ylhpb.yunlin.gov.tw/Douliu' data-isnewwindow='True'>雲林縣警察局斗六分局</option>
+<option value='https://ylhpb.yunlin.gov.tw/Dounan' data-isnewwindow='True'>雲林縣警察局斗南分局</option>
+<option value='https://ylhpb.yunlin.gov.tw/Huwei' data-isnewwindow='True'>雲林縣警察局虎尾分局</option>
+<option value='https://ylhpb.yunlin.gov.tw/Xiluo' data-isnewwindow='True'>雲林縣警察局西螺分局</option>
+<option value='https://ylhpb.yunlin.gov.tw/Beigang' data-isnewwindow='True'>雲林縣警察局北港分局</option>
+<option value='https://ylhpb.yunlin.gov.tw/Taixi' data-isnewwindow='True'>雲林縣警察局臺西分局</option>
+<option value=''>= 其他機關網站 =</option>
+<option value='https://www.ylcc.gov.tw/' data-isnewwindow='True'>雲林縣議會</option>
+<option value='https://web.cec.gov.tw/ylec' data-isnewwindow='True'>雲林縣選委會</option>
+<option value='https://cyi2.thb.gov.tw/page?node=0fd8bab2-8b16-4a59-bdc7-731e770bc646' data-isnewwindow='True'>雲林監理站</option>
+<option value='https://idipc.yunlin.gov.tw/' data-isnewwindow='True'>雲林縣工策會</option>
+ </select>
+<input type='button' id='btngo' value='前往網站'>
+</div>
+</div>
+</div>
+</div>
+<script>
+$(function () {
+$('#btngo').click(function() {
+  var link =$('#ddldept').val();
+  var WindowMode = $('#ddldept').attr('data-isNewWindow');
+     if(WindowMode == 'True') {
+         WindowMode='_blank';
+     }else{
+         WindowMode='_self';
+     }
+     if(link != '') {
+         window.open(link, WindowMode, '');
+     }
+  })
+});
+</script>
+</div></div></div></div> <div class="list-text font-size" data-func="{&#39;fontSize&#39;:{}}" data-index="3" data-type="0" data-child="1"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  >		<span  ><a  href="#"   title="字級" data-name="字級"  role="button"    >字級</a></span></div></div></div><div class="ct"><div class="in"><ul data-index="1" data-child="3"><li   data-index="1"  class="small"  >		<span  ><a  href="#"   title="字級：小" data-name="字級：小"  role="button"    >字級：小</a></span></li><li   data-index="2"  class="medium"  >		<span  ><a  href="#"   title="字級：中" data-name="字級：中"  role="button"    >字級：中</a></span></li><li   data-index="3"  class="large"  >		<span  ><a  href="#"   title="字級：大" data-name="字級：大"  role="button"    >字級：大</a></span></li></ul>
+</div></div></div></div> <div class="list-text share" data-func="{&#39;toggleBtn&#39;:{&#39;clickToRemove&#39;:true}}" data-index="4" data-type="0" data-child="1"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  >		<span  ><a  href="#"   title="分享" data-name="分享"  role="button"    >分享</a></span></div></div></div><div class="ct"><div class="in"><ul data-index="1" data-child="4"><li   data-index="1"  class="facebook"  >		<span  ><a  href="javascript: void(window.open('http://www.facebook.com/share.php?u='.concat(encodeURIComponent(location.href)) ));"   title="Share to Facebook[另開新視窗]" data-name="Share to Facebook[另開新視窗]"   target="_self"   >Facebook</a></span></li><li   data-index="2"  class="twitter"  >		<span  ><a  href="javascript: void(window.open('http://twitter.com/home/?status='.concat(encodeURIComponent(document.title)) .concat(' ') .concat(encodeURIComponent(location.href))));"   title="Share to twitter[另開新視窗]" data-name="Share to twitter[另開新視窗]"   target="_self"   >Twitter</a></span></li><li   data-index="3"  class="line"  >		<span  ><a  href="javascript: void(window.open('http://line.naver.jp/R/msg/text/?'.concat(encodeURIComponent(location.href)) ));"   title="Share to line[另開新視窗]" data-name="Share to line[另開新視窗]"   target="_self"   >line</a></span></li><li   data-index="4"  class="email"  >		<span  ><a  href="javascript:  void(window.open('mailto:?subject=' + encodeURIComponent(document.title) + '&amp;body=' +  encodeURIComponent(document.URL)));"   title="Share to email[另開新視窗]" data-name="Share to email[另開新視窗]"   target="_self"   >Email</a></span></li></ul>
+</div></div></div></div> <div class="area-form search" data-func="{&#39;showDataList&#39;:{}}" data-index="5" data-type="0" data-child="1"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  >		<span  ><a  href="#"   title="搜尋" data-name="搜尋"  role="button"    >搜尋</a></span></div></div></div><div class="ct"><div class="in"><div class="fieldset">
+  <span class="search"><input data-search="btn_230e390bcdd74896a0a709ba0e8dc6b8" type="search" placeholder="Search"  title="搜尋"></span>
+  <span class="submit"><a href="#" class='CCMS_SearchBtn' data-search="btn_230e390bcdd74896a0a709ba0e8dc6b8"  title="搜尋" role="button">搜尋</a></span>
+</div>
+<div class="list">
+  <ul data-index="5" data-child="0">
+  </ul>
+</div>
+<script>
+$(function () {
+    $('[data-search="230e390bcdd74896a0a709ba0e8dc6b8"]').on("keydown", function (event) {
+        if (event.which == 13) {
+             doSearch($('#btn_230e390bcdd74896a0a709ba0e8dc6b8'));
+            return false;
+        }
+    });
+});
+</script>
+</div></div><div class="ft"><div class="in"><ul data-index="1" data-child="1">
+  <li data-index="1" class="advanced"><span><a target="_blank" href="https://www.google.com.tw/advanced_search?hl=zh-Hant-tw&as_sitesearch=https://ylhpb.yunlin.gov.tw/Douliu" title="進階搜尋[另開新視窗]">進階搜尋</a></span></li>
+</ul>
+</div></div></div></div></div></div></div></div></div></div></div></div> <div class="group-list nav" data-func="{&#39;hud&#39;:{},&#39;majorNavHorizontal&#39;:{},&#39;setNavWidth&#39;:{}}" data-index="2" data-type="4" data-child="9"><div class="in"><div class="ct"><div class="in"><ul data-index="1" data-child="9"><li data-index="1"> <div id="Group_236779_akNXFkmmaA" data-Margin_right="" data-sort="" data-bgColor="" data-AddParentGroup="" data-GroupSN="236779" data-WidthDeskTop="" data-anchor="" data-tabType="3" class="group nav" data-index="1" data-Margin_DefaultSetting="false" data-type="3" data-bgClass="" data-WidthMobile="" data-groupname="" data-WidthPad="" data-Margin_left="" data-MenuWidth="" data-isgroup="true" data-Margin_bottom="" data-child="1" data-Margin_Top=""><div class="in"><div class="hd"><div class="in"><div   data-index="0"  class="headH3"  >		<span  ><a  href="cl.aspx?n=31360"      title="公布欄" data-name="公布欄"    >公布欄</a></span></div></div></div><div class="ct"><div class="in"> <div id="Group_236780_MUNkFshQpP" data-SitesModuleSN="75" data-Margin_right="" data-sort="2" data-bgColor="" data-AddParentGroup="" data-GroupSN="236780" data-WidthDeskTop="" data-anchor="" data-tabType="0" class="list-text nav" data-index="1" data-Margin_DefaultSetting="false" data-type="0" data-bgClass="" data-WidthMobile="" data-groupname="" data-WidthPad="" data-Margin_left="" data-MenuWidth="" data-isgroup="true" data-setLen="0" data-Margin_bottom="" data-child="1" data-Margin_Top=""><div class="in"><div class="ct"><div class="in"><ul data-index="1" data-child="6"><li   data-index="1"  >		<span  ><a  href="News.aspx?n=31361&sms=22487"      title="警政消息" data-name="警政消息"    >警政消息</a></span></li><li   data-index="2"  >		<span  ><a  href="News.aspx?n=31362&sms=22488"      title="公告資訊" data-name="公告資訊"    >公告資訊</a></span></li><li   data-index="3"  >		<span  ><a  href="News.aspx?n=31363&sms=22489"      title="公益勸募" data-name="公益勸募"    >公益勸募</a></span></li><li   data-index="4"  >		<span  ><a  href="News.aspx?n=31364&sms=22490"      title="活動訊息" data-name="活動訊息"    >活動訊息</a></span></li><li   data-index="5"  >		<span  ><a  href="News.aspx?n=31365&sms=22491"      title="人事動態" data-name="人事動態"    >人事動態</a></span></li><li   data-index="6"  >		<span  ><a  href="News.aspx?n=31366&sms=22492"      title="志工招募" data-name="志工招募"    >志工招募</a></span></li></ul>
+</div></div></div></div></div></div></div></div></li><li data-index="2"> <div id="Group_236781_uRjmAdPAcX" data-Margin_right="" data-sort="" data-bgColor="" data-AddParentGroup="" data-GroupSN="236781" data-WidthDeskTop="" data-anchor="" data-tabType="3" class="group nav" data-index="2" data-Margin_DefaultSetting="false" data-type="3" data-bgClass="" data-WidthMobile="" data-groupname="" data-WidthPad="" data-Margin_left="" data-MenuWidth="" data-isgroup="true" data-Margin_bottom="" data-child="1" data-Margin_Top=""><div class="in"><div class="hd"><div class="in"><div   data-index="0"  class="headH3"  >		<span  ><a  href="cl.aspx?n=31367"      title="機關簡介" data-name="機關簡介"    >機關簡介</a></span></div></div></div><div class="ct"><div class="in"> <div id="Group_236782_ccfdDFHkFc" data-SitesModuleSN="75" data-Margin_right="" data-sort="2" data-bgColor="" data-AddParentGroup="" data-GroupSN="236782" data-WidthDeskTop="" data-anchor="" data-tabType="0" class="list-text nav" data-index="1" data-Margin_DefaultSetting="false" data-type="0" data-bgClass="" data-WidthMobile="" data-groupname="" data-WidthPad="" data-Margin_left="" data-MenuWidth="" data-isgroup="true" data-setLen="0" data-Margin_bottom="" data-child="1" data-Margin_Top=""><div class="in"><div class="ct"><div class="in"><ul data-index="1" data-child="6"><li   data-index="1"  >		<span  ><a  href="cp.aspx?n=31368"      title="主管簡介" data-name="主管簡介"    >主管簡介</a></span></li><li   data-index="2"  >		<span  ><a  href="cp.aspx?n=31369"      title="副主管簡介" data-name="副主管簡介"    >副主管簡介</a></span></li><li   data-index="3"  >		<span  ><a  href="cp.aspx?n=31370"      title="轄區概況" data-name="轄區概況"    >轄區概況</a></span></li><li   data-index="4"  >		<span  ><a  href="cp.aspx?n=31371"      title="組織執掌" data-name="組織執掌"    >組織執掌</a></span></li><li   data-index="5"  >		<span  ><a  href="cp.aspx?n=31372"      title="聯絡方式與交通位置" data-name="聯絡方式與交通位置"    >聯絡方式與交通位置</a></span></li><li   data-index="6"  >		<span  ><a  href="cp.aspx?n=31373"      title="轄區分駐派出所" data-name="轄區分駐派出所"    >轄區分駐派出所</a></span></li></ul>
+</div></div></div></div></div></div></div></div></li><li data-index="3"> <div id="Group_236783_sGksAGviRv" data-Margin_right="" data-sort="" data-bgColor="" data-AddParentGroup="" data-GroupSN="236783" data-WidthDeskTop="" data-anchor="" data-tabType="3" class="group nav" data-index="3" data-Margin_DefaultSetting="false" data-type="3" data-bgClass="" data-WidthMobile="" data-groupname="" data-WidthPad="" data-Margin_left="" data-MenuWidth="" data-isgroup="true" data-Margin_bottom="" data-child="1" data-Margin_Top=""><div class="in"><div class="hd"><div class="in"><div   data-index="0"  class="headH3"  >		<span  ><a  href="cl.aspx?n=31374"      title="主題宣導" data-name="主題宣導"    >主題宣導</a></span></div></div></div><div class="ct"><div class="in"> <div id="Group_236784_KgehFEffUq" data-SitesModuleSN="75" data-Margin_right="" data-sort="2" data-bgColor="" data-AddParentGroup="" data-GroupSN="236784" data-WidthDeskTop="" data-anchor="" data-tabType="0" class="list-text nav" data-index="1" data-Margin_DefaultSetting="false" data-type="0" data-bgClass="" data-WidthMobile="" data-groupname="" data-WidthPad="" data-Margin_left="" data-MenuWidth="" data-isgroup="true" data-setLen="0" data-Margin_bottom="" data-child="1" data-Margin_Top=""><div class="in"><div class="ct"><div class="in"><ul data-index="1" data-child="7"><li   data-index="1"  >		<span  ><a  href="News.aspx?n=31375&sms=22493"      title="犯罪預防宣導" data-name="犯罪預防宣導"    >犯罪預防宣導</a></span></li><li   data-index="2"  >		<span  ><a  href="News.aspx?n=31376&sms=22494"      title="交通安全宣導" data-name="交通安全宣導"    >交通安全宣導</a></span></li><li   data-index="3"  >		<span  ><a  href="News.aspx?n=31377&sms=22495"      title="婦幼安全宣導" data-name="婦幼安全宣導"    >婦幼安全宣導</a></span></li><li   data-index="4"  >		<span  ><a  href="News.aspx?n=31378&sms=22496"      title="少年安全宣導" data-name="少年安全宣導"    >少年安全宣導</a></span></li><li   data-index="5"  >		<span  ><a  href="News.aspx?n=31379&sms=22497"      title="安全防護宣導" data-name="安全防護宣導"    >安全防護宣導</a></span></li><li   data-index="6"  >		<span  ><a  href="News.aspx?n=31380&sms=22498"      title="防制人口販運及外僑安全宣導" data-name="防制人口販運及外僑安全宣導"    >防制人口販運及外僑安全宣導</a></span></li><li   data-index="7"  >		<span  ><a  href="News.aspx?n=31381&sms=22499"      title="政風防貪宣導" data-name="政風防貪宣導"    >政風防貪宣導</a></span></li></ul>
+</div></div></div></div></div></div></div></div></li><li data-index="4"> <div id="Group_236785_nHkCLKbqpc" data-Margin_right="" data-sort="" data-bgColor="" data-AddParentGroup="" data-GroupSN="236785" data-WidthDeskTop="" data-anchor="" data-tabType="3" class="group nav" data-index="4" data-Margin_DefaultSetting="false" data-type="3" data-bgClass="" data-WidthMobile="" data-groupname="" data-WidthPad="" data-Margin_left="" data-MenuWidth="" data-isgroup="true" data-Margin_bottom="" data-child="1" data-Margin_Top=""><div class="in"><div class="hd"><div class="in"><div   data-index="0"  class="headH3"  >		<span  ><a  href="cl.aspx?n=31382"      title="民意廣場" data-name="民意廣場"    >民意廣場</a></span></div></div></div><div class="ct"><div class="in"> <div id="Group_236786_LXTrcTCNij" data-SitesModuleSN="75" data-Margin_right="" data-sort="2" data-bgColor="" data-AddParentGroup="" data-GroupSN="236786" data-WidthDeskTop="" data-anchor="" data-tabType="0" class="list-text nav" data-index="1" data-Margin_DefaultSetting="false" data-type="0" data-bgClass="" data-WidthMobile="" data-groupname="" data-WidthPad="" data-Margin_left="" data-MenuWidth="" data-isgroup="true" data-setLen="0" data-Margin_bottom="" data-child="1" data-Margin_Top=""><div class="in"><div class="ct"><div class="in"><ul data-index="1" data-child="2"><li   data-index="1"  >		<span  ><a  href="cl.aspx?n=31383"      title="分局長信箱" data-name="分局長信箱"    >分局長信箱</a></span></li><li   data-index="2"  >		<span  ><a  href="News.aspx?n=31387&sms=22501"      title="FAQ" data-name="FAQ"    >FAQ</a></span></li></ul>
+</div></div></div></div></div></div></div></div></li><li data-index="5"> <div id="Group_236787_WfALsaeqDv" data-Margin_right="" data-sort="" data-bgColor="" data-AddParentGroup="" data-GroupSN="236787" data-WidthDeskTop="" data-anchor="" data-tabType="3" class="group nav" data-index="5" data-Margin_DefaultSetting="false" data-type="3" data-bgClass="" data-WidthMobile="" data-groupname="" data-WidthPad="" data-Margin_left="" data-MenuWidth="" data-isgroup="true" data-Margin_bottom="" data-child="1" data-Margin_Top=""><div class="in"><div class="hd"><div class="in"><div   data-index="0"  class="headH3"  >		<span  ><a  href="cl.aspx?n=31388"      title="便民服務" data-name="便民服務"    >便民服務</a></span></div></div></div><div class="ct"><div class="in"> <div id="Group_236788_LhtdfNLjFg" data-SitesModuleSN="75" data-Margin_right="" data-sort="2" data-bgColor="" data-AddParentGroup="" data-GroupSN="236788" data-WidthDeskTop="" data-anchor="" data-tabType="0" class="list-text nav" data-index="1" data-Margin_DefaultSetting="false" data-type="0" data-bgClass="" data-WidthMobile="" data-groupname="" data-WidthPad="" data-Margin_left="" data-MenuWidth="" data-isgroup="true" data-setLen="0" data-Margin_bottom="" data-child="1" data-Margin_Top=""><div class="in"><div class="ct"><div class="in"><ul data-index="1" data-child="5"><li   data-index="1"  >		<span  ><a  href="News.aspx?n=31389&sms=22502"      title="便民服務相關資訊" data-name="便民服務相關資訊"    >便民服務相關資訊</a></span></li><li   data-index="2"  >		<span  ><a  href="News.aspx?n=31390&sms=22503"      title="民眾申辦服務須知" data-name="民眾申辦服務須知"    >民眾申辦服務須知</a></span></li><li   data-index="3"  >		<span  ><a  href="News.aspx?n=31391&sms=22504"      title="民眾檔案下載" data-name="民眾檔案下載"    >民眾檔案下載</a></span></li><li   data-index="4"  >		<span  ><a  href="cp.aspx?n=31392"      title="受理110報案" data-name="受理110報案"    >受理110報案</a></span></li><li   data-index="5"  >		<span  ><a  href="https://ylhpb.yunlin.gov.tw/cl.aspx?n=31060"      title="[另開新視窗]線上申辦服務" data-name="線上申辦服務"   target="_blank" rel="noopener noreferrer"   >線上申辦服務</a></span></li></ul>
+</div></div></div></div></div></div></div></div></li><li data-index="6"> <div id="Group_236789_fPQLgcKgfi" data-Margin_right="" data-sort="" data-bgColor="" data-AddParentGroup="" data-GroupSN="236789" data-WidthDeskTop="" data-anchor="" data-tabType="3" class="group nav" data-index="6" data-Margin_DefaultSetting="false" data-type="3" data-bgClass="" data-WidthMobile="" data-groupname="" data-WidthPad="" data-Margin_left="" data-MenuWidth="" data-isgroup="true" data-Margin_bottom="" data-child="1" data-Margin_Top=""><div class="in"><div class="hd"><div class="in"><div   data-index="0"  class="headH3"  >		<span  ><a  href="https://ylhpb.yunlin.gov.tw/cl.aspx?n=31071"      title="[另開新視窗]政府資訊公開" data-name="政府資訊公開"   target="_blank" rel="noopener noreferrer"   >政府資訊公開</a></span></div></div></div><div class="ct"><div class="in"> <div id="Group_236790_aeTcWcWCoT" data-SitesModuleSN="75" data-Margin_right="" data-sort="2" data-bgColor="" data-AddParentGroup="" data-GroupSN="236790" data-WidthDeskTop="" data-anchor="" data-tabType="0" class="list-text nav" data-index="1" data-Margin_DefaultSetting="false" data-type="0" data-bgClass="" data-WidthMobile="" data-groupname="" data-WidthPad="" data-Margin_left="" data-MenuWidth="" data-isgroup="true" data-setLen="0" data-Margin_bottom="" data-Margin_Top=""><div class="in"><div class="ct"><div class="in"></div></div></div></div></div></div></div></div></li><li data-index="7"> <div id="Group_236791_SkdcGeRYqq" data-Margin_right="" data-sort="" data-bgColor="" data-AddParentGroup="" data-GroupSN="236791" data-WidthDeskTop="" data-anchor="" data-tabType="3" class="group nav" data-index="7" data-Margin_DefaultSetting="false" data-type="3" data-bgClass="" data-WidthMobile="" data-groupname="" data-WidthPad="" data-Margin_left="" data-MenuWidth="" data-isgroup="true" data-Margin_bottom="" data-child="1" data-Margin_Top=""><div class="in"><div class="hd"><div class="in"><div   data-index="0"  class="headH3"  >		<span  ><a  href="cl.aspx?n=31395"      title="主題專區" data-name="主題專區"    >主題專區</a></span></div></div></div><div class="ct"><div class="in"> <div id="Group_236792_cGtjecaASi" data-SitesModuleSN="75" data-Margin_right="" data-sort="2" data-bgColor="" data-AddParentGroup="" data-GroupSN="236792" data-WidthDeskTop="" data-anchor="" data-tabType="0" class="list-text nav" data-index="1" data-Margin_DefaultSetting="false" data-type="0" data-bgClass="" data-WidthMobile="" data-groupname="" data-WidthPad="" data-Margin_left="" data-MenuWidth="" data-isgroup="true" data-setLen="0" data-Margin_bottom="" data-child="1" data-Margin_Top=""><div class="in"><div class="ct"><div class="in"><ul data-index="1" data-child="6"><li   data-index="1"  >		<span  ><a  href="News.aspx?n=31396&sms=22505"      title="個人資料保護專區" data-name="個人資料保護專區"    >個人資料保護專區</a></span></li><li   data-index="2"  >		<span  ><a  href="https://www.humanrights.moj.gov.tw/"      title="[另開新視窗]人權大步走(兩公約)專區" data-name="人權大步走(兩公約)專區"   target="_blank" rel="noopener noreferrer"   >人權大步走(兩公約)專區</a></span></li><li   data-index="3"  >		<span  ><a  href="cp.aspx?n=31398"      title="性騷擾防治" data-name="性騷擾防治"    >性騷擾防治</a></span></li><li   data-index="4"  >		<span  ><a  href="News.aspx?n=31399&sms=22506"      title="加強重要節日安全維護工作專區" data-name="加強重要節日安全維護工作專區"    >加強重要節日安全維護工作專區</a></span></li><li   data-index="5"  >		<span  ><a  href="cp.aspx?n=31400"      title="警政服務APP下載" data-name="警政服務APP下載"    >警政服務APP下載</a></span></li><li   data-index="6"  >		<span  ><a  href="News.aspx?n=31401&sms=22507"      title="婦幼專區" data-name="婦幼專區"    >婦幼專區</a></span></li></ul>
+</div></div></div></div></div></div></div></div></li><li data-index="8"> <div id="Group_236793_KYYJjPnWet" data-Margin_right="" data-sort="" data-bgColor="" data-AddParentGroup="" data-GroupSN="236793" data-WidthDeskTop="" data-anchor="" data-tabType="3" class="group nav" data-index="8" data-Margin_DefaultSetting="false" data-type="3" data-bgClass="" data-WidthMobile="" data-groupname="" data-WidthPad="" data-Margin_left="" data-MenuWidth="" data-isgroup="true" data-Margin_bottom="" data-child="1" data-Margin_Top=""><div class="in"><div class="hd"><div class="in"><div   data-index="0"  class="headH3"  >		<span  ><a  href="cl.aspx?n=31402"      title="影音出版品" data-name="影音出版品"    >影音出版品</a></span></div></div></div><div class="ct"><div class="in"> <div id="Group_236794_xBntdRvHjR" data-SitesModuleSN="75" data-Margin_right="" data-sort="2" data-bgColor="" data-AddParentGroup="" data-GroupSN="236794" data-WidthDeskTop="" data-anchor="" data-tabType="0" class="list-text nav" data-index="1" data-Margin_DefaultSetting="false" data-type="0" data-bgClass="" data-WidthMobile="" data-groupname="" data-WidthPad="" data-Margin_left="" data-MenuWidth="" data-isgroup="true" data-setLen="0" data-Margin_bottom="" data-child="1" data-Margin_Top=""><div class="in"><div class="ct"><div class="in"><ul data-index="1" data-child="3"><li   data-index="1"  >		<span  ><a  href="News_Photo.aspx?n=31403&sms=22508"      title="活動相簿" data-name="活動相簿"    >活動相簿</a></span></li><li   data-index="2"  >		<span  ><a  href="https://www.youtube.com/user/ylhpbpolice"      title="[另開新視窗]雲警線上影音" data-name="雲警線上影音"   target="_blank" rel="noopener noreferrer"   >雲警線上影音</a></span></li><li   data-index="3"  >		<span  ><a  href="News_Video.aspx?n=31405&sms=22509"      title="影音多媒體" data-name="影音多媒體"    >影音多媒體</a></span></li></ul>
+</div></div></div></div></div></div></div></div></li><li data-index="9"> <div id="Group_236795_RyoVFPKiMd" data-Margin_right="" data-sort="" data-bgColor="" data-AddParentGroup="" data-GroupSN="236795" data-WidthDeskTop="" data-anchor="" data-tabType="3" class="group nav" data-index="9" data-Margin_DefaultSetting="false" data-type="3" data-bgClass="" data-WidthMobile="" data-groupname="" data-WidthPad="" data-Margin_left="" data-MenuWidth="" data-isgroup="true" data-Margin_bottom="" data-child="1" data-Margin_Top=""><div class="in"><div class="hd"><div class="in"><div   data-index="0"  class="headH3"  >		<span  ><a  href="News_Link.aspx?n=31406&sms=22510"      title="相關連結" data-name="相關連結"    >相關連結</a></span></div></div></div><div class="ct"><div class="in"> <div id="Group_236796_afTpoPKmCd" data-SitesModuleSN="75" data-Margin_right="" data-sort="2" data-bgColor="" data-AddParentGroup="" data-GroupSN="236796" data-WidthDeskTop="" data-anchor="" data-tabType="0" class="list-text nav" data-index="1" data-Margin_DefaultSetting="false" data-type="0" data-bgClass="" data-WidthMobile="" data-groupname="" data-WidthPad="" data-Margin_left="" data-MenuWidth="" data-isgroup="true" data-setLen="0" data-Margin_bottom="" data-Margin_Top=""><div class="in"><div class="ct"><div class="in"></div></div></div></div></div></div></div></div></li></ul></div></div></div></div></div></div></div></div> <div id="base-content" class="group base-content" data-index="2" data-type="3" data-child="1"><div class="in"><div class="ct"><div class="in"> <div class="group base-page-area" data-index="1" data-type="3" data-child="1"><div class="in"><div class="ct"><div class="in"> <div class="group base-section" data-index="1" data-type="3" data-child="3"><div class="in"><div class="ct"><div class="in"> <div class="simple-text accesskey" data-type="0" data-child="1"><div class="in"><div class="ct"><div class="in"><span><a href="#Accesskey_C" id="Accesskey_C" accesskey="C" title="中央內容區塊，為本頁主要內容區。">:::</a></span></div></div></div></div> <div class="group page-header" data-index="1" data-type="3" data-child="2"><div class="in"><div class="ct"><div class="in"> <div class="list-text breadcrumb" data-index="1" data-type="0" data-child="1"><div class="in"><div class="ct"><div class="in"><ul data-index="1" data-child="3"><li   data-index="1"  >		<span  ><a  href="Default.aspx"   title="首頁" data-name="首頁"   target="_self"   >首頁</a></span></li><li   data-index="2"  >		<span  ><a  href="cl.aspx?n=31360"   title="公布欄" data-name="公布欄"   target="_self"   >公布欄</a></span></li><li   data-index="3"  >		<span  ><a  href="News.aspx?n=31362&sms=22488"   title="公告資訊" data-name="公告資訊"   target="_self"   aria-current="page">公告資訊</a></span></li></ul>
+</div></div></div></div> <div class="group default info" data-index="2" data-type="3" data-child="2"><div class="in"><div class="ct"><div class="in"> <div class="simple-text heading" data-index="1" data-type="0" data-child="1"><div class="in"><div class="ct"><div class="in"><h2><span>公告資訊</span></h2></div></div></div></div> <div class="group default msg-tool" data-index="2" data-type="3" data-child="1"><div class="in"><div class="ct"><div class="in"> <div class="simple-text accesskey" data-func="{&#39;focusContent&#39;:{}}" data-type="0" data-child="1"><div class="in"><div class="ct"><div class="in"><span><a href="#CCMS_Content" title="跳過此子選單列請按[Enter]，繼續則按[Tab]">_</a></span></div></div></div></div> <div class="list-text user-tool" data-index="1" data-type="0" data-child="1"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  >		<span  ><a  href="javascript :return false;"   title="網頁功能" data-name="網頁功能"   target="_self"   >網頁功能</a></span></div></div></div><div class="ct"><div class="in"><ul data-index="1" data-child="1"><li   data-index="1"  class="print"  >		<span  ><a  href="javascript:CCMS_Print(618);"   title="列印內容" data-name="列印內容"   target="_self"   >列印內容</a></span></li></ul>
+</div></div></div></div></div></div></div></div></div></div></div></div></div></div></div></div> <div class="group page-content " id="CCMS_Content" data-func="{&#39;linkType&#39;:{&#39;domains&#39;:[&#39;https://ws.yunlin.gov.tw&#39;,&#39;https://ws.yunlin.gov.tw&#39;]}}" data-index="2" data-type="3" data-child="3"><div class="in"><div class="ct"><div class="in"> <div class="simple-text title" data-type="0" data-child="1"><div class="in"><div class="ct"><div class="in"><h3>斗六分局115年度移動式測速照相重點取締地點</h3></div></div></div></div>
+        
+        
+ <div class="area-essay page-caption-p" data-type="0" data-child="1"><div class="in"><div class="ct"><div class="in"><div   class="div"  title=""   >  <div class="essay">    <div class="caption"></div>    <div class="caption"><span></span></div>    <div class="p">      <p><span><p>斗六分局115年度移動式測速照相重點取締地點經主官(管)核准共26處，臚列如下：</p>
+
+<p>(一)斗六市石榴路104號前，往林內方向，速限50公里/小時。</p>
+
+<p>(二)斗六市石榴路95-2號前，往斗六方向，速限50公里/小時。</p>
+
+<p>(三)斗六市石榴路389號前，往斗六方向，速限60公里/小時。</p>
+
+<p>(四)斗六市石榴路68號前，往林內方向，速限50公里/小時。</p>
+
+<p>(五)斗六市雲林路三段與大學路三段路口，斗六往斗南方向車道，速限50公里小時。</p>
+
+<p>(六)斗六市雲科路三段55號前(西往東)，快車道速限60公里/小時，慢車道速限40公里/小時。</p>
+
+<p>(七)斗六市龍潭路(中山路至四維路之間)，速限30公里/小時。</p>
+
+<p>(八)斗六市仁義路外環道，速限60公里/小時。</p>
+
+<p>(九)斗六市埤頭路與埤頭南路口，速限40公里/小時。</p>
+
+<p>(十)斗六市明德北路一段432號(速邁樂加油站)前，速限60公里/小時。</p>
+
+<p>(十一)斗六市保長路155號前，速限50公里/小時。</p>
+
+<p>(十二)斗六市西平路776號往斗六方向，速限50公里/小時。</p>
+
+<p>(十三)斗六市石榴路79之3號前，台3線往斗六方向，速限50公里/小時。</p>
+
+<p>(十四)斗六市石榴路104號前，台3線往國道3號斗六交流道方向，速限50公里/小時。</p>
+
+<p>(十五)斗六市石榴路68之1號，台3線往國道3號斗六交流道方向，速限50公里/小時。</p>
+
+<p>(十六)斗六市保長路155號(保長國小)前，速限50公里/小時。</p>
+
+<p>(十七)莿桐鄉台1線往莿桐方向234.5K處，速限50公里/小時。</p>
+
+<p>(十八)莿桐鄉台1線232K處，速限70公里/小時。</p>
+
+<p>(十九)莿桐鄉台1丁線2.5K處，速限60公里/小時。</p>
+
+<p>(二十)莿桐鄉台1丁線新榮橋，速限60公里/小時。</p>
+
+<p>(二十一)莿桐鄉台1線234.5K處，速限50公里/小時。</p>
+
+<p>(二十二)莿桐鄉154縣道，西往東36.2K處，速限60公里/小時。</p>
+
+<p>(二十三)莿桐鄉145乙線，9K處雙向車道，速限60公里/小時。</p>
+
+<p>(二十四)林內鄉重興村154縣道，西往東40.5K處，速限40公里/小時。</p>
+
+<p>(二十五)林內鄉重興路9-1號前，速限60公里/小時。</p>
+
+<p>(二十六)台3線北往南240K處，速限70公里/小時。</p>
+</span></p>    </div>  </div></div></div></div></div></div> <div class="area-editor system-info" data-type="0" data-child="1"><div class="in"><div class="ct"><div class="in"></div></div></div></div></div></div></div></div> <div class="group page-footer" data-index="3" data-type="3" data-child="3"><div class="in"><div class="ct"><div class="in"> <div class="list-text detail" data-index="1" data-type="0" data-child="1"><div class="in"><div class="ct"><div class="in"><ul data-index="1" data-child="1"><li   data-index="1"  >		<span  >上版日期：115-01-13</span></li></ul>
+</div></div></div></div> <div class="list-text jump-tool" data-index="2" data-type="0" data-child="1"><div class="in"><div class="ct"><div class="in"><ul data-index="1" data-child="2"><li   data-index="1"  class="back"  >		<span  ><a  href="javascript:window.location =document.referrer;"   title="回上一頁" data-name="回上一頁"   target="_self"   >回上一頁</a></span></li><li   data-index="2"  class="to-top"  >		<span  ><a  href="#Accesskey_U"   role='button'  title="回最上面" data-name="回最上面"   target="_self"   >回最上面</a></span></li></ul>
+</div></div></div></div>
+        </div></div></div></div></div></div></div></div></div></div></div></div></div></div></div></div> <div class="group base-footer" data-func="{&#39;toggleBtn&#39;:{&#39;btnOrangeText&#39;:&#39;關閉&#39;,&#39;btnActiveText&#39;:&#39;開啟&#39;,&#39;focusActive&#39;:false}}" data-index="3" data-type="3" data-child="2"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  class="headH3"  >		<span  ><a  href="#"   title="選單" data-name="選單" role='button'   >選單</a></span></div></div></div><div class="ct"><div class="in"> <div class="simple-text accesskey" data-type="0" data-child="1"><div class="in"><div class="ct"><div class="in"><span><a href="#Accesskey_Z" id="Accesskey_Z" accesskey="Z" title="下方選單連結區塊">:::</a></span></div></div></div></div> <div class="group-list nav" data-func="{&#39;setNavLen&#39;:{}}" data-index="1" data-type="4" data-child="9"><div class="in"><div class="ct"><div class="in"><ul data-index="1" data-child="9"><li data-index="1"> <div class="group nav" data-index="1" data-type="3" data-child="1"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  class="headH3"  >		<span  ><a  href="cl.aspx?n=31360"      title="公布欄" data-name="公布欄"    >公布欄</a></span></div></div></div><div class="ct"><div class="in"> <div class="list-text nav" data-index="1" data-type="0" data-child="1"><div class="in"><div class="ct"><div class="in"><ul data-index="1" data-child="6"><li   data-index="1"  >		<span  ><a  href="News.aspx?n=31361&sms=22487"      title="警政消息" data-name="警政消息"    >警政消息</a></span></li><li   data-index="2"  >		<span  ><a  href="News.aspx?n=31362&sms=22488"      title="公告資訊" data-name="公告資訊"    >公告資訊</a></span></li><li   data-index="3"  >		<span  ><a  href="News.aspx?n=31363&sms=22489"      title="公益勸募" data-name="公益勸募"    >公益勸募</a></span></li><li   data-index="4"  >		<span  ><a  href="News.aspx?n=31364&sms=22490"      title="活動訊息" data-name="活動訊息"    >活動訊息</a></span></li><li   data-index="5"  >		<span  ><a  href="News.aspx?n=31365&sms=22491"      title="人事動態" data-name="人事動態"    >人事動態</a></span></li><li   data-index="6"  >		<span  ><a  href="News.aspx?n=31366&sms=22492"      title="志工招募" data-name="志工招募"    >志工招募</a></span></li></ul>
+</div></div></div></div></div></div></div></div></li><li data-index="2"> <div class="group nav" data-index="2" data-type="3" data-child="1"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  class="headH3"  >		<span  ><a  href="cl.aspx?n=31367"      title="機關簡介" data-name="機關簡介"    >機關簡介</a></span></div></div></div><div class="ct"><div class="in"> <div class="list-text nav" data-index="1" data-type="0" data-child="1"><div class="in"><div class="ct"><div class="in"><ul data-index="1" data-child="6"><li   data-index="1"  >		<span  ><a  href="cp.aspx?n=31368"      title="主管簡介" data-name="主管簡介"    >主管簡介</a></span></li><li   data-index="2"  >		<span  ><a  href="cp.aspx?n=31369"      title="副主管簡介" data-name="副主管簡介"    >副主管簡介</a></span></li><li   data-index="3"  >		<span  ><a  href="cp.aspx?n=31370"      title="轄區概況" data-name="轄區概況"    >轄區概況</a></span></li><li   data-index="4"  >		<span  ><a  href="cp.aspx?n=31371"      title="組織執掌" data-name="組織執掌"    >組織執掌</a></span></li><li   data-index="5"  >		<span  ><a  href="cp.aspx?n=31372"      title="聯絡方式與交通位置" data-name="聯絡方式與交通位置"    >聯絡方式與交通位置</a></span></li><li   data-index="6"  >		<span  ><a  href="cp.aspx?n=31373"      title="轄區分駐派出所" data-name="轄區分駐派出所"    >轄區分駐派出所</a></span></li></ul>
+</div></div></div></div></div></div></div></div></li><li data-index="3"> <div class="group nav" data-index="3" data-type="3" data-child="1"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  class="headH3"  >		<span  ><a  href="cl.aspx?n=31374"      title="主題宣導" data-name="主題宣導"    >主題宣導</a></span></div></div></div><div class="ct"><div class="in"> <div class="list-text nav" data-index="1" data-type="0" data-child="1"><div class="in"><div class="ct"><div class="in"><ul data-index="1" data-child="7"><li   data-index="1"  >		<span  ><a  href="News.aspx?n=31375&sms=22493"      title="犯罪預防宣導" data-name="犯罪預防宣導"    >犯罪預防宣導</a></span></li><li   data-index="2"  >		<span  ><a  href="News.aspx?n=31376&sms=22494"      title="交通安全宣導" data-name="交通安全宣導"    >交通安全宣導</a></span></li><li   data-index="3"  >		<span  ><a  href="News.aspx?n=31377&sms=22495"      title="婦幼安全宣導" data-name="婦幼安全宣導"    >婦幼安全宣導</a></span></li><li   data-index="4"  >		<span  ><a  href="News.aspx?n=31378&sms=22496"      title="少年安全宣導" data-name="少年安全宣導"    >少年安全宣導</a></span></li><li   data-index="5"  >		<span  ><a  href="News.aspx?n=31379&sms=22497"      title="安全防護宣導" data-name="安全防護宣導"    >安全防護宣導</a></span></li><li   data-index="6"  >		<span  ><a  href="News.aspx?n=31380&sms=22498"      title="防制人口販運及外僑安全宣導" data-name="防制人口販運及外僑安全宣導"    >防制人口販運及外僑安全宣導</a></span></li><li   data-index="7"  >		<span  ><a  href="News.aspx?n=31381&sms=22499"      title="政風防貪宣導" data-name="政風防貪宣導"    >政風防貪宣導</a></span></li></ul>
+</div></div></div></div></div></div></div></div></li><li data-index="4"> <div class="group nav" data-index="4" data-type="3" data-child="1"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  class="headH3"  >		<span  ><a  href="cl.aspx?n=31382"      title="民意廣場" data-name="民意廣場"    >民意廣場</a></span></div></div></div><div class="ct"><div class="in"> <div class="list-text nav" data-index="1" data-type="0" data-child="1"><div class="in"><div class="ct"><div class="in"><ul data-index="1" data-child="2"><li   data-index="1"  >		<span  ><a  href="cl.aspx?n=31383"      title="分局長信箱" data-name="分局長信箱"    >分局長信箱</a></span></li><li   data-index="2"  >		<span  ><a  href="News.aspx?n=31387&sms=22501"      title="FAQ" data-name="FAQ"    >FAQ</a></span></li></ul>
+</div></div></div></div></div></div></div></div></li><li data-index="5"> <div class="group nav" data-index="5" data-type="3" data-child="1"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  class="headH3"  >		<span  ><a  href="cl.aspx?n=31388"      title="便民服務" data-name="便民服務"    >便民服務</a></span></div></div></div><div class="ct"><div class="in"> <div class="list-text nav" data-index="1" data-type="0" data-child="1"><div class="in"><div class="ct"><div class="in"><ul data-index="1" data-child="5"><li   data-index="1"  >		<span  ><a  href="News.aspx?n=31389&sms=22502"      title="便民服務相關資訊" data-name="便民服務相關資訊"    >便民服務相關資訊</a></span></li><li   data-index="2"  >		<span  ><a  href="News.aspx?n=31390&sms=22503"      title="民眾申辦服務須知" data-name="民眾申辦服務須知"    >民眾申辦服務須知</a></span></li><li   data-index="3"  >		<span  ><a  href="News.aspx?n=31391&sms=22504"      title="民眾檔案下載" data-name="民眾檔案下載"    >民眾檔案下載</a></span></li><li   data-index="4"  >		<span  ><a  href="cp.aspx?n=31392"      title="受理110報案" data-name="受理110報案"    >受理110報案</a></span></li><li   data-index="5"  >		<span  ><a  href="https://ylhpb.yunlin.gov.tw/cl.aspx?n=31060"      title="[另開新視窗]線上申辦服務" data-name="線上申辦服務"   target="_blank" rel="noopener noreferrer"   >線上申辦服務</a></span></li></ul>
+</div></div></div></div></div></div></div></div></li><li data-index="6"> <div class="group nav" data-index="6" data-type="3" data-child="1"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  class="headH3"  >		<span  ><a  href="https://ylhpb.yunlin.gov.tw/cl.aspx?n=31071"      title="[另開新視窗]政府資訊公開" data-name="政府資訊公開"   target="_blank" rel="noopener noreferrer"   >政府資訊公開</a></span></div></div></div><div class="ct"><div class="in"> <div class="list-text nav" data-index="1" data-type="0"><div class="in"><div class="ct"><div class="in"></div></div></div></div></div></div></div></div></li><li data-index="7"> <div class="group nav" data-index="7" data-type="3" data-child="1"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  class="headH3"  >		<span  ><a  href="cl.aspx?n=31395"      title="主題專區" data-name="主題專區"    >主題專區</a></span></div></div></div><div class="ct"><div class="in"> <div class="list-text nav" data-index="1" data-type="0" data-child="1"><div class="in"><div class="ct"><div class="in"><ul data-index="1" data-child="6"><li   data-index="1"  >		<span  ><a  href="News.aspx?n=31396&sms=22505"      title="個人資料保護專區" data-name="個人資料保護專區"    >個人資料保護專區</a></span></li><li   data-index="2"  >		<span  ><a  href="https://www.humanrights.moj.gov.tw/"      title="[另開新視窗]人權大步走(兩公約)專區" data-name="人權大步走(兩公約)專區"   target="_blank" rel="noopener noreferrer"   >人權大步走(兩公約)專區</a></span></li><li   data-index="3"  >		<span  ><a  href="cp.aspx?n=31398"      title="性騷擾防治" data-name="性騷擾防治"    >性騷擾防治</a></span></li><li   data-index="4"  >		<span  ><a  href="News.aspx?n=31399&sms=22506"      title="加強重要節日安全維護工作專區" data-name="加強重要節日安全維護工作專區"    >加強重要節日安全維護工作專區</a></span></li><li   data-index="5"  >		<span  ><a  href="cp.aspx?n=31400"      title="警政服務APP下載" data-name="警政服務APP下載"    >警政服務APP下載</a></span></li><li   data-index="6"  >		<span  ><a  href="News.aspx?n=31401&sms=22507"      title="婦幼專區" data-name="婦幼專區"    >婦幼專區</a></span></li></ul>
+</div></div></div></div></div></div></div></div></li><li data-index="8"> <div class="group nav" data-index="8" data-type="3" data-child="1"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  class="headH3"  >		<span  ><a  href="cl.aspx?n=31402"      title="影音出版品" data-name="影音出版品"    >影音出版品</a></span></div></div></div><div class="ct"><div class="in"> <div class="list-text nav" data-index="1" data-type="0" data-child="1"><div class="in"><div class="ct"><div class="in"><ul data-index="1" data-child="3"><li   data-index="1"  >		<span  ><a  href="News_Photo.aspx?n=31403&sms=22508"      title="活動相簿" data-name="活動相簿"    >活動相簿</a></span></li><li   data-index="2"  >		<span  ><a  href="https://www.youtube.com/user/ylhpbpolice"      title="[另開新視窗]雲警線上影音" data-name="雲警線上影音"   target="_blank" rel="noopener noreferrer"   >雲警線上影音</a></span></li><li   data-index="3"  >		<span  ><a  href="News_Video.aspx?n=31405&sms=22509"      title="影音多媒體" data-name="影音多媒體"    >影音多媒體</a></span></li></ul>
+</div></div></div></div></div></div></div></div></li><li data-index="9"> <div class="group nav" data-index="9" data-type="3" data-child="1"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  class="headH3"  >		<span  ><a  href="News_Link.aspx?n=31406&sms=22510"      title="相關連結" data-name="相關連結"    >相關連結</a></span></div></div></div><div class="ct"><div class="in"> <div class="list-text nav" data-index="1" data-type="0"><div class="in"><div class="ct"><div class="in"></div></div></div></div></div></div></div></div></li></ul></div></div></div></div> <div class="group default info" data-index="1" data-type="3" data-child="2"><div class="in"><div class="ct"><div class="in"> <div class="list-pic icon" data-index="1" data-type="0" data-child="1"><div class="in"><div class="ct"><div class="in"><ul data-index="1" data-child="1"><li   data-index="1"  class="E-Gov"  >		<span style="background-image: url('/images/egov.png');" ><a  href="//www.gov.tw/"   title="我的E政府 [另開新視窗]" data-name="我的E政府 [另開新視窗]"   target="_blank" rel="noopener noreferrer"   ><img src="/images/egov.png" alt="我的E政府 [另開新視窗]" /></a></span></li></ul>
+</div></div></div></div> <div class="group default msg-tool" data-index="2" data-type="3"><div class="in"><div class="ct"><div class="in"> <div class="list-text link" data-index="1" data-type="0"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  >		<span  ><a  href="#"   title="下方連結" data-name="下方連結"    >下方連結</a></span></div></div></div><div class="ct"><div class="in"></div></div></div></div> <div class="simple-text update-time" data-index="2" data-type="0" data-child="1"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  >		<span  ><a  href="#"   title="更新日期:&nbsp;" data-name="更新日期:&nbsp;"    >更新日期:&nbsp;</a></span></div></div></div><div class="ct"><div class="in"><span>115-11-12</span></div></div></div></div> <div class="simple-text visit-count" data-index="3" data-type="0" data-child="1"><div class="in"><div class="hd"><div class="in"><div   data-index="0"  >		<span  ><a  href="#"   title="瀏覽人次:&nbsp;" data-name="瀏覽人次:&nbsp;"    >瀏覽人次:&nbsp;</a></span></div></div></div><div class="ct"><div class="in"><span id="footer_visitcount_span">..</span></div></div></div></div> <div class="area-editor address" data-func="{&#39;linkToMap&#39;:{&#39;bindClass&#39;:&#39;.map&#39;,&#39;linkClass&#39;:&#39;is-map&#39;}}" data-index="4" data-type="0" data-child="1"><div class="in"><div class="ct"><div class="in"><p>Copyright&copy;2025雲林縣警察局斗六分局版權所有｜&nbsp;<a href="https://ylhpb.yunlin.gov.tw/Douliu/cp.aspx?n=31408" tabindex="0">隱私權保護政策</a>｜&nbsp;<a href="https://ylhpb.yunlin.gov.tw/Douliu/cp.aspx?n=31409" tabindex="0">網站安全政策</a>｜&nbsp;<a href="https://ylhpb.yunlin.gov.tw/Douliu/cp.aspx?n=31410" tabindex="0">政府網站資料開放宣告</a><br />
+斗六分局地址：640001雲林縣斗六市雲林路二段128號<a href="https://ylhpb.yunlin.gov.tw/Douliu/cp.aspx?n=31372" tabindex="0">位置圖</a>｜電話：05-5322598<br />
+內勤單位服務時間為上午8時至12時；下午13時30分至17時30分/本局各外勤單位24小時為您服務</p>
+</div></div></div></div></div></div></div></div></div></div></div></div> <div data-func="{&#39;anchor&#39;:{},&#39;scrollToShow&#39;:{}}" class="simple-text btn" data-index="2" data-type="0" data-child="1"><div class="in"><div class="ct"><div class="in"><span><a href="#" title="回最上面[連結]">回最上面</a></span></div></div></div></div></div></div></div></div></div></div></div></div></div></div></div></div>
+<div class="aspNetHidden">
+
+	<input type="hidden" name="__VIEWSTATEGENERATOR" id="__VIEWSTATEGENERATOR" value="437169E3" />
+	<input type="hidden" name="__VIEWSTATEENCRYPTED" id="__VIEWSTATEENCRYPTED" value="" />
+</div></form>
+    <script src="/Scripts/jTable.js"></script>
+    
+</body>
+</html>
+

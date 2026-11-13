@@ -399,3 +399,173 @@ def test_source_report_changes_are_persisted_even_without_point_changes(tmp_path
     assert not build_cameras.unchanged(str(path), updated)
     path.write_text(json.dumps(updated), encoding="utf-8")
     assert build_cameras.unchanged(str(path), {**updated, "generatedAt": "2026-11-13T00:00:00Z"})
+
+
+@pytest.mark.parametrize("source_id,count", [
+    ("176549", 266), ("176561", 98), ("135957", 93), ("25935", 118), ("178168", 145),
+    ("172174", 89), ("172178", 19), ("178159", 72), ("178159-fixed", 77),
+    ("119017", 75), ("178121", 12), ("176021", 2), ("146681", 36),
+    ("176555", 29), ("176558", 12), ("176560", 78), ("176551", 7), ("177827", 7),
+    ("170673", 8),
+])
+def test_stage_f_adapter_keeps_verified_rows_items_and_unique_original_keys(source_id, count):
+    source = next(s for s in extra.OFFICIAL_SOURCES if s.id == source_id)
+    rows = sources.parse_payload((extra.SNAPSHOTS / f"{source_id}.raw").read_bytes())
+    report = SourceReport()
+    cameras = source.adapter(rows, report)
+    assert len(cameras) == len({c.id for c in cameras}) == count
+    assert all(c.source == source_id and c.sourceID and c.enforcementItems for c in cameras)
+    assert report.counts[source_id]["locationSuccess"] == count
+    with pytest.raises(ValueError):
+        source.adapter([{"changed_schema": "unexpected"}], SourceReport())
+    if source_id == "119017":
+        assert report.location_failures[source_id] == {"invalid_coordinate": 1}
+    if source_id == "178159-fixed":
+        assert source.dataset_id == "178159" and "178159-fixed" not in source.attribution
+
+
+def test_kaohsiung_header_change_or_truncation_is_rejected_and_turns_are_not_guessed():
+    rows = sources.parse_payload((extra.SNAPSHOTS / "176549.raw").read_bytes())
+    with pytest.raises(ValueError):
+        extra.adapt_176549(rows[:1], SourceReport())
+    rows = sources.parse_payload((extra.SNAPSHOTS / "176561.raw").read_bytes())
+    report = SourceReport()
+    turning = [r for r in rows if r["測照行向"] == "南向西"]
+    cameras = extra.adapt_176561(turning, report)
+    assert cameras and all(c.heading is None and "南向西" in c.conditions for c in cameras)
+    assert all(c.speedLimit is None for c in cameras) and any("轉向行向" in issue for issue in report.issues)
+
+
+def test_taipei_parking_is_retained_and_known_tunnel_sections_are_not_made_into_new_points():
+    rows = sources.parse_payload((extra.SNAPSHOTS / "135957.raw").read_bytes())
+    report = SourceReport()
+    cameras = extra.adapt_135957(rows, report)
+    assert len([c for c in cameras if c.enforcementItems == "違規停車"]) == 16
+    assert all(not c.enforces_speed for c in cameras if c.enforcementItems == "違規停車")
+    assert not any(c.address in ("辛亥隧道", "自強隧道") for c in cameras)
+    assert report.counts["135957"]["excluded"] == 2
+    assert any("行政區" in issue for issue in report.issues)
+
+
+def test_kinmen_known_reversed_coordinates_are_source_specific_not_a_global_guess():
+    rows = sources.parse_payload((extra.SNAPSHOTS / "178121.raw").read_bytes())
+    report = SourceReport()
+    cameras = extra.adapt_178121(rows, report)
+    assert all(24.3 < c.lat < 24.6 and 118.1 < c.lon < 118.5 for c in cameras)
+    assert all(c.type == "tech" and not c.enforces_speed for c in cameras)
+    assert sum("反置" in message for message in report.issues) == 12
+
+
+@pytest.mark.parametrize("source_id,missing", [("176555", 2), ("176551", 4)])
+def test_kaohsiung_empty_function_cells_are_not_filled_from_a_previous_row_or_title(source_id, missing):
+    source = next(s for s in extra.OFFICIAL_SOURCES if s.id == source_id)
+    rows = sources.parse_payload((extra.SNAPSHOTS / f"{source_id}.raw").read_bytes())
+    report = SourceReport()
+    cameras = source.adapter(rows, report)
+    assert report.location_failures[source_id] == {"missing_field": missing}
+    assert all(c.type == "tech" and c.speedLimit is None and not c.enforces_speed for c in cameras)
+
+
+@pytest.mark.parametrize("source_id", ["176555", "176560", "176551", "177827"])
+def test_kaohsiung_column_table_must_keep_verified_header_semantics(source_id):
+    source = next(s for s in extra.OFFICIAL_SOURCES if s.id == source_id)
+    rows = sources.parse_payload((extra.SNAPSHOTS / f"{source_id}.raw").read_bytes())
+    rows[0]["Column5"] = "不明座標"
+    with pytest.raises(ValueError):
+        source.adapter(rows, SourceReport())
+
+
+def test_kaohsiung_leased_fixed_technology_side_is_not_a_mobile_type_or_vehicle_heading():
+    rows = sources.parse_payload((extra.SNAPSHOTS / "177827.raw").read_bytes())
+    cameras = extra.adapt_177827(rows, SourceReport())
+    assert len(cameras) == 7
+    assert all(c.type == "tech" and c.heading is None and c.axis is None and c.speedLimit is None for c in cameras)
+    assert all("側" in c.conditions and c.enforcementItems == "車不停讓行人" for c in cameras)
+
+
+def test_taichung_corrupt_function_cells_and_single_point_sections_are_isolated():
+    rows = sources.parse_payload((extra.SNAPSHOTS / "170673.raw").read_bytes())
+    report = SourceReport()
+    cameras = extra.adapt_170673(rows, report)
+    assert {c.sourceID for c in cameras} == {"4", "5", "74", "75", "76", "77", "78", "79"}
+    assert report.location_failures["170673"] == {"invalid_enforcement_item": 68}
+    assert report.counts["170673"]["excluded"] == 3
+    assert all(24 < c.lat < 24.5 and 120.4 < c.lon < 121.5 for c in cameras)
+    assert all(c.speedLimit is None and not c.enforces_speed for c in cameras)
+    assert next(c for c in cameras if c.sourceID == "74").heading == 90
+    assert next(c for c in cameras if c.sourceID == "77").heading == 270
+    assert next(c for c in cameras if c.sourceID == "79").heading is None
+
+
+def test_taipei_sound_pdf_keeps_all_official_addresses_and_rejects_an_unverified_new_version():
+    raw = (extra.SNAPSHOTS / "tp-noise.raw").read_bytes()
+    rows = extra.parse_tp_noise(raw)
+    assert len(rows) == 28 and "至善路2段431號" in rows[1]["address"]
+    with pytest.raises(ValueError, match="版本變更"):
+        extra.parse_tp_noise(raw + b"changed")
+
+
+def test_douliu_paragraphs_preserve_twenty_six_rows_ranges_and_conditional_limits():
+    rows = extra.parse_douliu_mobile((extra.SNAPSHOTS / "douliu-mobile.raw").read_bytes())
+    assert len(rows) == 26 and "快車道速限60" in rows[5]["address"] and "慢車道速限40" in rows[5]["address"]
+    assert rows[-1]["district"] == ""
+    assert extra._douliu_mileage(rows[16]["address"]) == ("台1", 234.5)
+    assert extra._douliu_mileage(rows[-1]["address"]) == ("台3", 240)
+    assert extra._douliu_mileage(rows[6]["address"]) is None
+    assert extra._douliu_mileage(rows[0]["address"]) is None
+    with pytest.raises(ValueError):
+        extra.parse_douliu_mobile("<p>（一）斗六市測試路100號</p><p>（三）斗六市測試路200號</p>".encode())
+
+
+def test_sound_location_uses_same_verified_geocoder_and_retains_noise_only_rules():
+    from speedcam_data.geocoding_sources import load_geocoder
+    raw = sources.parse_payload((extra.SNAPSHOTS / "173697.raw").read_bytes())
+    tp = extra.parse_tp_noise((extra.SNAPSHOTS / "tp-noise.raw").read_bytes())
+    requests = [dict(city="彰化縣", district=extra.re.match(r".+?[市鄉鎮]", r["測點地址"])[0], address=r["測點地址"])
+                for r in raw]
+    requests += [dict(city="臺北市", district=r["district"], address=r["address"]) for r in tp]
+    geocoder = load_geocoder(requests, offline=True, log=lambda _: None)
+    report = SourceReport()
+    ch_cameras = extra.adapt_173697(raw, report, geocoder)
+    tp_cameras = extra.adapt_tp_noise(tp, report, geocoder)
+    assert len(ch_cameras) == 4 and len(tp_cameras) == 10
+    assert all(c.type == "noise" and not c.enforces_speed and c.speedLimit is None
+               and c.positionMethod == "door" and c.axis is not None and "定位依據" in c.conditions
+               for c in ch_cameras + tp_cameras)
+    assert report.counts["173697"]["locationFailed"] == 5
+    assert report.counts["tp-noise"]["locationFailed"] == 18
+
+
+def test_corrupt_schema_snapshot_and_failed_download_skip_only_that_optional_source(monkeypatch, tmp_path):
+    monkeypatch.setattr(extra, "SNAPSHOTS", tmp_path)
+    (tmp_path / "176549.raw").write_text("wrong\nvalue\n", encoding="utf-8")
+
+    def unavailable(*args, **kwargs):
+        raise OSError("服務逾時")
+
+    monkeypatch.setattr(sources, "http_get", unavailable)
+    logs = []
+    assert extra.load_optional("176549", "https://example.invalid", sources.parse_payload,
+                               lambda rows: extra.adapt_176549(rows, SourceReport()), log=logs.append) == []
+    assert any("快照無法使用" in message for message in logs) and any("未套用" in message for message in logs)
+
+
+def test_douliu_only_single_provincial_mileage_uses_index_and_never_road_or_county_mile_centers():
+    rows = extra.parse_douliu_mobile((extra.SNAPSHOTS / "douliu-mobile.raw").read_bytes())
+    report = SourceReport()
+    cameras = extra.adapt_mobile(rows, "douliu-mobile", report,
+                                 resolve=lambda road, km: (23.7 + km / 10000, 120.5))
+    assert len(cameras) == 5 and all(c.positionMethod == "milestone" and c.speedLimit is None for c in cameras)
+    assert cameras[-1].heading == 180
+    assert not any("154縣道" in c.address or "145乙線" in c.address or "新榮橋" in c.address for c in cameras)
+    assert report.counts["douliu-mobile"]["locationSuccess"] == 5
+
+
+def test_existing_official_point_does_not_bypass_new_same_district_unique_osm_junction_rule():
+    from speedcam_data.geocoding import Geocoder, RoadIndex
+    rows = [dict(district="新店區", address="中正路與中央路口")]
+    official = cam("known", address=rows[0]["address"])
+    report = SourceReport()
+    assert extra.adapt_mobile(rows, "ntpc-mobile", report, junctions=[official],
+                              geocoder=Geocoder([], RoadIndex([]))) == []
+    assert report.location_failures["ntpc-mobile"] == {"road_data_missing": 1}
