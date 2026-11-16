@@ -23,6 +23,7 @@ elif args[:2] == ["simctl", "create"]:
     print("test-device")
 elif args[:2] == ["simctl", "launch"]:
     state["round"] += 1
+    state["launch"] = args
     save()
     for arg in args:
         if arg.startswith("--stderr="):
@@ -43,10 +44,18 @@ elif "log" in args and "show" in args:
         if scenario == "log-error":
             print("simctl 無法讀取 log", file=sys.stderr)
             sys.exit(74)
+        if scenario == "bad-json":
+            print("{broken JSON")
+            sys.exit(0)
         pid = 1000 + state["round"] - (1 if scenario == "old-pid" else 0)
         timestamp = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
         if scenario == "old-time":
             timestamp = "2020-01-01 00:00:00.000000"
+        if scenario == "bad-time":
+            timestamp = "invalid"
+        if scenario in ("old-offset", "offset-time"):
+            timestamp = (dt.datetime.now(dt.timezone(dt.timedelta(hours=14)))
+                         - dt.timedelta(hours=1 if scenario == "old-offset" else 0)).isoformat(" ")
         message = "typing test finished" if scenario != "unfinished" else "typing test started"
         rows = [{"processID": pid, "timestamp": timestamp, "eventMessage": message}]
         match = re.search(r"processID\s*==\s*(\d+)", predicate)
@@ -61,5 +70,14 @@ elif "log" in args and "show" in args:
         else:
             for row in rows:
                 print(f"{row['timestamp']} SpeedCam[{row['processID']}] {row['eventMessage']}")
+    elif 'category == "ui"' in predicate:
+        launch = state.get("launch", [])
+        def argument(name, default):
+            return launch[launch.index(name) + 1] if name in launch else default
+        legacy = "true" if "-legacyUI" in launch else "false"
+        print(f"place selection ready legacy={legacy}")
+        print(f"map comparison ready mode={argument('-routeComparison', 'preview')} "
+              f"style={argument('-routeLineStyle', 'current')} emphasis={argument('-mapEmphasis', 'current')} "
+              f"legacy={legacy} source=demo")
 elif "screenshot" in args:
     Path(args[-1]).write_bytes(b"fake-png")

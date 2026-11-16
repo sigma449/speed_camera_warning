@@ -22,7 +22,8 @@ def run_liveness(tmp_path, script, scenario):
     return bash("-c", command, cwd=tmp_path, env=env)
 
 
-@pytest.mark.parametrize("scenario", ["dies", "old-pid", "old-time", "log-error", "unfinished", "replaced"])
+@pytest.mark.parametrize("scenario", ["dies", "old-pid", "old-time", "log-error", "unfinished", "replaced",
+                                     "bad-time", "old-offset", "bad-json"])
 def test_stress_rejects_missing_current_process_completion(tmp_path, scenario):
     env = fake_simulator(tmp_path, scenario)
     result = bash("scripts/ci/search-stress.sh", "SpeedCam.app", "2", cwd=tmp_path, env=env)
@@ -30,7 +31,7 @@ def test_stress_rejects_missing_current_process_completion(tmp_path, scenario):
     assert (tmp_path / "screenshots" / "stress-1.png").exists()
 
 
-@pytest.mark.parametrize("scenario", ["good", "large", "transient"])
+@pytest.mark.parametrize("scenario", ["good", "large", "transient", "offset-time"])
 def test_stress_accepts_current_round_without_pipefail_false_negative(tmp_path, scenario):
     env = fake_simulator(tmp_path, scenario)
     result = bash("scripts/ci/search-stress.sh", "SpeedCam.app", "2", cwd=tmp_path, env=env)

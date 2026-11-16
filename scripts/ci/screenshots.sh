@@ -4,6 +4,12 @@
 set -euo pipefail
 
 APP_PATH="${1:?用法：screenshots.sh path/to/SpeedCam.app}"
+source "$(dirname "${BASH_SOURCE[0]}")/capture-groups.sh"
+configure_capture "${2:-smoke}"
+if [[ "${CAPTURE_PROFILE}" == none ]]; then
+  echo "本次明確略過截圖，不代表畫面驗收通過"
+  exit 0
+fi
 BUNDLE_ID="tw.speedcammap.app"
 OUT="screenshots"
 mkdir -p "${OUT}"
@@ -34,6 +40,7 @@ if [[ -z "${UDID}" ]]; then
   exit 1
 fi
 echo "使用模擬器 ${UDID}"
+printf '%s\n' "${UDID}" > "${OUT}/simulator-udid.txt"
 
 xcrun simctl boot "${UDID}" || true
 xcrun simctl bootstatus "${UDID}" -b
@@ -99,6 +106,25 @@ shot() {
   return "${status}"
 }
 
+if selected smoke; then
+  launch_app -autoStartCruise NO
+  sleep 8
+  shot "05-normal-launch"
+  launch_app -autoStartCruise NO -settings
+  sleep 8
+  shot "14-settings-language"
+  launch_app -autoStartCruise NO -gallery -galleryBanners -galleryBannerPair camera -galleryWidth 375
+  sleep 8
+  shot "29-banners-navigation-camera-375"
+  launch_app -autoStartCruise NO -gallery -galleryBanners -galleryBannerPair section -galleryWidth 375
+  sleep 8
+  shot "30-banners-navigation-section-375"
+  launch_app -autoStartCruise NO -gallery -galleryStale -galleryLock
+  sleep 8
+  shot "27-stale-activity-lock"
+fi
+
+if selected gallery; then
 # 1) Live Activity 預覽頁
 launch_app -gallery
 sleep 10
@@ -150,7 +176,9 @@ launch_app -autoStartCruise NO -gallery -galleryBanners -galleryBannerPair secti
 sleep 8
 shot "34-banners-navigation-section-large-text-375"
 xcrun simctl ui "${UDID}" content_size large || echo "::warning::無法還原文字大小"
+fi
 
+if selected map; then
 # 2) 展示模式：假軌跡以 62 km/h 往北開，600 m 處有速限 50 的測速照相，1.2 km 處進入區間
 launch_app -demo
 sleep 20
@@ -165,7 +193,9 @@ shot "04-demo-section-countdown"
 launch_app
 sleep 8
 shot "05-normal-launch"
+fi
 
+if selected search; then
 # 4) 搜尋候選：模擬器預設語言、繁體中文、英文（確認搜尋與導航語言的設定有效）
 launch_app -autoStartCruise NO -search "台北車站"
 sleep 14
@@ -220,7 +250,9 @@ PY
 else
   echo "沒有 SpeedCam 的閃退報告"
 fi
+fi
 
+if selected map; then
 # 5) 北宜公路：區間要貼著道路畫（App 會用 Apple 地圖的路線規劃貼齊，近的先做，每段要幾秒）
 launch_app -autoStartCruise NO -mapCenter "24.905,121.695" -mapSpan 0.16
 sleep 45
@@ -285,7 +317,9 @@ shot "25-legacy-preview-white"
 launch_app -legacyUI
 sleep 12
 shot "26-legacy-cruise"
+fi
 
+if selected styles; then
 # 10) 內建示範折線與固定鏡頭的 3×2 對照，不向 Apple 請求路線。
 for style in current whiteCasing darkCasing; do
   for emphasis in current muted; do
@@ -313,7 +347,9 @@ for style in current whiteCasing darkCasing; do
     shot "38-route-legacy-navigation3d-${style}-${emphasis}"
   done
 done
+fi
 
+if selected map; then
 # 11) 選點卡使用正式選點狀態與預覽入口；此參數不代表已測到手勢。
 launch_app -autoStartCruise NO -selectPlace "25.0478,121.5170,台北車站" \
   -AppleLanguages "(zh-Hant-TW)" -AppleLocale zh_TW
@@ -325,13 +361,17 @@ launch_app -legacyUI -autoStartCruise NO -selectPlace "25.0478,121.5170,台北�
 wait_for_ui "place selection ready legacy=true"
 sleep 6
 shot "40-map-selected-place-legacy"
+fi
+if selected gallery; then
 launch_app -autoStartCruise NO -gallery -galleryPlaces
 sleep 8
 shot "41-map-place-card-states-top"
 launch_app -autoStartCruise NO -gallery -galleryPlaces -galleryBottom
 sleep 8
 shot "42-map-place-card-states-bottom"
+fi
 
+if selected map; then
 # IKEA 區間附近同時看 POI、照相點和區間線；導航預覽仍由原有截圖檢查隱藏相機。
 launch_app -autoStartCruise NO -mapCenter "24.9715,121.5300" -mapSpan 0.018
 sleep 15
@@ -339,7 +379,9 @@ shot "43-map-poi-cameras-sections"
 launch_app -legacyUI -autoStartCruise NO -mapCenter "24.9715,121.5300" -mapSpan 0.018
 sleep 15
 shot "44-map-poi-cameras-sections-legacy"
+fi
 
+if selected gallery; then
 for TYPE in mobile tech noise; do
   launch_app -autoStartCruise NO -gallery -galleryBanners -galleryTypes "${TYPE}" -galleryWidth 375
   sleep 2
@@ -348,6 +390,7 @@ for TYPE in mobile tech noise; do
   sleep 2
   shot "46-reminder-activity-${TYPE}"
 done
+fi
 
 # App 的紀錄（確認啟動參數、sheet、地圖範圍、區間貼齊、路線選擇有沒有生效）
 xcrun simctl spawn "${UDID}" log show --last 20m --style compact \

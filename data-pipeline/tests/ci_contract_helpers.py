@@ -26,11 +26,11 @@ def tool(directory, name, body):
     return path
 
 
-def bash(script, *args, cwd, env):
+def bash(script, *args, cwd, env, timeout=60):
     executable = shutil.which("bash")
     assert executable, "CI shell 契約測試需要 bash"
     return subprocess.run([executable, str(script), *map(str, args)], cwd=cwd, env=env,
-                          capture_output=True, encoding="utf-8", errors="replace", timeout=60)
+                          capture_output=True, encoding="utf-8", errors="replace", timeout=timeout)
 
 
 def fake_simulator(tmp_path, scenario):

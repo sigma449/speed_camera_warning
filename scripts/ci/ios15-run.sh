@@ -4,6 +4,16 @@
 set -euo pipefail
 
 APP_PATH="${1:?用法：ios15-run.sh path/to/SpeedCam.app}"
+source "$(dirname "${BASH_SOURCE[0]}")/capture-groups.sh"
+configure_capture "${2:-smoke}"
+if [[ "${CAPTURE_PROFILE}" == none ]]; then
+  echo "本次明確略過截圖，不代表畫面驗收通過"
+  exit 0
+fi
+if [[ "${CAPTURE_PROFILE}" == gallery ]]; then
+  echo "iOS 15 沒有 Live Activity 預覽；此情境改驗一般啟動與設定頁"
+  CAPTURE_PROFILE=smoke
+fi
 BUNDLE_ID="tw.speedcammap.app"
 OUT="screenshots"
 mkdir -p "${OUT}"
@@ -11,6 +21,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/simulator-checks.sh"
 
 UDID=$(xcrun simctl create "iPhone 7 iOS 15" com.apple.CoreSimulator.SimDeviceType.iPhone-7 com.apple.CoreSimulator.SimRuntime.iOS-15-5)
 echo "模擬器 ${UDID}"
+printf '%s\n' "${UDID}" > "${OUT}/simulator-udid.txt"
 xcrun simctl boot "${UDID}"
 xcrun simctl bootstatus "${UDID}" -b
 xcrun simctl install "${UDID}" "${APP_PATH}"
@@ -91,12 +102,15 @@ PY
   return 1
 }
 
+if selected smoke || selected map; then
 # 1) 一般啟動：自動巡航（CLLocationManager 定位）、MKMapView
 launch_app
 sleep 25
 assert_running "一般啟動"
 shot "ios15-01-cruise"
+fi
 
+if selected map; then
 # 2) 展示模式：假軌跡以 62 km/h 往北開，會碰到照相點提醒、超速、區間倒數
 launch_app -demo
 sleep 22
@@ -107,13 +121,17 @@ shot "ios15-03-demo-near"
 sleep 60
 assert_running "展示模式（區間倒數）"
 shot "ios15-04-demo-section"
+fi
 
+if selected smoke || selected map; then
 # 3) 設定頁（NavigationView、LabeledValue，沒有 Live Activity 那一段）
 launch_app -autoStartCruise NO -settings
 sleep 10
 assert_running "設定頁"
 shot "ios15-05-settings"
+fi
 
+if selected search; then
 # 4) 搜尋候選
 launch_app -autoStartCruise NO -search "台北車站" -AppleLanguages "(zh-Hant-TW)" -AppleLocale zh_TW
 sleep 15
@@ -121,11 +139,15 @@ assert_running "搜尋"
 shot "ios15-06-search"
 
 # 5) 搜尋壓力測試：反覆輸入、刪除約 45 秒
+STRESS_START=$(date "+%Y-%m-%d %H:%M:%S")
 launch_app -autoStartCruise NO -AppleLanguages "(zh-Hant-TW)" -AppleLocale zh_TW -typeSearch "台北車站"
 sleep 55
 assert_running "搜尋壓力測試"
 shot "ios15-07-search-stress"
+check_search_finished ios15 "${STRESS_START}"
+fi
 
+if selected map; then
 # 6) 北宜區間：MKMapView 上畫區間
 launch_app -autoStartCruise NO -mapCenter "24.905,121.695" -mapSpan 0.16
 sleep 30
@@ -149,7 +171,9 @@ launch_app -autoStartCruise NO -vehicleMode motorcycleWhite -previewTo "24.8016,
 sleep 10
 assert_running "機車導航預覽"
 shot "ios15-13-preview-white"
+fi
 
+if selected styles; then
 # iOS 15 的 muted 參數應維持原底圖，白色路線描邊仍可用。
 launch_app -autoStartCruise NO -routeStyleDemo \
   -routeLineStyle whiteCasing -mapEmphasis muted -routeComparison preview
@@ -163,13 +187,16 @@ launch_app -autoStartCruise NO -routeStyleDemo \
 wait_for_ui "map comparison ready mode=navigation3D style=whiteCasing emphasis=muted legacy=true source=demo"
 sleep 6
 shot "ios15-16-route-navigation3d-fallback"
+fi
 
+if selected map; then
 launch_app -autoStartCruise NO -selectPlace "25.0478,121.5170,台北車站" \
   -AppleLanguages "(zh-Hant-TW)" -AppleLocale zh_TW
 wait_for_ui "place selection ready legacy=true"
 sleep 6
 assert_running "地圖選點卡"
 shot "ios15-15-map-selected-place"
+fi
 
 xcrun simctl spawn "${UDID}" log show --last 20m --style compact \
   --predicate 'subsystem == "tw.speedcammap.app"' 2>/dev/null | grep -E "arguments|appeared|applied|opened|preview|typing|route plan|road_lines" | tail -60 || true

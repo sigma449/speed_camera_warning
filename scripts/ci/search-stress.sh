@@ -37,6 +37,7 @@ if [[ -z "${UDID}" ]]; then
   exit 1
 fi
 echo "使用模擬器 ${UDID}"
+printf '%s\n' "${UDID}" > "${OUT}/simulator-udid.txt"
 xcrun simctl boot "${UDID}" || true
 xcrun simctl bootstatus "${UDID}" -b > /dev/null
 xcrun simctl install "${UDID}" "${APP_PATH}"

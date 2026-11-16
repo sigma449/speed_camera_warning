@@ -29,6 +29,7 @@ check_search_finished() {
       --predicate "subsystem == \"tw.speedcammap.app\" AND category == \"search\" AND processID == ${APP_PID}" 2>&1); then
       printf '%s\n' "${output}" > "${OUT}/search-${tag}.json"
       if python3 - "${OUT}/search-${tag}.json" "${APP_PID}" "${start}" <<'PY'
+import datetime as dt
 import json, sys
 from pathlib import Path
 try:
@@ -38,9 +39,22 @@ except (OSError, ValueError) as exc:
     sys.exit(1)
 if not isinstance(rows, list):
     sys.exit("搜尋紀錄不是事件陣列")
-matched = any(isinstance(row, dict) and row.get("processID") == int(sys.argv[2])
-              and str(row.get("timestamp", "")).replace("T", " ")[:19] >= sys.argv[3]
-              and "typing test finished" in row.get("eventMessage", "") for row in rows)
+started = dt.datetime.fromisoformat(sys.argv[3]).astimezone()
+def completed(row):
+    if not isinstance(row, dict) or type(row.get("processID")) is not int or row["processID"] != int(sys.argv[2]):
+        return False
+    message = row.get("eventMessage")
+    if not isinstance(message, str) or "typing test finished" not in message:
+        return False
+    timestamp = row.get("timestamp")
+    try:
+        if not isinstance(timestamp, str):
+            raise ValueError("缺少時間字串")
+        return dt.datetime.fromisoformat(timestamp.replace("Z", "+00:00")).astimezone() >= started
+    except ValueError as exc:
+        print(f"完成紀錄時間無效：{timestamp}（{exc}）", file=sys.stderr)
+        return False
+matched = any(completed(row) for row in rows)
 sys.exit(0 if matched else 1)
 PY
       then
