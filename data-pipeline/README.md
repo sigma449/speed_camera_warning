@@ -21,6 +21,32 @@ python3 -m pytest -q                     # 測試
 - **去重複**：約 11 m 內、同方向視為同一支；ID 由位置與方向產生，資料順序改變也不會變。
 - **沒有變動就不改檔**：避免每週自動更新只因日期不同就開 PR。
 
+## 官方新公告監看（H8，只列待核，不自動入庫）
+
+`watch_announcements.py`只用標準函式庫，抓官方新聞／公告的標題，
+以可調關鍵字交叉篩選新增／移除／調整設備消息。輸出機關、日期、連結、地點文字、
+類型及「可能已收／可能未收／無法判斷」提示，**不產座標、不寫相機JSON或人工CSV**。
+完整入口／格式／網站再利用宣告與失敗界線見
+[官方入口調查與用法](../docs/announcement_sources.md)，
+首份實際近一年結果見 [待核清單](../docs/announcements_pending.md)。
+
+從repo根目錄執行，資料路徑改成手上完整的 `cameras.json`，不可用空佔位檔證明未收：
+
+```powershell
+python -I -X utf8 data-pipeline\watch_announcements.py --cameras build\ci-data\cameras.json --output-dir build\announcements
+```
+
+預設查近365天，產出CSV、Markdown、JSON與原頁證據。
+`announcement_sources.json`設定入口、查詢詞、交叉關鍵字與流量上限；
+`--source ID`可重複限定來源，`--since`／`--until`可指定日期。
+`announcements_seen.json`隨repo保存「已列過」指紋，**不等於人工核准**；
+僅 `--update-seen`才更新，內文失敗的不標已見、下次重試。
+
+既有每週 `Refresh camera data` 在資料驗證後執行監看，將新公告附到同一份資料PR，
+不另開issue；沒有新公告不加段落、不改已見索引。PR會保存新的已見索引，
+所以只有公告、資料未變也能送待核PR；CSV／原始證據留在 `ci-data` artifact。
+單入口失敗會警告而不擋其他入口；資料建置本身失敗時仍維持既有閘門、不開PR。
+
 ## 第二階段 F：官方設備與嚴格公告定位（2026-11-13）
 
 已重新下載原檔、核欄位與授權，新增19個原生座標適配器，並共用門牌／燈桿／路口定位。

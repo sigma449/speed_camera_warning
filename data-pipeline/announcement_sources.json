@@ -1,0 +1,183 @@
+{
+  "schema_version": 1,
+  "search_terms": ["測速", "科技執法", "照相"],
+  "requests": {"timeout": 12, "interval": 1.0, "max_requests": 12, "max_pages": 2, "max_details": 4},
+  "keywords": {
+    "subjects": ["測速", "照相", "區間", "科技執法", "固定桿", "科學儀器"],
+    "changes": {
+      "新增": ["新增", "新設", "增設", "增加", "增建", "再增", "啟用", "上路", "建置"],
+      "移除": ["移除", "拆除", "撤除", "停用", "停止執法", "廢止"],
+      "調整": ["調整", "移設", "遷移", "變更", "修正", "恢復", "重新", "測試", "試辦", "導入"]
+    },
+    "exclude": []
+  },
+  "sources": [
+    {
+      "id": "npa",
+      "agency": "內政部警政署各警察機關新聞發布",
+      "url": "https://www.npa.gov.tw/ch/app/news/list?module=news&id=2139",
+      "parser": "npa",
+      "license_url": "https://www.npa.gov.tw/ch/app/artwebsite/view?module=artwebsite&id=895&serno=1057af14-0d7d-464c-836a-0856d014cc9a",
+      "reuse": "明列政府資料開放授權條款第1版，須署名；第三人／特別聲明作品例外"
+    },
+    {
+      "id": "highway",
+      "agency": "國道公路警察局",
+      "url": "https://www.hpb.npa.gov.tw/ch/app/news/list?module=news&id=2589",
+      "parser": "npa",
+      "license_url": "https://www.hpb.npa.gov.tw/ch/app/artwebsite/view?module=artwebsite&id=1626&serno=b6573a28-8f45-4240-a103-6ae7f0b6d2d1",
+      "reuse": "網站宣告無償、非專屬、可再授權及署名；不把宣告擴及第三人素材"
+    },
+    {
+      "id": "taipei",
+      "agency": "臺北市政府警察局",
+      "city": "臺北市",
+      "url": "https://police.gov.taipei/News.aspx?n=0B762199E50C4AB2&sms=72544237BBE4C5F6",
+      "parser": "ccms",
+      "search_field": "jNewsModule_field_0",
+      "license_url": "https://police.gov.taipei/ct.asp?xItem=3580330&ctNode=45108&mp=108001",
+      "reuse": "市警局宣告明列政府1.0（交通大隊頁本輪已讀）；總局舊網址重新導向仍須人工留意"
+    },
+    {
+      "id": "taipei-traffic",
+      "agency": "臺北市政府警察局交通警察大隊",
+      "city": "臺北市",
+      "url": "https://td.police.gov.taipei/News.aspx?n=B19CFD7B4346611D&sms=72544237BBE4C5F6",
+      "parser": "ccms",
+      "search_field": "jNewsModule_field_0",
+      "license_url": "https://td.police.gov.taipei/cp.aspx?n=663DF4636E6DE905",
+      "reuse": "明列政府1.0，須署名；第三人／特別聲明作品例外"
+    },
+    {
+      "id": "shilin",
+      "agency": "臺北市政府警察局士林分局",
+      "city": "臺北市",
+      "url": "https://sl.police.gov.taipei/News.aspx?n=DFCA74AF8B331102&sms=72544237BBE4C5F6",
+      "urls": [
+        "https://sl.police.gov.taipei/News.aspx?n=DFCA74AF8B331102&sms=72544237BBE4C5F6",
+        "https://sl.police.gov.taipei/News.aspx?n=E4D4910E69FECF79&sms=78D644F2755ACCAA"
+      ],
+      "parser": "ccms",
+      "search_field": "jNewsModule_field_0",
+      "license_url": "https://sl.police.gov.taipei/News_Content.aspx?n=BE3592E911315926&sms=B64E1E4E3A6BD0D3&s=8C1720C18F3E7BD8",
+      "reuse": "士林分局自己的宣告允無償、非專屬、再授權及署名；第三人／特別聲明例外"
+    },
+    {
+      "id": "ntpc-traffic",
+      "agency": "新北市政府警察局交通警察大隊",
+      "city": "新北市",
+      "url": "https://www.traffic.police.ntpc.gov.tw/lp-909-27.html",
+      "urls": [
+        "https://www.traffic.police.ntpc.gov.tw/lp-909-27.html",
+        "https://www.traffic.police.ntpc.gov.tw/lp-1084-27.html",
+        "https://www.traffic.police.ntpc.gov.tw/lp-3313-27.html"
+      ],
+      "parser": "ntpc",
+      "license_url": "https://www.traffic.police.ntpc.gov.tw/cp-996-14693-27.html",
+      "reuse": "網站宣告無償、非專屬、可再授權及署名；轉載／附件另核原權利"
+    },
+    {
+      "id": "xindian",
+      "agency": "新北市政府警察局新店分局",
+      "city": "新北市",
+      "url": "https://www.xindian.police.ntpc.gov.tw/lp-168-16.html",
+      "parser": "ntpc",
+      "license_url": "https://www.xindian.police.ntpc.gov.tw/cp-980-14693-16.html",
+      "reuse": "分局頁宣告無償、非專屬、可再授權及署名；第三人／特別聲明例外"
+    },
+    {
+      "id": "taoyuan",
+      "agency": "桃園市政府警察局",
+      "city": "桃園市",
+      "url": "https://www.typd.gov.tw/index.php?catid=29",
+      "parser": "ccms",
+      "license_url": "",
+      "reuse": "未核：本機首頁與公告入口均逾時，不繞過、不推定網站授權",
+      "requests": {"max_requests": 1}
+    },
+    {
+      "id": "taichung",
+      "agency": "臺中市政府警察局",
+      "city": "臺中市",
+      "url": "https://www.police.taichung.gov.tw/ch/home.jsp?id=10&parentpath=0,1",
+      "parser": "taichung",
+      "license_url": "https://www.police.taichung.gov.tw/ch/home.jsp?id=69&parentpath=0,9",
+      "reuse": "明列政府1.0，須署名；第三人／特別聲明作品例外"
+    },
+    {
+      "id": "tainan",
+      "agency": "臺南市政府警察局",
+      "city": "臺南市",
+      "url": "https://www.tnpd.gov.tw/News/a71f1b44-1f96-8a48-caa5-fe08e13047ee/1",
+      "parser": "tnpd",
+      "requests": {"max_pages": 6},
+      "license_url": "https://www.tnpd.gov.tw/Article/412894e9-5b63-bbd5-29ef-a93a549cb0bb",
+      "reuse": "網站宣告無償、非專屬、可再授權及署名；第三人／特別聲明例外"
+    },
+    {
+      "id": "tainan-traffic",
+      "agency": "臺南市政府警察局交通警察大隊",
+      "city": "臺南市",
+      "url": "https://www.tnpd.gov.tw/traffic/News/Index/cac900f8-8588-ac3f-a408-7c928310cb0c?sClass=1",
+      "parser": "tnpd",
+      "license_url": "https://www.tnpd.gov.tw/Article/412894e9-5b63-bbd5-29ef-a93a549cb0bb",
+      "reuse": "交通大隊頁尾連回市警局再利用宣告；同上例外"
+    },
+    {
+      "id": "kaohsiung",
+      "agency": "高雄市政府警察局",
+      "city": "高雄市",
+      "url": "https://kcpd.kcg.gov.tw/News.aspx?n=301858D950E8FB8E&sms=FC374298B757EFB3&PageSize=200",
+      "parser": "ccms",
+      "requests": {"timeout": 20},
+      "license_url": "https://kcpd.kcg.gov.tw/cp.aspx?n=3E7457DB80D492BC",
+      "reuse": "新官網明列政府1.0，須署名；第三人／特別聲明作品例外；舊 kmph 域名不可用"
+    },
+    {
+      "id": "kaohsiung-traffic",
+      "agency": "高雄市政府警察局交通警察大隊",
+      "city": "高雄市",
+      "url": "https://kcpd-tpc.kcg.gov.tw/News.aspx?n=241A1D9AB49C3E9E&sms=254AA0F1C0476E9E&PageSize=200",
+      "parser": "ccms",
+      "requests": {"timeout": 20},
+      "license_url": "https://kcpd-tpc.kcg.gov.tw/Content_List.aspx?n=68582E452223D639",
+      "reuse": "宣告允無償、非專屬、再授權及署名，但內文誤植國發會名稱，適用範圍仍存疑；只摘事實性索引"
+    },
+    {
+      "id": "keelung",
+      "agency": "基隆市警察局",
+      "city": "基隆市",
+      "url": "https://www.klg.gov.tw/cht/index.php?code=list&ids=21",
+      "urls": [
+        "https://www.klg.gov.tw/cht/index.php?code=list&ids=21",
+        "https://www.klg.gov.tw/cht/index.php?code=list&ids=22"
+      ],
+      "parser": "keelung",
+      "license_url": "https://www.klg.gov.tw/cht/index.php?code=list&ids=340",
+      "reuse": "僅找到隱私政策，未找到明確網站再利用授權；只摘事實性標題／日期／連結，不重刊全文"
+    },
+    {
+      "id": "yilan",
+      "agency": "宜蘭縣政府警察局",
+      "city": "宜蘭縣",
+      "url": "https://www.ilcpb.gov.tw/News.aspx?n=19610&sms=17012",
+      "urls": [
+        "https://www.ilcpb.gov.tw/News.aspx?n=19610&sms=17012",
+        "https://www.ilcpb.gov.tw/News.aspx?n=19609&sms=17011"
+      ],
+      "parser": "ccms",
+      "search_field": "jNewsModule_field_2",
+      "license_url": "https://www.ilcpb.gov.tw/cp.aspx?n=16413",
+      "reuse": "宣告明列政府1.0，但內文仍寫警政署網站；宜蘭原創內容適用範圍存疑，只摘事實性索引"
+    },
+    {
+      "id": "changhua",
+      "agency": "彰化縣警察局",
+      "city": "彰化縣",
+      "url": "https://www.chpb.gov.tw/Announcement/C002100?PageType=0",
+      "parser": "changhua",
+      "license_url": "https://www.chpb.gov.tw/StaticPage/opendata",
+      "reuse": "明列政府1.0，須署名；第三人／特別聲明作品例外"
+    }
+  ]
+}
