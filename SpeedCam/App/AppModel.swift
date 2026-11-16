@@ -226,6 +226,7 @@ final class AppModel: ObservableObject {
     }
 
     func sceneBecameActive() {
+        if isCruising && !demoMode { location.restartIfNeeded() }
         restartLiveActivityIfNeeded()
     }
 
@@ -260,6 +261,7 @@ final class AppModel: ObservableObject {
 
     private func tick() {
         guard isCruising else { return }
+        if !demoMode { location.restartIfNeeded() }
         restartLiveActivityIfNeeded()
         // 隧道裡沒有定位：照相提醒、區間倒數和語音都依時間繼續
         let now = Date()
