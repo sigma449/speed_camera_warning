@@ -1,0 +1,106 @@
+name: 共用 Linux 測試
+
+on:
+  workflow_call:
+    inputs:
+      manifest-sha:
+        type: string
+        required: true
+    outputs:
+      core-result:
+        value: ${{ jobs.core-tests.result }}
+      python-result:
+        value: ${{ jobs.pipeline-tests.result }}
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  core-tests:
+    runs-on: ubuntu-latest
+    container: swift:6.2-noble
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          name: ci-data
+          path: build/ci-data
+      - name: 安裝與發布相同的測試資料
+        env:
+          COMMIT: ${{ github.sha }}
+          MANIFEST_SHA: ${{ inputs.manifest-sha }}
+        run: |
+          python3 scripts/ci/data-bundle.py verify --commit "${COMMIT}" --manifest-sha "${MANIFEST_SHA}" \
+            --release --install SpeedCam/Resources/cameras.json
+      - name: Swift 核心與實際本輪全部區間
+        env:
+          SPEEDCAM_CURRENT_DATABASE_REQUIRED: "1"
+        run: |
+          mkdir -p build/evidence/core-tests
+          set -o pipefail
+          swift test --package-path Packages/SpeedCamCore 2>&1 | tee build/evidence/core-tests/swift.log
+      - name: RouteProbe 可取消期限契約
+        run: |
+          swiftc -swift-version 5 -parse-as-library scripts/ci/request-deadline.swift \
+            data-pipeline/tests/fixtures/ci/probe-deadline.swift -o build/probe-deadline-tests
+          set -o pipefail
+          build/probe-deadline-tests 2>&1 | tee build/evidence/core-tests/deadline.log
+      - name: 記錄結果
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+          COMMIT: ${{ github.sha }}
+          MANIFEST_SHA: ${{ inputs.manifest-sha }}
+        run: python3 scripts/ci/ci-results.py record --job core-tests --status "${JOB_STATUS}"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: core-tests-evidence
+          path: build/evidence/core-tests/
+  pipeline-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          name: ci-data
+          path: build/ci-data
+      - name: 核對同一份資料
+        env:
+          COMMIT: ${{ github.sha }}
+          MANIFEST_SHA: ${{ inputs.manifest-sha }}
+        run: python3 scripts/ci/data-bundle.py verify --commit "${COMMIT}" --manifest-sha "${MANIFEST_SHA}" --release
+      - run: pip install -r data-pipeline/requirements-dev.txt
+      - name: Python 與假 simctl／固定小 log 契約
+        run: |
+          mkdir -p build/evidence/pipeline-tests
+          set -o pipefail
+          python -m pytest -q data-pipeline 2>&1 | tee build/evidence/pipeline-tests/pytest.log
+      - name: 記錄結果
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+          COMMIT: ${{ github.sha }}
+          MANIFEST_SHA: ${{ inputs.manifest-sha }}
+        run: python3 scripts/ci/ci-results.py record --job pipeline-tests --status "${JOB_STATUS}"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-tests-evidence
+          path: build/evidence/pipeline-tests/

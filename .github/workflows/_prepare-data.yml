@@ -1,0 +1,48 @@
+name: 共用資料準備
+
+on:
+  workflow_call:
+    inputs:
+      require-release:
+        type: boolean
+        default: false
+    outputs:
+      manifest-sha:
+        value: ${{ jobs.prepare.outputs.manifest-sha }}
+      data-sha:
+        value: ${{ jobs.prepare.outputs.data-sha }}
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      manifest-sha: ${{ steps.bundle.outputs.manifest-sha }}
+      data-sha: ${{ steps.bundle.outputs.data-sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: 本輪只下載與整理一次
+        id: bundle
+        env:
+          COMMIT: ${{ github.sha }}
+          REQUIRE_RELEASE: ${{ inputs.require-release }}
+        run: |
+          args=()
+          if [[ "${REQUIRE_RELEASE}" == true ]]; then args+=(--release); fi
+          python3 scripts/ci/data-bundle.py prepare --commit "${COMMIT}" "${args[@]}"
+      - name: 保留資料、來源與完整建置報告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-data
+          path: build/ci-data/
+          retention-days: 7
+          if-no-files-found: warn

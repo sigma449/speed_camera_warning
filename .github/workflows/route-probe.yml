@@ -1,47 +1,38 @@
 name: 路線實測
 
-# 用真正的 MapKit 規劃台灣的路線。不需要建置 App，幾分鐘就跑完。結果在 log 和 artifact route-probe。
-# - plan：用 App 的選路程式，看汽車、紅黃牌、白牌實際選到哪條路
-# - compare：比較不同避開設定 Apple 回傳的路線（要知道 Apple 怎麼分類道路時用）
-# - replay：沿著 Apple 的路線模擬開車，用真實的照相點和區間資料，印出每個提醒的位置（cases 用 scripts/ci/route-replay-1107.json）
 on:
   workflow_dispatch:
     inputs:
       mode:
-        description: plan、compare 或 replay
+        description: plan 規劃、compare 避開設定對照、replay 模擬開車並驗收
+        type: choice
+        options: [plan, compare, replay]
         default: plan
       cases:
-        description: 路線清單
+        description: scripts/ci 內的案例 JSON（保留自訂清單用法）
         default: scripts/ci/route-probe-cases.json
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: probe-${{ github.ref }}-${{ inputs.mode }}-${{ inputs.cases }}
+  cancel-in-progress: true
 
 jobs:
+  data:
+    if: inputs.mode == 'replay'
+    uses: ./.github/workflows/_prepare-data.yml
+    with:
+      require-release: true
   probe:
-    runs-on: macos-26
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v5
-      - name: 選擇 Xcode
-        run: bash scripts/ci/select-xcode.sh
-      - name: 下載測速資料（只有 replay 需要）
-        if: github.event.inputs.mode == 'replay'
-        run: |
-          mkdir -p build
-          set -o pipefail
-          python3 data-pipeline/build_cameras.py --min-count 500 2>&1 | tee build/data-build.log
-      - name: 路線實測
-        timeout-minutes: 20
-        env:
-          DATA_BUILD_LOG: build/data-build.log
-        run: bash scripts/ci/route-probe.sh "${{ github.event.inputs.mode }}" "${{ github.event.inputs.cases }}" route-probe-results.jsonl
-      - name: 保留結果
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: route-probe
-          path: |
-            route-probe-results.jsonl
-            build/data-build.log
-            build/route-probe/*.log
-            build/route-probe/checker-result.json
-          retention-days: 30
-          if-no-files-found: ignore
+    needs: [data]
+    if: ${{ !cancelled() && (inputs.mode != 'replay' || needs.data.result == 'success') }}
+    uses: ./.github/workflows/_macos.yml
+    with:
+      task: probe
+      label: route-probe
+      mode: ${{ inputs.mode }}
+      cases: ${{ inputs.cases }}
+      manifest-sha: ${{ needs.data.outputs.manifest-sha }}

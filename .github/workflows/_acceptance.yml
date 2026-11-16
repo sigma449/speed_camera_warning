@@ -1,0 +1,118 @@
+name: 同 commit 與同資料完整驗收
+
+on:
+  workflow_call:
+    inputs:
+      screenshots:
+        type: string
+        default: full
+      print-screenshots:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  data:
+    uses: ./.github/workflows/_prepare-data.yml
+    with:
+      require-release: true
+  tests:
+    needs: [data]
+    uses: ./.github/workflows/_tests.yml
+    with:
+      manifest-sha: ${{ needs.data.outputs.manifest-sha }}
+  ios26:
+    needs: [data, tests]
+    uses: ./.github/workflows/_macos.yml
+    with:
+      task: ios26
+      label: ios26
+      manifest-sha: ${{ needs.data.outputs.manifest-sha }}
+      screenshots: ${{ inputs.screenshots }}
+      print-screenshots: ${{ inputs.print-screenshots }}
+      acceptance: true
+  ios15:
+    needs: [data, tests]
+    uses: ./.github/workflows/_macos.yml
+    with:
+      task: ios15
+      label: ios15
+      manifest-sha: ${{ needs.data.outputs.manifest-sha }}
+      screenshots: ${{ inputs.screenshots }}
+      print-screenshots: ${{ inputs.print-screenshots }}
+      acceptance: true
+  replay-1108:
+    needs: [data, tests]
+    uses: ./.github/workflows/_macos.yml
+    with:
+      task: probe
+      label: replay-1108
+      mode: replay
+      cases: scripts/ci/route-replay-1108.json
+      manifest-sha: ${{ needs.data.outputs.manifest-sha }}
+      acceptance: true
+  replay-1107:
+    needs: [data, tests]
+    uses: ./.github/workflows/_macos.yml
+    with:
+      task: probe
+      label: replay-1107
+      mode: replay
+      cases: scripts/ci/route-replay-1107.json
+      manifest-sha: ${{ needs.data.outputs.manifest-sha }}
+      acceptance: true
+  replay-tunnels:
+    needs: [data, tests]
+    uses: ./.github/workflows/_macos.yml
+    with:
+      task: probe
+      label: replay-tunnels
+      mode: replay
+      cases: scripts/ci/route-replay-tunnels.json
+      manifest-sha: ${{ needs.data.outputs.manifest-sha }}
+      acceptance: true
+  ipa:
+    needs: [data, tests, ios26, ios15, replay-1108, replay-1107, replay-tunnels]
+    uses: ./.github/workflows/_macos.yml
+    with:
+      task: ipa
+      label: ipa
+      manifest-sha: ${{ needs.data.outputs.manifest-sha }}
+      acceptance: true
+  summary:
+    if: always()
+    needs: [data, tests, ios26, ios15, replay-1108, replay-1107, replay-tunnels, ipa]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: 取得本輪資料證據
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: ci-data
+          path: build/summary/ci-data
+      - name: 取得各 job 與檢查器證據
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "*-evidence"
+          path: build/summary/evidence
+      - name: 嚴格彙總到 GITHUB_STEP_SUMMARY
+        env:
+          COMMIT: ${{ github.sha }}
+          MANIFEST_SHA: ${{ needs.data.outputs.manifest-sha }}
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: python3 scripts/ci/ci-results.py summary --scope acceptance
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: acceptance-summary
+          path: build/summary/
+          retention-days: 30

@@ -1,0 +1,128 @@
+name: 共用 macOS 工作
+
+on:
+  workflow_call:
+    inputs:
+      task:
+        type: string
+        required: true
+      label:
+        type: string
+        required: true
+      manifest-sha:
+        type: string
+        default: ""
+      screenshots:
+        type: string
+        default: smoke
+      print-screenshots:
+        type: boolean
+        default: false
+      mode:
+        type: string
+        default: plan
+      cases:
+        type: string
+        default: scripts/ci/route-probe-cases.json
+      runs:
+        type: string
+        default: "3"
+      acceptance:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: macos-26
+    timeout-minutes: ${{ inputs.task == 'ios15' && 60 || 45 }}
+    env:
+      CI_TASK: ${{ inputs.task }}
+      CI_LABEL: ${{ inputs.label }}
+      COMMIT: ${{ github.sha }}
+      MANIFEST_SHA: ${{ inputs.manifest-sha }}
+      CAPTURE_SCENARIOS: ${{ inputs.screenshots }}
+      PROBE_MODE: ${{ inputs.mode }}
+      PROBE_CASES: ${{ inputs.cases }}
+      STRESS_RUNS: ${{ inputs.runs }}
+      ACCEPTANCE: ${{ inputs.acceptance }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        if: inputs.task != 'stress' && (inputs.task != 'probe' || inputs.mode == 'replay')
+        with:
+          name: ci-data
+          path: build/ci-data
+      - name: 核對並安裝本輪資料，不重新下載
+        if: inputs.task != 'stress' && (inputs.task != 'probe' || inputs.mode == 'replay')
+        run: |
+          args=()
+          if [[ "${CI_TASK}" == ipa ]]; then args+=(--release); fi
+          python3 scripts/ci/data-bundle.py verify --commit "${COMMIT}" --manifest-sha "${MANIFEST_SHA}" \
+            --install SpeedCam/Resources/cameras.json "${args[@]}"
+      - name: 選擇 Xcode
+        run: |
+          mkdir -p "build/evidence/${CI_LABEL}"
+          set -o pipefail
+          bash scripts/ci/select-xcode.sh 2>&1 | tee "build/evidence/${CI_LABEL}/xcode-selection.log"
+      - name: 建置與執行指定工作
+        timeout-minutes: ${{ inputs.task == 'ios15' && 50 || 35 }}
+        run: |
+          set -o pipefail
+          bash scripts/ci/macos-job.sh 2>&1 | tee "build/evidence/${CI_LABEL}/run.log"
+      - name: 收集完整診斷與結果
+        if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
+        run: |
+          python3 scripts/ci/collect-diagnostics.py --label "${CI_LABEL}"
+          python3 scripts/ci/ci-results.py record --job "${CI_LABEL}" --status "${JOB_STATUS}"
+      - name: 可選的 base64 縮圖
+        if: always() && inputs.print-screenshots
+        run: bash scripts/ci/print-screenshots.sh screenshots
+      - name: 原始截圖與搜尋輸出
+        if: always() && (inputs.task == 'ios26' || inputs.task == 'ios15' || inputs.task == 'stress')
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.task == 'ios15' && 'ios15-screenshots' || inputs.task == 'stress' && 'search-stress' || 'screenshots' }}
+          path: screenshots/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: 全部成功或失敗證據
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.label }}-evidence
+          path: |
+            build/evidence/${{ inputs.label }}/
+            build/route-probe/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: ODbL 完整機讀資料、來源與處理程式
+        if: inputs.task == 'ipa' && success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SpeedCam-data
+          path: |
+            build/ci-data/
+            data-pipeline/
+            !data-pipeline/**/__pycache__/**
+            docs/data_sources_survey.md
+          retention-days: 30
+      - name: 已通過資料閘門的 IPA
+        if: inputs.task == 'ipa' && success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SpeedCam-ipa
+          path: |
+            build/ipa/SpeedCam.ipa
+            build/ipa/SpeedCam.manifest.json
+            build/ci-data/manifest.json
+          retention-days: 30

@@ -1,8 +1,5 @@
 name: Refresh camera data
 
-# 每週一凌晨（台灣時間 02:17）下載政府開放資料，有變動就開 PR。
-# 需要在 repo 設定開啟：Settings → Actions → General →
-# 「Allow GitHub Actions to create and approve pull requests」。
 on:
   schedule:
     - cron: "17 18 * * 0"
@@ -12,25 +9,51 @@ permissions:
   contents: write
   pull-requests: write
 
+concurrency:
+  group: data-refresh-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   refresh:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - name: 下載並整理測速資料
-        run: python3 data-pipeline/build_cameras.py --min-count 500
+      - name: 準備本輪多來源完整資料
+        id: bundle
+        env:
+          COMMIT: ${{ github.sha }}
+        run: python3 scripts/ci/data-bundle.py prepare --commit "${COMMIT}" --release
+      - name: 核對、安裝資料並產生來源／授權／回退說明
+        env:
+          COMMIT: ${{ github.sha }}
+          MANIFEST_SHA: ${{ steps.bundle.outputs.manifest-sha }}
+        run: |
+          python3 scripts/ci/data-bundle.py verify --commit "${COMMIT}" --manifest-sha "${MANIFEST_SHA}" \
+            --release --install SpeedCam/Resources/cameras.json
+          python3 scripts/ci/data-pr-body.py --commit "${COMMIT}" --manifest-sha "${MANIFEST_SHA}"
       - name: 開 PR
         uses: peter-evans/create-pull-request@v7
         with:
-          commit-message: 更新測速照相資料
+          base: ${{ github.ref_name }}
+          commit-message: 更新多來源測速照相資料
           branch: data/refresh
           delete-branch: true
-          title: 更新測速照相資料
-          body: |
-            由「Refresh camera data」流程自動產生。
-            資料來源：內政部警政署「測速執法設置點」（政府資料開放授權條款－第1版）。
-            合併後重新執行「Build IPA」即可把新資料打包進 App。
+          title: 更新多來源測速照相資料
+          body-path: build/data-pr-body.md
           add-paths: SpeedCam/Resources/cameras.json
+      - name: 保留本輪資料與原始建置證據
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-data
+          path: |
+            build/ci-data/
+            build/data-pr-body.md
+          if-no-files-found: warn
+          retention-days: 14

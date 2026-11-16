@@ -5,69 +5,96 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      full:
+        description: 強制完整 CI（覆寫純文件分流）
+        type: boolean
+        default: false
+      screenshots:
+        type: choice
+        options: [auto, smoke, gallery, map, search, full, styles, all, none]
+        default: auto
+      print-screenshots:
+        description: 將 base64 縮圖印入 log（一般請下載 artifact）
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  core-tests:
-    name: 核心邏輯測試（Swift，Linux）
+  changes:
     runs-on: ubuntu-latest
-    container: swift:6.2-noble
+    outputs:
+      full: ${{ steps.classify.outputs.full }}
+      screenshots: ${{ steps.classify.outputs.screenshots }}
     steps:
       - uses: actions/checkout@v5
-      - name: swift test
-        run: swift test --package-path Packages/SpeedCamCore
-
-  pipeline-tests:
-    name: 資料處理測試（Python）
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
-      - run: pip install -r data-pipeline/requirements-dev.txt
-      - run: python -m pytest -q data-pipeline
-
-  ios-build:
-    name: iOS 建置與模擬器截圖
-    runs-on: macos-26
-    needs: [core-tests]
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v5
-      - name: 下載測速資料（讓截圖顯示真實照相點；失敗不影響建置）
-        run: python3 data-pipeline/build_cameras.py --min-count 500 || echo "::warning::測速資料下載失敗，截圖會沒有照相點"
-      - name: 選擇 Xcode
-        run: bash scripts/ci/select-xcode.sh
-      - name: 安裝 XcodeGen
-        run: brew install xcodegen
-      - name: 產生 Xcode 專案
-        run: xcodegen generate
-      - name: 建置（模擬器）
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: 保守辨識跨層變更
+        id: classify
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.sha }}
+          FORCE_FULL: ${{ inputs.full }}
         run: |
-          set -o pipefail
-          xcodebuild -project SpeedCam.xcodeproj -scheme SpeedCam -configuration Debug \
-            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath build CODE_SIGNING_ALLOWED=NO build 2>&1 | tee build.log | grep -E "error:|warning:|BUILD (SUCCEEDED|FAILED)" || true
-          grep -q "BUILD SUCCEEDED" build.log
-      - name: 上傳建置紀錄
-        if: failure()
+          args=()
+          if [[ "${FORCE_FULL}" == true ]]; then args+=(--full); fi
+          python3 scripts/ci/classify-changes.py --base "${BASE}" --head "${HEAD}" "${args[@]}"
+  data:
+    needs: [changes]
+    if: needs.changes.outputs.full == 'true'
+    uses: ./.github/workflows/_prepare-data.yml
+    with:
+      require-release: true
+  tests:
+    needs: [changes, data]
+    uses: ./.github/workflows/_tests.yml
+    with:
+      manifest-sha: ${{ needs.data.outputs.manifest-sha }}
+  ios-build:
+    needs: [changes, data, tests]
+    uses: ./.github/workflows/_macos.yml
+    with:
+      task: ios26
+      label: ios26
+      manifest-sha: ${{ needs.data.outputs.manifest-sha }}
+      screenshots: ${{ inputs.screenshots && inputs.screenshots != 'auto' && inputs.screenshots || needs.changes.outputs.screenshots }}
+      print-screenshots: ${{ inputs.print-screenshots || false }}
+  summary:
+    if: always()
+    needs: [changes, data, tests, ios-build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/download-artifact@v4
+        if: needs.changes.outputs.full == 'true'
+        continue-on-error: true
+        with:
+          name: ci-data
+          path: build/summary/ci-data
+      - uses: actions/download-artifact@v4
+        if: needs.changes.outputs.full == 'true'
+        continue-on-error: true
+        with:
+          pattern: "*-evidence"
+          path: build/summary/evidence
+      - name: CI 結果（缺證據不當通過）
+        env:
+          COMMIT: ${{ github.sha }}
+          MANIFEST_SHA: ${{ needs.data.outputs.manifest-sha }}
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: python3 scripts/ci/ci-results.py summary --scope ci
+      - if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-log
-          path: build.log
-      - name: 模擬器截圖
-        run: bash scripts/ci/screenshots.sh build/Build/Products/Debug-iphonesimulator/SpeedCam.app
-      - name: 截圖縮圖輸出到 log
-        if: always()
-        run: bash scripts/ci/print-screenshots.sh screenshots
-      - name: 上傳截圖
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: screenshots
-          path: screenshots/
-          if-no-files-found: ignore
+          name: ci-summary
+          path: build/summary/
