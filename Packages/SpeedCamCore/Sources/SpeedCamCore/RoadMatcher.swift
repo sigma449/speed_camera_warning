@@ -154,12 +154,33 @@ public struct RoadMatcher: Sendable {
 
         var result = RoadOverlap()
         var run = 0.0, gap = 0.0
-        var offsets: [Double] = []
+        var offsets: [(distance: Double, start: Double, end: Double)] = []
 
         func finishRun() {
             result.longestRun = max(result.longestRun, run)
-            if run > result.longestCloseRun, Self.median(offsets) <= Self.closeOffset {
-                result.longestCloseRun = run
+            // 上中位數 ≤ 門檻，等同子段內「近」樣本嚴格多於「遠」樣本。
+            // 遞減前綴分數配合反向掃描，線性時間找出最長合格子段。
+            var scores = [0]
+            for sample in offsets {
+                scores.append(scores[scores.count - 1] + (sample.distance <= Self.closeOffset ? 1 : -1))
+            }
+            if let score = scores.last, score > 0 {
+                result.longestCloseRun = max(result.longestCloseRun, run)
+            } else {
+                var starts: [Int] = []
+                for i in offsets.indices {
+                    if starts.last.map({ scores[i] < scores[$0] }) ?? true { starts.append(i) }
+                }
+                for end in stride(from: offsets.count, through: 1, by: -1) {
+                    while let start = starts.last, scores[start] < scores[end] {
+                        // 側道整段不合格時，孤立一筆近距樣本不足以另認一段道路。
+                        if end - start >= 2 {
+                            result.longestCloseRun = max(result.longestCloseRun,
+                                                          offsets[end - 1].end - offsets[start].start)
+                        }
+                        starts.removeLast()
+                    }
+                }
             }
             run = 0
             gap = 0
@@ -177,9 +198,10 @@ public struct RoadMatcher: Sendable {
                 let p = Self.interpolate(a, b, (Double(s) + 0.5) / Double(samples))
                 if let offset = nearestOffset(p, bearing: bearing) {
                     result.total += part
-                    run += part + gap
+                    let start = run + gap
+                    run = start + part
                     gap = 0
-                    offsets.append(offset)
+                    offsets.append((offset, start, run))
                 } else {
                     gap += part
                     if gap > Self.maxGap { finishRun() }
@@ -209,11 +231,6 @@ public struct RoadMatcher: Sendable {
             }
         }
         return best
-    }
-
-    private static func median(_ values: [Double]) -> Double {
-        guard !values.isEmpty else { return .infinity }
-        return values.sorted()[values.count / 2]
     }
 
     private static func interpolate(_ a: GeoPoint, _ b: GeoPoint, _ t: Double) -> GeoPoint {

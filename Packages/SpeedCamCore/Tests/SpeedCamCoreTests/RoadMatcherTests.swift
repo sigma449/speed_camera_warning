@@ -39,6 +39,26 @@ final class RoadMatcherTests: XCTestCase {
         XCTAssertEqual(overlap.longestCloseRun, 2_000, accuracy: 100)
     }
 
+    func testCloseSubrunIsNotHiddenByLongerParallelApproachOrExit() {
+        let matcher = RoadMatcher(lines: [line(length: 5_000)])
+        let side = line(length: 2_000, offsetEast: 20)
+        let main = line(length: 3_400).filter { GeoMath.distance(start, $0) >= 2_200 }
+        let route = side + main
+        for points in [route, Array(route.reversed())] {
+            let overlap = matcher.overlap(with: points)
+            XCTAssertGreaterThan(overlap.longestRun, 3_300)
+            XCTAssertGreaterThanOrEqual(overlap.longestCloseRun, 1_150,
+                                       "同一候選 run 內仍須找出真正走在國道上的連續子段")
+        }
+    }
+
+    func testShortCloseSubrunDoesNotTurnLongParallelRoadIntoFreeway() {
+        let matcher = RoadMatcher(lines: [line(length: 5_000)])
+        let side = line(length: 3_000, offsetEast: 20)
+        let main = line(length: 3_500).filter { GeoMath.distance(start, $0) >= 3_200 }
+        XCTAssertLessThan(matcher.overlap(with: side + main).longestCloseRun, 800)
+    }
+
     func testParallelRoadFartherAwayDoesNotCount() {
         let matcher = RoadMatcher(lines: [line(length: 5_000)])
         XCTAssertEqual(matcher.overlap(with: line(length: 3_000, offsetEast: 60)).total, 0)
