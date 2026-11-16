@@ -1,0 +1,495 @@
+{
+ "version": "fixture-v1",
+ "generatedAt": "2026-11-13T00:00:00Z",
+ "sources": [
+  "內政部警政署「測速執法設置點」，政府資料開放授權條款－第1版（https://data.gov.tw/license）",
+  "交通部公路局「省道里程坐標(里程牌標誌)」，政府資料開放授權條款－第1版（https://data.gov.tw/license）",
+  "新北市政府警察局「區間平均速率執法設備設置地點一覽表」（1140919 修訂）：區間範圍與偵測長度",
+  "國道公路警察局「國道公路固定式測速照相地點」（13940），政府資料開放授權條款－第1版",
+  "新北市政府警察局「區間平均速率執法設備設置地點」（126156），政府資料開放授權條款－第1版",
+  "隧道區間的位置：© OpenStreetMap 貢獻者（ODbL）",
+  "斗六分局公告（流程契約 fixture）"
+ ],
+ "cameras": [
+  {
+   "id": "4d1eae33edb5",
+   "type": "section",
+   "lat": 24.452068,
+   "lon": 118.303474,
+   "address": "金門大橋區間測速",
+   "speedLimit": 60,
+   "source": "7320",
+   "sourceID": "4d1eae33edb5",
+   "sourceURL": "https://data.gov.tw/dataset/7320"
+  },
+  {
+   "id": "685b30491485",
+   "type": "section",
+   "lat": 24.97182,
+   "lon": 121.529236,
+   "address": "環河路（中央路至白馬寺，雙向）",
+   "axis": 90.0,
+   "speedLimit": 60,
+   "source": "7320",
+   "sourceID": "685b30491485",
+   "sourceURL": "https://data.gov.tw/dataset/7320"
+  },
+  {
+   "id": "douliu-mobile-213fc176856a",
+   "type": "mobile",
+   "lat": 23.766745,
+   "lon": 120.487465,
+   "address": "莿桐鄉台1線232K處",
+   "axis": 129.3,
+   "city": "雲林縣",
+   "district": "莿桐鄉",
+   "enforcementItems": "移動測速公告熱點",
+   "conditions": "原公告：莿桐鄉台1線232K處,速限70公里/小時。；定位依據：7040 省道里程坐標／台1 232K（含內插）；相鄰±50 m取軸向；公告未載可核單向；公告候選地點，非即時執法；原公告有效期間未載明",
+   "source": "douliu-mobile",
+   "sourceID": "213fc176856a",
+   "positionMethod": "milestone"
+  },
+  {
+   "id": "douliu-mobile-39626731dd14",
+   "type": "mobile",
+   "lat": 23.771687,
+   "lon": 120.627804,
+   "address": "台3線北往南240K處",
+   "heading": 180.0,
+   "city": "雲林縣",
+   "enforcementItems": "移動測速公告熱點",
+   "conditions": "原公告：台3線北往南240K處,速限70公里/小時。；定位依據：7040 省道里程坐標／台3 240K（含內插）；相鄰±50 m取軸向；公告明載方位「南」；公告候選地點，非即時執法；原公告有效期間未載明",
+   "source": "douliu-mobile",
+   "sourceID": "39626731dd14",
+   "positionMethod": "milestone"
+  },
+  {
+   "id": "douliu-mobile-4818a938bf50",
+   "type": "mobile",
+   "lat": 23.748389,
+   "lon": 120.496176,
+   "address": "莿桐鄉台1線往莿桐方向234.5K處",
+   "axis": 11.7,
+   "city": "雲林縣",
+   "district": "莿桐鄉",
+   "enforcementItems": "移動測速公告熱點",
+   "conditions": "原公告：莿桐鄉台1線往莿桐方向234.5K處,速限50公里/小時。；定位依據：7040 省道里程坐標／台1 234.5K（含內插）；相鄰±50 m取軸向；同路官方行政區「莿桐」里程 232–234.5K跨越／接近熱點，無法唯一判向；公告候選地點，非即時執法；原公告有效期間未載明；原公告：莿桐鄉台1線234.5K處,速限50公里/小時。；定位依據：7040 省道里程坐標／台1 234.5K（含內插）；相鄰±50 m取軸向；公告未載可核單向；公告候選地點，非即時執法；原公告有效期間未載明",
+   "source": "douliu-mobile",
+   "sourceID": "4818a938bf50",
+   "positionMethod": "milestone"
+  },
+  {
+   "id": "douliu-mobile-90179b1d2878",
+   "type": "mobile",
+   "lat": 23.742439,
+   "lon": 120.512756,
+   "address": "莿桐鄉台1丁線2.5K處",
+   "axis": 157.8,
+   "city": "雲林縣",
+   "district": "莿桐鄉",
+   "enforcementItems": "移動測速公告熱點",
+   "conditions": "原公告：莿桐鄉台1丁線2.5K處,速限60公里/小時。；定位依據：7040 省道里程坐標／台1丁 2.5K（含內插）；相鄰±50 m取軸向；公告未載可核單向；公告候選地點，非即時執法；原公告有效期間未載明",
+   "source": "douliu-mobile",
+   "sourceID": "90179b1d2878",
+   "positionMethod": "milestone"
+  },
+  {
+   "id": "e93b6ad4b626",
+   "type": "fixed",
+   "lat": 24.955573,
+   "lon": 121.569873,
+   "address": "北宜路過銀河社區（往新店）",
+   "heading": 240.6,
+   "speedLimit": 40,
+   "city": "新北市",
+   "district": "新店區",
+   "source": "manual",
+   "sourceID": "e93b6ad4b626",
+   "sourceURL": "https://github.com/sigma449/speed_camera_warning"
+  }
+ ],
+ "sections": [
+  {
+   "id": "beiyi-1-f",
+   "name": "北宜 19K–23.1K（往宜蘭）",
+   "start": {
+    "lat": 24.953133,
+    "lon": 121.5981016
+   },
+   "end": {
+    "lat": 24.9570178,
+    "lon": 121.6236044
+   },
+   "lengthMeters": 3938.1,
+   "lengthEstimated": false,
+   "speedLimit": 40,
+   "startHeading": 60.0,
+   "road": "台9",
+   "startKm": 19,
+   "endKm": 23.1
+  },
+  {
+   "id": "beiyi-1-r",
+   "name": "北宜 19K–23.1K（往台北）",
+   "start": {
+    "lat": 24.9569297,
+    "lon": 121.6236371
+   },
+   "end": {
+    "lat": 24.9531792,
+    "lon": 121.5981891
+   },
+   "lengthMeters": 3946.7,
+   "lengthEstimated": false,
+   "speedLimit": 40,
+   "startHeading": 342.0,
+   "road": "台9",
+   "startKm": 23.1,
+   "endKm": 19
+  },
+  {
+   "id": "beiyi-2-f",
+   "name": "北宜 26.2K–32.2K（往宜蘭）",
+   "start": {
+    "lat": 24.9504174,
+    "lon": 121.6477995
+   },
+   "end": {
+    "lat": 24.9429879,
+    "lon": 121.6708659
+   },
+   "lengthMeters": 5835.3,
+   "lengthEstimated": false,
+   "speedLimit": 40,
+   "startHeading": 131.9,
+   "road": "台9",
+   "startKm": 26.2,
+   "endKm": 32.2
+  },
+  {
+   "id": "beiyi-2-r",
+   "name": "北宜 26.2K–32.2K（往台北）",
+   "start": {
+    "lat": 24.9430715,
+    "lon": 121.6708954
+   },
+   "end": {
+    "lat": 24.9503516,
+    "lon": 121.6478697
+   },
+   "lengthMeters": 5830.5,
+   "lengthEstimated": false,
+   "speedLimit": 40,
+   "startHeading": 15.4,
+   "road": "台9",
+   "startKm": 32.2,
+   "endKm": 26.2
+  },
+  {
+   "id": "beiyi-3-f",
+   "name": "北宜 33.3K–37.2K（坪林段）（往宜蘭）",
+   "start": {
+    "lat": 24.938322,
+    "lon": 121.6772214
+   },
+   "end": {
+    "lat": 24.9359628,
+    "lon": 121.7036968
+   },
+   "lengthMeters": 3876.8,
+   "lengthEstimated": false,
+   "speedLimit": 40,
+   "startHeading": 138.9,
+   "road": "台9",
+   "startKm": 33.3,
+   "endKm": 37.2
+  },
+  {
+   "id": "beiyi-3-r",
+   "name": "北宜 33.3K–37.2K（坪林段）（往台北）",
+   "start": {
+    "lat": 24.9360445,
+    "lon": 121.7035178
+   },
+   "end": {
+    "lat": 24.9384678,
+    "lon": 121.6770967
+   },
+   "lengthMeters": 3862.5,
+   "lengthEstimated": false,
+   "speedLimit": 40,
+   "startHeading": 284.8,
+   "road": "台9",
+   "startKm": 37.2,
+   "endKm": 33.3
+  },
+  {
+   "id": "beiyi-4-f",
+   "name": "北宜 56.6K–68.6K（宜蘭端）（往宜蘭）",
+   "start": {
+    "lat": 24.866288,
+    "lon": 121.774148
+   },
+   "end": {
+    "lat": 24.850314,
+    "lon": 121.795001
+   },
+   "lengthMeters": 12000.0,
+   "speedLimit": 40,
+   "lengthEstimated": false,
+   "startHeading": 141.0,
+   "road": "台9",
+   "startKm": 56.6,
+   "endKm": 68.6
+  },
+  {
+   "id": "beiyi-4-r",
+   "name": "北宜 56.6K–68.6K（宜蘭端）（往台北）",
+   "start": {
+    "lat": 24.850314,
+    "lon": 121.795001
+   },
+   "end": {
+    "lat": 24.866288,
+    "lon": 121.774148
+   },
+   "lengthMeters": 12000.0,
+   "speedLimit": 40,
+   "lengthEstimated": false,
+   "startHeading": 23.9,
+   "road": "台9",
+   "startKm": 68.6,
+   "endKm": 56.6
+  },
+  {
+   "id": "tai64-zhonghe-east",
+   "name": "新北市中和區 台64線 往東 25.2K–28.2K",
+   "start": {
+    "lat": 24.994,
+    "lon": 121.4913
+   },
+   "end": {
+    "lat": 24.9907,
+    "lon": 121.5223
+   },
+   "lengthMeters": 2955.4,
+   "speedLimit": 70,
+   "lengthEstimated": false,
+   "startHeading": 92.8,
+   "road": "台64",
+   "startKm": 25.2,
+   "endKm": 28.2,
+   "path": [
+    [
+     24.994,
+     121.4913
+    ],
+    [
+     24.9933,
+     121.5071
+    ],
+    [
+     24.9907,
+     121.5223
+    ]
+   ]
+  },
+  {
+   "id": "tai64-zhonghe-west",
+   "name": "新北市中和區 台64線 往西 28.2K–26.6K",
+   "start": {
+    "lat": 24.9907,
+    "lon": 121.5223
+   },
+   "end": {
+    "lat": 24.9933,
+    "lon": 121.5071
+   },
+   "lengthMeters": 1563.3,
+   "speedLimit": 70,
+   "lengthEstimated": false,
+   "startHeading": 280.7,
+   "road": "台64",
+   "startKm": 28.2,
+   "endKm": 26.6,
+   "path": [
+    [
+     24.9907,
+     121.5223
+    ],
+    [
+     24.9933,
+     121.5071
+    ]
+   ]
+  },
+  {
+   "id": "ziqiang-tunnel-f",
+   "name": "臺北市 自強隧道（往北）",
+   "start": {
+    "lat": 25.086978,
+    "lon": 121.549595
+   },
+   "end": {
+    "lat": 25.094426,
+    "lon": 121.548898
+   },
+   "lengthMeters": 900.0,
+   "speedLimit": 50,
+   "lengthEstimated": false
+  },
+  {
+   "id": "ziqiang-tunnel-r",
+   "name": "臺北市 自強隧道（往南）",
+   "start": {
+    "lat": 25.094419,
+    "lon": 121.548506
+   },
+   "end": {
+    "lat": 25.086994,
+    "lon": 121.549016
+   },
+   "lengthMeters": 900.0,
+   "speedLimit": 50,
+   "lengthEstimated": false
+  },
+  {
+   "id": "xinhai-tunnel-f",
+   "name": "臺北市 辛亥隧道（往北）",
+   "start": {
+    "lat": 25.010071,
+    "lon": 121.557383
+   },
+   "end": {
+    "lat": 25.013323,
+    "lon": 121.554132
+   },
+   "lengthMeters": 500.0,
+   "speedLimit": 50,
+   "lengthEstimated": false
+  },
+  {
+   "id": "xinhai-tunnel-r",
+   "name": "臺北市 辛亥隧道（往南）",
+   "start": {
+    "lat": 25.01314,
+    "lon": 121.553897
+   },
+   "end": {
+    "lat": 25.009892,
+    "lon": 121.557141
+   },
+   "lengthMeters": 500.0,
+   "speedLimit": 50,
+   "lengthEstimated": false
+  },
+  {
+   "id": "zhongren-tunnel-f",
+   "name": "花蓮縣 蘇花改中仁隧道（往南）",
+   "start": {
+    "lat": 24.278559,
+    "lon": 121.744451
+   },
+   "end": {
+    "lat": 24.248183,
+    "lon": 121.71488
+   },
+   "lengthMeters": 4831.0,
+   "speedLimit": 70,
+   "lengthEstimated": false
+  },
+  {
+   "id": "zhongren-tunnel-r",
+   "name": "花蓮縣 蘇花改中仁隧道（往北）",
+   "start": {
+    "lat": 24.248411,
+    "lon": 121.715241
+   },
+   "end": {
+    "lat": 24.278205,
+    "lon": 121.744341
+   },
+   "lengthMeters": 4727.0,
+   "speedLimit": 70,
+   "lengthEstimated": false
+  },
+  {
+   "id": "renshui-tunnel-f",
+   "name": "花蓮縣 蘇花改仁水隧道（往南）",
+   "start": {
+    "lat": 24.23867,
+    "lon": 121.709931
+   },
+   "end": {
+    "lat": 24.220368,
+    "lon": 121.689306
+   },
+   "lengthMeters": 2963.0,
+   "speedLimit": 60,
+   "lengthEstimated": false
+  },
+  {
+   "id": "renshui-tunnel-r",
+   "name": "花蓮縣 蘇花改仁水隧道（往北）",
+   "start": {
+    "lat": 24.220368,
+    "lon": 121.689306
+   },
+   "end": {
+    "lat": 24.23867,
+    "lon": 121.709931
+   },
+   "lengthMeters": 2963.0,
+   "speedLimit": 60,
+   "lengthEstimated": false
+  },
+  {
+   "id": "ntpc-huanhe-f",
+   "name": "新店環河路 中央路至白馬寺（往碧潭）",
+   "start": {
+    "lat": 24.9718199,
+    "lon": 121.5292394
+   },
+   "end": {
+    "lat": 24.9641247,
+    "lon": 121.5367909
+   },
+   "lengthMeters": 1293.1,
+   "lengthEstimated": false,
+   "speedLimit": 60,
+   "startHeading": 138.3
+  },
+  {
+   "id": "ntpc-huanhe-r",
+   "name": "新店環河路 中央路至白馬寺（往臺北）",
+   "start": {
+    "lat": 24.9639108,
+    "lon": 121.5369783
+   },
+   "end": {
+    "lat": 24.9712441,
+    "lon": 121.5309406
+   },
+   "lengthMeters": 1138.6,
+   "lengthEstimated": false,
+   "speedLimit": 60,
+   "startHeading": 323.3
+  },
+  {
+   "id": "ntpc-shoushan",
+   "name": "新莊壽山路 北118線0K–1.2K（往新莊）",
+   "start": {
+    "lat": 25.043957,
+    "lon": 121.3982646
+   },
+   "end": {
+    "lat": 25.0393101,
+    "lon": 121.4072525
+   },
+   "lengthMeters": 1171.6,
+   "lengthEstimated": false,
+   "speedLimit": 40,
+   "startHeading": 119.7
+  }
+ ]
+}

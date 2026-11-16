@@ -57,9 +57,17 @@ class CachedMilepostIndex:
                 self._index = mileposts.fetch_index(log=log)
             except Exception as exc:  # noqa: BLE001
                 self._error = exc
+                log(f"[警告] 7040 里程牌來源無法取得：{exc}")
         if self._error is not None:
             raise self._error
         return self._index
+
+    def status(self) -> dict:
+        if self._error is not None:
+            return {"status": "unavailable", "reason": str(self._error)}
+        if self._index is not None:
+            return {"status": "available", "count": self._index.count()}
+        return {"status": "not-requested"}
 
 
 def auto_sections(rows: list[dict], text_rows: list[dict], manual_path: str, fetch_index, log=print) -> list[dict]:
@@ -160,7 +168,8 @@ def unchanged(path: str, db: dict) -> bool:
     except (OSError, ValueError):
         return False
     return old.get("cameras") == db["cameras"] and old.get("sections") == db["sections"] \
-        and old.get("sources") == db["sources"] and old.get("sourceReport") == db.get("sourceReport")
+        and old.get("sources") == db["sources"] and old.get("sourceReport") == db.get("sourceReport") \
+        and old.get("buildStatus") == db.get("buildStatus")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -257,6 +266,12 @@ def main(argv: list[str] | None = None) -> int:
     db, report = build(rows, sections, extra_sources=extra, road_data=road_data,
                        supplemental=not args.input or args.additional_snapshots,
                        offline_sources=args.additional_snapshots, resolve_mobile=resolve_mobile)
+    db["buildStatus"] = {
+        "mode": "local" if args.input else "online",
+        "supplemental": not args.input or args.additional_snapshots,
+        "autoSections": not args.no_auto_sections,
+        "mileposts": fetch_index.status(),
+    }
     print(report.summary())
     diag = report.diagnostics()
     if diag:

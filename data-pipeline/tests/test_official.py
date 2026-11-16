@@ -235,6 +235,8 @@ def test_production_build_keeps_official_fixes_when_mileposts_are_offline(monkey
     def supplemental_offline(*args, **kwargs):
         raise OSError("supplemental sources offline")
     monkeypatch.setattr(sources, "http_get", supplemental_offline)
+    from speedcam_data import geocoding_sources
+    monkeypatch.setattr(geocoding_sources, "_fetch_references", supplemental_offline)
     def offline(**kwargs):
         raise OSError("mileposts offline")
     monkeypatch.setattr(build_cameras.mileposts, "fetch_index", offline)
