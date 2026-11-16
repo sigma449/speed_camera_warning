@@ -36,11 +36,15 @@ elif "launchctl" in args:
         print("simctl 無法查詢 launchctl", file=sys.stderr)
         sys.exit(70)
     pid = 1000 + state["round"] + (1 if scenario == "replaced" else 0)
-    if scenario != "dies":
+    if scenario != "dies" and not (scenario == "query-then-dies" and state.get("completedQuery")):
         print(f"{pid}\t0\tUIKitApplication:tw.speedcammap.app[test]")
 elif "log" in args and "show" in args:
     predicate = args[args.index("--predicate") + 1] if "--predicate" in args else ""
     if 'category == "search"' in predicate:
+        if scenario.startswith("stderr-warning"):
+            print("getpwuid_r did not find a match for uid 501", file=sys.stderr)
+        if scenario == "empty-log":
+            sys.exit(0)
         if scenario == "log-error":
             print("simctl 無法讀取 log", file=sys.stderr)
             sys.exit(74)
@@ -56,7 +60,7 @@ elif "log" in args and "show" in args:
         if scenario in ("old-offset", "offset-time"):
             timestamp = (dt.datetime.now(dt.timezone(dt.timedelta(hours=14)))
                          - dt.timedelta(hours=1 if scenario == "old-offset" else 0)).isoformat(" ")
-        message = "typing test finished" if scenario != "unfinished" else "typing test started"
+        message = "typing test started" if scenario in ("unfinished", "stderr-warning-unfinished") else "typing test finished"
         rows = [{"processID": pid, "timestamp": timestamp, "eventMessage": message}]
         match = re.search(r"processID\s*==\s*(\d+)", predicate)
         if match and pid != int(match[1]):
@@ -66,6 +70,9 @@ elif "log" in args and "show" in args:
         if scenario == "large":
             rows += [{"processID": pid, "timestamp": timestamp, "eventMessage": "x" * 1000}] * 1000
         if "--style" in args and args[args.index("--style") + 1] == "json":
+            if scenario == "query-then-dies":
+                state["completedQuery"] = True
+                save()
             print(json.dumps(rows))
         else:
             for row in rows:

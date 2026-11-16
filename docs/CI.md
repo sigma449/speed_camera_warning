@@ -193,7 +193,7 @@ E 已取消的區間內熱點禁報／相鄰 1,000 m 間隔不恢復。
 | `screenshots.sh`／`ios15-run.sh` 引入 capture-groups、none、各 `if selected` | 原情境只是分組，full 不包含 styles；未知情境回 64，沒有刪原截圖或大幅砍等待 |
 | 兩腳本＋search-stress 寫 `simulator-udid.txt` | always 診斷可找回本次模擬器，不靠猜最後一台 |
 | `assert_running` 的三次查詢 | 保存 launchctl 輸出；本輪 PID＋bundle 才成功；程序缺失回 1、三次查不到回 2，另嘗試留失敗圖 |
-| `STRESS_START`／`check_search_finished` | 用開始時間、本輪 PID、合法 JSON、實際完成訊息判斷；轉成有時區 datetime 比較，拒絕舊程序、過期／壞時間及壞 JSON |
+| `STRESS_START`／`check_search_finished` | JSON stdout 與 simctl stderr 分檔，保存真退出碼、列位元組數／PID／開始時間及錯誤片段；仍嚴格驗合法 JSON、本輪 PID／時間與完成訊息，完成後再查程序存活。空輸出、壞 JSON、查詢失敗或缺完成事件都不通過 |
 | search-stress `failures`／最後 exit | 拒絕非正整數 runs；失敗輪數大於零回 1，不被診斷 echo 蓋成 0 |
 | `route-probe.sh` swiftc 新增 deadline 檔 | 只編進 macOS probe；沒有把新 SDK API 加進 App |
 | RouteProbe 指定車種 plan／replay 呼叫 | 整次 RoutePlanner.plan 最多 180 秒，包含實際車種重試路徑；底層原有 cancel handler 保留 |

@@ -23,19 +23,37 @@ assert_running() {
 }
 
 check_search_finished() {
-  local tag="$1" start="$2" output attempt
+  local tag="$1" start="$2" attempt query_status
+  local json="${OUT}/search-${tag}.json" query_stderr="${OUT}/search-${tag}-query-stderr.txt"
   for attempt in 1 2 3; do
-    if output=$(xcrun simctl spawn "${UDID}" log show --start "${start}" --style json \
-      --predicate "subsystem == \"tw.speedcammap.app\" AND category == \"search\" AND processID == ${APP_PID}" 2>&1); then
-      printf '%s\n' "${output}" > "${OUT}/search-${tag}.json"
-      if python3 - "${OUT}/search-${tag}.json" "${APP_PID}" "${start}" <<'PY'
+    if xcrun simctl spawn "${UDID}" log show --start "${start}" --style json --info --debug \
+      --predicate "subsystem == \"tw.speedcammap.app\" AND category == \"search\" AND processID == ${APP_PID}" \
+      > "${json}" 2> "${query_stderr}"; then
+      query_status=0
+    else
+      query_status=$?
+    fi
+    printf '%s\n' "${query_status}" > "${OUT}/search-${tag}-query-status.txt"
+    if python3 - "${json}" "${APP_PID}" "${start}" "${query_stderr}" "${query_status}" <<'PY'
 import datetime as dt
 import json, sys
 from pathlib import Path
 try:
-    rows = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
-except (OSError, ValueError) as exc:
+    raw = Path(sys.argv[1]).read_bytes()
+    diagnostics = Path(sys.argv[4]).read_bytes()
+except OSError as exc:
+    sys.exit(f"無法讀取搜尋查詢證據：{exc}")
+print(f"搜尋紀錄查詢：exit={sys.argv[5]} stdout={len(raw)} bytes stderr={len(diagnostics)} bytes"
+      f" PID={sys.argv[2]} start={sys.argv[3]}")
+if diagnostics:
+    print("搜尋查詢 stderr：" + diagnostics[:2000].decode("utf-8", errors="replace"), file=sys.stderr)
+if sys.argv[5] != "0":
+    sys.exit("搜尋紀錄查詢指令失敗")
+try:
+    rows = json.loads(raw.decode("utf-8"))
+except ValueError as exc:
     print(f"無法解析搜尋紀錄：{exc}", file=sys.stderr)
+    print("搜尋查詢 stdout 開頭：" + repr(raw[:400].decode("utf-8", errors="replace")), file=sys.stderr)
     sys.exit(1)
 if not isinstance(rows, list):
     sys.exit("搜尋紀錄不是事件陣列")
@@ -55,13 +73,13 @@ def completed(row):
         print(f"完成紀錄時間無效：{timestamp}（{exc}）", file=sys.stderr)
         return False
 matched = any(completed(row) for row in rows)
+if not matched:
+    print(f"搜尋紀錄有 {len(rows)} 筆，但沒有符合本輪 PID 與開始時間的完成事件", file=sys.stderr)
 sys.exit(0 if matched else 1)
 PY
-      then
-        return 0
-      fi
-    else
-      printf '%s\n' "${output}" > "${OUT}/search-${tag}-query-stderr.txt"
+    then
+      assert_running "搜尋壓測 ${tag} 完成" || return $?
+      return 0
     fi
     sleep 1
   done
