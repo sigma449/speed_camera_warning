@@ -223,27 +223,14 @@ App 的啟動參數（CI 截圖用）：
 
 ## 建置與測試
 
-- **Swift 核心邏輯**（274 個測試）：`python -I -X utf8 build\swift_test.py`，H2 全通過、0 跳過；H1 的 250 項全部保留，新增 24 項車種／請求世代、定位恢復、搜尋、語音優先序及長度更新回歸。Docker 須唯讀掛載 `SpeedCam\Resources` 到 `/SpeedCam/Resources`，不能靠缺資料跳過真實道路或人工提示測試。CI／原生 Swift 用 `swift test --package-path Packages/SpeedCamCore`。
-- **Python 資料處理與 replay 檢查器**（564 個測試）：`python -m pytest -q data-pipeline`，H2 全通過、0 跳過；本輪未改 Python 或既有測試，檢查器仍為 195 項。完整紀錄在 `build\stage-h2\swift.log`／`pytest.log`。
-- **H2 App 接線回歸**（另計 20 項）：`python -I -X utf8 build\stage-h2\run_app_regressions.py all --label final`，在 `build` 隔離副本抽取實際 App 方法，搭 Linux 平台替身驗證非同步完成順序／收尾及語音送出。五項皆有 `*-before.log` 失敗與 `*-final.log` 通過；不是 iOS SDK 建置、UI 操作或實播。
-- **iOS App** 只能在 GitHub Actions 編譯：
-  - `CI`（每次 push）：Swift 測試、pytest、iOS 模擬器建置和截圖。截圖會以 base64 印在 log 裡（`scripts/ci/print-screenshots.sh`），因為雲端 session 下載不了 artifact。
-  - `Build IPA`（手動）：`gh workflow run build-ipa.yml --repo sigma449/speed_camera_warning --ref main`。會下載最新資料、編譯未簽署的 IPA（artifact `SpeedCam-ipa`，保留 30 天）。
-  - `Refresh camera data`（每週一）：資料有變動就開 PR。需要 repo 設定開啟「Allow GitHub Actions to create and approve pull requests」（2026-11-05 用 GitHub API 確認已開啟）。
-  - `路線實測`（手動，約 5 分鐘）：`gh workflow run route-probe.yml --repo sigma449/speed_camera_warning --ref main -f mode=plan -f cases=scripts/ci/route-probe-cases.json`。不用建置 App，在 macOS 上直接編譯 App 的 `RoutePlanner` 和 `SpeedCamCore`，用真正的 MapKit 規劃台灣路線。改了選路規則或 `road_lines.json` 就跑一次。
-    `mode=plan` 看三種車種實際選到哪條路；`mode=compare` 比較不同避開設定 Apple 回傳的路線。`route-probe-elevated.json` 沿著各條快速道路和高架規劃，用來確認 Apple 算不算 highway。結果在 log 和 artifact `route-probe`（含步驟文字和路線座標）。
-    **`mode=replay`（模擬開車）**：`-f mode=replay -f cases=scripts/ci/route-replay-1107.json`。沿著 Apple 的路線每秒給一筆定位，用真實的照相點和區間資料跑核心程式，印出每個語音和提醒的位置，並檢查每個動作點畫面顯示的對不對（log 最後有「相符 N／M」）。隧道裡不給定位，只呼叫 `tick`。改了提醒、區間或導航就跑一次；使用者回報實測問題時，把路線加進清單就能重現。
-    `route-replay-tunnels.json` 專門測隧道（辛亥、文山、懷恩、萬里、過港、東澳、雪山），可以用 `tunnelSpeedFactor` 模擬隧道裡車速變慢，提醒後面會印實際離照相點多遠。隧道範圍在 `route-probe.swift` 的 `tunnels`。
-    **11/08 驗收**：`route-replay-1108.json` 現為 29 案，原 24 案及起終點完整保留。補測 05 從舊實際回放去程 02 的 t103 位置（沿路距水源匝道約 470 m）到水源南向主線，專測第 2 項；補測 06／07 分別隔離 IKEA 雙向生命週期，補測 08 隔離北宜路 246 號已預告近距，補測 09 隔離市區相機預告／通過，避免正向事件只能依賴長段當天的走法。北宜 1～4 雙向仍各自隔離，折返／歸零仍用原 1,400 m／350 秒情境。所有非折返案例不准中途離開、生命週期、全案例數、全案例節流、北宜 2 四個官方門架獨立比對等不變性保留。不中斷補測 01／02 仍搜尋「台北市中山區長春路128號」及「坪林 7-ELEVEN」，快取同一對結果反向；搜尋失敗直接失敗、不用搜尋中心冒充。
-    `REPLAY1108 ` 新增每案唯一 `route_geometry`（點數、分段數、Apple 原文／校正及動作點）與有編號的 `route_geometry_part`（每段最多 400 點），完整折線亦照常寫入 JSONL。檢查器獨立投影，核對有序門架、相機行向、提示點與後續分支，不拿核心 `matched=false` 自證沒經過。所有長短案例都可將確實未經過／不同分支列資訊；經過卻缺事件、文字、語音或 navHint 仍失敗，每個必驗項目與六點均須至少一案實際驗到，缺全域覆蓋仍失敗，不能全跳過。
-    `hint_check` 的六點最近距離、Apple 前後步驟、前後 300 m 實際語音／navHint、手機與 Live Activity 短句、不重播及短段起點至少 500 m 的要求保留。水源校正只比對同一個入口動作點的原文、畫面與語音，不再禁止整案其他道路保留「上高速公路」；Apple 未提供該原文只列未驗到，不冒稱校正通過，仍須別案補足。
-    **E（使用者 2026-11-13 決定）**：移除 D 的「區間倒數中不得預告熱點」與「相鄰熱點語音累計行駛至少 1,000 m」兩項檢查及相關狀態；區間生命週期本身仍嚴格檢查。**H1 判向補強**：所有有 `heading`／`axis` 證據的熱點均依同來源／正規化地址配對 `[熱點行向]` 報告，不限地址含「往」。最小夾角 **>45°** 才失敗，與核心一致；只有 `axis` 時核對沿路雙向、不猜地名單向。原「往X」缺證據、離路線超過 30 m、近鄰方向歧義仍拒絕，完全未知方向保留既有備案。折返依 `turnaroundAtMeters` 與 `traveled` 反轉方位，不豁免方向檢查。
-    H1 要求北宜八方向各有起點前 300 m 路線餘量的預告覆蓋，預告→進入→完成各一次且依序；起點太近不硬補預告，但缺全域覆蓋仍失敗。RouteProbe 的 `traveled`、`sectionActive` 及輸出格式不變；缺語音、地址或有效里程仍失敗。`build\replay-1108-e.log` 29 案僅是歷史上由當時檢查器通過，不代表 H1 重跑 MapKit。
-    歷史：D 的 `build\replay-1108-d.log` 曾因倒數中熱點及缺新里程欄位被當時檢查拒絕；E 不再禁止倒數中熱點，但必要里程／行向證據等其他要求仍保留，未重新驗收該 log。「反向地址」不能只靠案例名稱判定，也不能改寫舊 log 冒充新版回放。更早 r6 的通過也僅是歷史。IKEA 的 mobile／noise／非測速 tech 例外保留；原固定 ID、測速科技或缺證據仍拒絕。**舊 `build\replay-1108-fixed.log` 有北宜 4 回程誤中止，不能當成通過。**
-  - `iOS 15 實際執行`（手動，約 20 分鐘）：`gh workflow run ios15-test.yml --repo sigma449/speed_camera_warning --ref main`。從 Apple 官方 CDN 安裝 iOS 15.5 模擬器（不用登入），在 iPhone 7 模擬器上實際開啟 App 並截圖。改了舊系統的程式就跑一次。截圖一樣在 log 裡。
-- 用 `gh run watch <id> --exit-status` 等結果，`gh run view <id> --log` 讀 log。
-- 環境：runner `macos-26`、Xcode 26.6、App 最低 iOS 15.0、Widget 最低 iOS 26.0、`SWIFT_VERSION 5.0`、`SWIFT_STRICT_CONCURRENCY minimal`。
-  `Build IPA` 會執行 `scripts/ci/check-min-os.sh`，檢查最低版本，也檢查沒有強連結到 iOS 15 沒有的函式庫（否則一開就閃退，編譯時看不出來）。
+- **本機**：Swift 用 `python -I -X utf8 build\swift_test.py`；Python 用 `python -m pytest -q data-pipeline`。Docker 必須唯讀掛載 `SpeedCam\Resources`，不可缺資料跳過。數量與本輪結果見下節；H2 的 20 項 App 替身回歸仍保留在 `build\stage-h2`。
+- **完整驗收**：`gh workflow run build-ipa.yml --repo sigma449/speed_camera_warning --ref copilot/test2-1108 -f acceptance=true -f screenshots=full`。使用已在 main 註冊的入口，不必先合併新 workflow；驗收者需先更新遠端分支，本輪不 push／觸發。資料一次於 Linux 準備，Swift／Python 通過後跑 iOS26／15 與三組 replay，全部通過才產 IPA；同 commit、同資料 SHA，最後寫 `GITHUB_STEP_SUMMARY`。
+- **一般 CI**：main push／PR／手動；純文件略過昂貴工作，未知及跨層變更全跑，Python／Swift 任一失敗不啟動 macOS。手動 `full=true` 可覆寫。截圖 auto 遇 App／Shared／Widget／CI腳本／project.yml 變更用 full，其餘 smoke；內部 styles 預設不拍。
+- **獨立用法**：Build IPA 不加 acceptance 仍可單獨打包，但不代表完整驗收；`ios15-test.yml`、`search-stress.yml`、`route-probe.yml` 原入口保留。plan／compare 不抓相機資料；replay 必跑適用檢查器，1107／tunnels 不套 1108 的29案規則。選路或提醒變更需跑對應實測，iOS15 變更需跑舊系統；完整指令與嚴格檢查政策見 `docs\CI.md`。
+- **資料到發布**：同輪包含 JSON、來源／警告、完整建置 log、commit、數量與 SHA-256。7040 失聯、方向別區間少於70、必要區間／關鍵點缺失不可發布；70 由完整79／82段保留變動餘地而來，還有7040與16個必要ID等獨立閘門。IPA 內嵌資料須與測試包逐位元組一致，不靜默用 repo／舊 artifact 補。
+- **截圖與證據**：從 `screenshots`／`ios15-screenshots`／各 `*-evidence` artifact 用 `gh run download` 下載；base64 預設關，只有 `print-screenshots=true` 才印。full 為53張、iOS15為14張；styles／all 才拍24／2張內部樣式對照。失敗也保留已取得 log／PNG／模擬器診斷；硬取消不保證收齊。操作與macOS逐行對照見 `docs\CI.md`。
+- **每週資料 PR**：動態列多來源、授權及回退，不宣稱全是政府授權；重用原 `unchanged` 保留純日期變更不開PR。需開啟 Actions 建 PR 權限；`SpeedCam-data` 先於 IPA 提供，兩者保留30天。
+- **環境與界線**：runner `macos-26`、Xcode26.6；App最低iOS15、Widget26；Swift5、strict concurrency minimal。保留側載名稱／最低OS與強連結檢查。假 simctl、合成容量fixture及Linux Swift不是iOS編譯、真MapKit、目視、手勢或實播驗收。
 
 ## 資料來源
 
@@ -302,7 +289,7 @@ App 的啟動參數（CI 截圖用）：
   不能用 App Groups 和推播（APNs），所以 Live Activity 只能由 App 在本機更新。
 - **macOS runner 的 Python 3.13** 下載政府資料時會出現憑證錯誤（Missing Subject Key Identifier）：
   `sources.ssl_context()` 關閉了 `VERIFY_X509_STRICT`，憑證鏈仍然會驗證。
-- **資料下載失敗時**：Build IPA 會改用 repo 裡的 cameras.json，但那是空的，所以會停止建置。這是刻意的。
+- **資料下載失敗時**：IPA 不再退用 repo 的 cameras.json；必要來源／區間不完整就停止。可選來源的已核快照回退必須列來源／警告，不可冒充即時資料。
 - **SideStore 登入錯誤 -80045**（2026-10 起 Apple 的變更）：處理方式寫在 `docs/SETUP.md` 的常見問題。
 - **資料的方向欄位不一定是行車方向**：過港隧道的「南向」「北向」其實是管道名稱（南孔是旗津往前鎮，實際往東北）。地址寫明方向的改用 `normalize.heading_from_address`。
 - **高架道路與平面道路**：App 只用經緯度和方向判斷，分不出高架和平面，兩者重疊的路段會互相誤報。
@@ -315,7 +302,7 @@ App 的啟動參數（CI 截圖用）：
 - **`Int(...)` 轉換無限大或 NaN 會閃退**：距離、偏差這類可能是 `.infinity` 的值，轉成 Int 前先限制範圍。
 - **CI 截圖的啟動參數會被吃掉**：巡航中的 App 被結束後，iOS 會在背景重新叫起它（背景定位），
   下一次 launch 只會把它帶到前景。`screenshots.sh` 的 `launch_app` 會先結束兩次，不需要巡航的截圖加 `-autoStartCruise NO`。
-- **截圖不能依賴 Apple 當下的規劃結果**：樣式對照只用 `-routeStyleDemo` 的固定折線與鏡頭，不能每張重新規劃再比路線簽章。`screenshots.sh`／`ios15-run.sh` 讀不到 UI log、等待標記逾時或 Apple 路線／搜尋改變時只警告，仍拍圖；App 停止執行、啟動失敗或截圖無法產生才失敗。一般搜尋、真實導航預覽、反查地址與底圖內容仍依賴 Apple，截圖成功不代表外部結果或手勢已驗收。
+- **截圖不能依賴 Apple 當下的規劃結果**：樣式對照只用 `-routeStyleDemo` 的固定折線與鏡頭，不能每張重新規劃再比路線簽章。UI-ready log／等待標記逾時或 Apple 路線／候選改變仍警告拍圖；但查不到 App 存活狀態、本輪程序已停止、啟動或截圖失敗都不能通過，搜尋壓測另需本輪完成證據。截圖成功不代表外部內容或手勢已驗收。
 - **剛啟動時太早開 sheet 或改地圖範圍會被系統忽略**：CI 截圖用的啟動參數改在 `.task` 裡等 1.2 秒再做。
 - **App 最低 iOS 15 帶來的限制**：
   - 不能用 `@Observable`（要 iOS 17），狀態用 `ObservableObject`。新系統才有的 API 要包 `#available`，型別不能直接當儲存屬性（存成 `Any` 或 `AnyObject`）。
@@ -331,22 +318,24 @@ App 的啟動參數（CI 截圖用）：
 ## Git
 
 - 單人專案，直接 commit 到 `main` 再 push。`Build IPA` 是手動觸發的 workflow，要在預設分支上才會出現在 Actions 頁面。
-- **本輪例外**：H2 由 `a739cb3` 接續，只在本機 `copilot/test2-1108` 分組做繁體中文 commit，不 push、不觸發 workflow、不動 main。
-  僅用本機 git／Python 及既有 Swift 測試入口，修 A02、A09、A10、A11、A12；不接新來源，暫存與驗證紀錄放 `build\stage-h2\`。
+- **本輪例外**：H3 由 `5447f99` 接續，只在本機 `copilot/test2-1108` 分組做繁體中文 commit，不 push、不觸發 workflow、不動 main。
+  僅用本機 git／Python 及既有 Swift 測試入口，修 B01～B08、B10～B12／T01、T04、T05；B09 runtime快取不做。暫存與驗證紀錄放 `build\stage-h3\`。
   `docs\speed_camera_detector_test2_1108.docx`、`docs\copilot_review.md` 不加入 git；既有測試不刪除、不放寬。
   F 的三份調查原樣複製規則保留為歷史；本輪對調查、`build\survey2\`、`build\stage-f\`及原始回放輸入維持只讀。
   F／G不刪不放寬既有測試；E移除兩項熱點檢查是當時使用者決定的規格變更，不是F／G的變動。
 - commit 訊息用繁體中文：第一行寫做了什麼，內文寫原因。
 
-## 目前進度和下一步（H2 本機修正；尚未另建 IPA）
+## 目前進度和下一步（H3 CI 修正；尚未執行遠端驗收）
 
-**H2（本輪）**：A02 車種／路線與請求綁定、A09 新舊定位受控恢復、A10 搜尋世代及關閉防護、
-A11 Core 語音優先序、A12 背景長度就地更新均已修正，未改已確認門檻或新增語音佇列。
-Swift **274**（新增 24）／Python **564** 全通過、均 **0 跳過**；另有 **20** 項 App 方法替身回歸通過，各項修正前皆已重現失敗。
-RootView 只改共用預覽卡與倒數防護；新舊地圖共用同一預覽狀態／鏡頭，LegacyMapView 已隨重算移除舊預覽線，無須重複修改。
-A12 為仍支援的估算長度路徑；F 的 82 段沒有 `lengthEstimated=true`，不宣稱既有 F 資料曾觸發。
-已逐行檢查 App 差異及呼叫端；未編譯 iOS 15／26、未跑新 MapKit replay、搜尋壓測、截圖、背景定位或語音實播／IPA。
-以下 H1／G 及更早紀錄均為歷史，不能當成 H2 的 iOS 驗收。
+**H3（本輪）**：假綠閘門、可取消的指定車種／搜尋期限、Linux單次資料與發布指紋、
+跨層分流／concurrency、既有入口完整驗收、可選截圖與always證據、多來源PR說明均已接線；B09依派工暫緩。
+Swift **277**（新增3）／Python **675**（新增111）全通過、均 **0跳過**；另有 **5** 項原生Swift期限契約通過。
+同輪動態資料分支另以507點／72個合成容量方向通過，7040失聯fixture為503點／70段仍拒絕發布；
+不是完整7040原檔、新F資料下載、實車GPS或新MapKit回放。修前反例與修後log在 `build\stage-h3`。
+10份workflow均以Python解析／契約核對，最終診斷與workflow共39項另重驗通過；RouteProbe Swift逐行檢查，App／Shared／Widget與核心公開API未改。
+尚未執行GitHub Actions、iOS15／26編譯、真simctl／MapKit、看圖或實播，未push／產生新IPA；操作與macOS逐行說明見 `docs\CI.md`。
+
+**H2（前輪）**：A02／A09～A12已修；當時Swift274／Python564、另20項App替身回歸通過，均非iOS實機驗收。以下H1／G及更早紀錄為歷史。
 
 **H1（前輪）**：A01 核行政區及同址 300 m 上限；A03 找候選 run 的合格連續子段，保留真實平行側道反例；
 A04 只在順向跨越起點後進入，停等 ±10 m 不進入；A05 同驗實際終點距離／側距及未偏離，路邊 40 m 仍可抵達；
@@ -576,5 +565,5 @@ Swift **206**／Python **290** 全通過、均 0 跳過；新 24 案的 MapKit �
    - 先讀本檔和 `docs/SETUP.md`。
    - 改了搜尋就跑 `search-stress.yml`。
    - 改了提醒、區間或導航就跑 `路線實測` 的 replay 模式。
-   - 改了 UI 就看 CI 截圖：base64 在 log 裡，用 `=====BEGIN-SCREENSHOT` 區塊解碼。
-   - 確認沒問題再跑 Build IPA，把 artifact 連結給使用者。
+   - 改了 UI 就下載 CI 截圖artifact實看；只有明確啟用時才從log的base64解碼。指令見 `docs\CI.md`。
+   - 用完整驗收入口取得同版同資料的結果與IPA，不再人工混配不同run；本輪仍禁止自行push／觸發。
