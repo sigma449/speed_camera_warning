@@ -154,6 +154,83 @@ final class CameraAlertEngineTests: XCTestCase {
         }
     }
 
+    private func assertHotspotDirectionMatrix(useTick: Bool, file: StaticString = #filePath, line: UInt = #line) {
+        let offsets = [0.0, 1, 44.9, 45, 45.1, 90, 134.9, 135, 135.1, 180,
+                       224.9, 225, 225.1, 270, 314.9, 315, 315.1, 359]
+        for axisOnly in [false, true] {
+            for base in [0.0, 90, 359] {
+                let first = Camera(id: "a", type: .mobile, lat: origin.lat, lon: origin.lon,
+                                   heading: axisOnly ? nil : base, address: "公告測試點",
+                                   axis: axisOnly ? base.truncatingRemainder(dividingBy: 180) : nil)
+                let second = Camera(id: "b", type: .mobile, lat: origin.lat, lon: origin.lon,
+                                    heading: axisOnly ? nil : GeoMath.normalize(base + 180), address: "同址設備",
+                                    axis: axisOnly ? (base + 90).truncatingRemainder(dividingBy: 180) : nil)
+                for offset in offsets {
+                    let course = GeoMath.normalize(base + offset)
+                    for distance in [29.0, 30, 31] {
+                        for tracked in [false, true] {
+                            for order in [[first], [first, second], [second, first]] {
+                                let e = engine(order)
+                                if useTick { e.settings.generalPreDistance = 1 }
+                                if tracked {
+                                    let before = GeoMath.destination(from: origin, bearing: base + 180, distance: 500)
+                                    XCTAssertTrue(e.process(VehicleFix(point: before, speedMps: 10, course: base,
+                                                                      timestamp: t0)).events.isEmpty, file: file, line: line)
+                                }
+                                let point = GeoMath.destination(from: origin, bearing: course + 180, distance: distance)
+                                let last = VehicleFix(point: point, speedMps: 20 / 3.6, course: course,
+                                                      timestamp: t0.addingTimeInterval(1))
+                                var events = e.process(last).events
+                                let eligible = Set(order.filter { camera in
+                                    guard let direction = camera.heading ?? camera.axis else {
+                                        XCTFail("測試資料必須有行向", file: file, line: line)
+                                        return false
+                                    }
+                                    let angle = abs(course - direction)
+                                    let difference = min(angle, 360 - angle)
+                                    return (camera.heading != nil ? difference : min(difference, abs(180 - difference))) <= 45
+                                }.map(\.id))
+                                if useTick {
+                                    XCTAssertFalse(events.contains(where: \.isPre), file: file, line: line)
+                                    e.settings.generalPreDistance = 300
+                                    events += e.tick(now: last.timestamp.addingTimeInterval(3))?.events ?? []
+                                    events += e.tick(now: last.timestamp.addingTimeInterval(3.1))?.events ?? []
+                                } else {
+                                    events += e.process(VehicleFix(point: point, speedMps: 20 / 3.6, course: course,
+                                                                    timestamp: t0.addingTimeInterval(1.1))).events
+                                }
+                                let announced = events.compactMap { event -> String? in
+                                    if case let .preAlert(camera, _) = event { return camera.id }; return nil
+                                }
+                                let context = "axis=\(axisOnly) base=\(base) course=\(course) distance=\(distance) tracked=\(tracked) tick=\(useTick) order=\(order.map(\.id))"
+                                XCTAssertEqual(announced.count, eligible.isEmpty ? 0 : 1, context, file: file, line: line)
+                                XCTAssertTrue(Set(announced).isSubset(of: eligible), context, file: file, line: line)
+                                let passed = e.process(VehicleFix(
+                                    point: GeoMath.destination(from: origin, bearing: course, distance: 50),
+                                    speedMps: 20 / 3.6, course: course, timestamp: t0.addingTimeInterval(16))).events
+                                let passedIDs = passed.compactMap { event -> String? in
+                                    if case let .passed(camera) = event { return camera.id }; return nil
+                                }
+                                XCTAssertEqual(passedIDs.sorted(), announced.sorted(), context, file: file, line: line)
+                                XCTAssertFalse((events + passed).contains {
+                                    $0.isNear || $0.isOverspeedStarted || $0.isBeep
+                                }, context, file: file, line: line)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    func testHotspotHeadingAndAxisProcessMatrixIgnoresAddressWordingAndDataOrder() {
+        assertHotspotDirectionMatrix(useTick: false)
+    }
+
+    func testHotspotHeadingAndAxisTickMatrixIgnoresAddressWordingAndDataOrder() {
+        assertHotspotDirectionMatrix(useTick: true)
+    }
+
     func testNonMobileTrackedCameraKeepsVeryCloseDirectionFallback() {
         for type in CameraType.allCases where type != .mobile {
             let cam = camera(north: 500, heading: 0, limit: nil, type: type)

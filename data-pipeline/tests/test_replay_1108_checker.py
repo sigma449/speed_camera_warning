@@ -118,6 +118,7 @@ def records():
         elif prefix in ("北宜2去程", "北宜2回程"):
             sid = "beiyi-2-f" if prefix == "北宜2去程" else "beiyi-2-r"
             a, b, length = checker.GATES[sid]
+            add(case, "section_approach", 10, id=sid)
             add(case, "section_entered", 20, id=sid, lat=a[0], lon=a[1], gateLat=a[0], gateLon=a[1], length=length)
             add(case, "section_overspeed_started", 20, id=sid)
             for second in (20, 35, 50):
@@ -235,6 +236,40 @@ def test_each_acceptance_failure_is_rejected(records, prefix, event, changes, re
     assert any(reason in error for error in checker.check_records(records))
 
 
+@pytest.mark.parametrize("prefix", list(checker.BEIYI_CASES) + ["all"])
+def test_missing_beiyi_prealerts_cannot_pass_even_when_every_section_enters_and_completes(records, prefix):
+    prefixes = set(checker.BEIYI_CASES) if prefix == "all" else {prefix}
+    records[:] = [record for record in records if not (
+        record["case"].split(" ", 1)[0] in prefixes and record["event"] == "section_approach")]
+    errors = checker.check_records(records)
+    assert any("section_approach" in error for error in errors)
+    for selected in prefixes:
+        assert any(selected in error and "section_approach" in error for error in errors)
+
+
+@pytest.mark.parametrize("variant", ["duplicate", "after-entry"])
+def test_beiyi_prealert_must_be_once_and_before_entering(records, variant):
+    target = row(records, "北宜1去程", "section_approach")
+    if variant == "duplicate":
+        records.insert(records.index(target) + 1, dict(target))
+    else:
+        records.remove(target)
+        target["t"] = 21
+        at = records.index(row(records, "北宜1去程", "section_completed"))
+        records.insert(at, target)
+    assert any("section_approach" in error or "事件順序" in error for error in checker.check_records(records))
+
+
+def test_short_start_does_not_require_fabricated_advance_warning_but_cannot_waive_global_coverage(records):
+    prefix, sid = "北宜3去程", checker.BEIYI_CASES["北宜3去程"]
+    replace_route(records, prefix, extended(checker.SECTION_POINTS[sid], before=100))
+    target = row(records, prefix, "section_approach")
+    records.remove(target)
+    errors = checker.check_records(records)
+    assert not any(prefix in error and "預期一次 section_approach" in error for error in errors)
+    assert any(sid in error and "起點預告" in error and "沒有任何案例" in error for error in errors)
+
+
 @pytest.mark.parametrize("kind", ["mobile", "noise", "tech"])
 def test_new_non_speed_reminder_at_ikea_is_not_mistaken_for_section_fixed_camera(records, kind):
     reminder = dict(schema=1, case="去程04 檢查器單元測試", event="camera_pre", t=50, lat=25, lon=121,
@@ -345,6 +380,26 @@ def test_unresolved_destination_uses_only_known_road_axis(records, course, accep
         assert any("反向／橫向" in error for error in errors)
 
 
+@pytest.mark.parametrize("address", ["台1線232K處", "台3線南向240K處", "台9線18K雙向"])
+@pytest.mark.parametrize("heading,axis,course,accepted", [
+    (0, None, 0, True), (0, None, 180, False),
+    (359, None, 1, True), (1, None, 359, True),
+    (None, 0, 180, True), (None, 179, 359, True), (None, 0, 90, False),
+])
+def test_all_evidenced_hotspot_directions_are_checked_without_destination_wording(
+        records, address, heading, axis, course, accepted):
+    points = [[25, 121], shift([25, 121], course, 400)]
+    replace_route(records, "回程01", points)
+    point = shift(points[0], course, 100)
+    target = add_hotspot(records, "回程01", 5, address=address, source="h1-mobile",
+                         lat=point[0], lon=point[1])
+    key = ("h1-mobile", checker.normalized_address(target["address"]))
+    errors = checker.check_records(records, hotspot_directions={key: (heading, axis)})
+    assert (errors == []) is accepted
+    if not accepted:
+        assert any("反向／橫向" in error for error in errors)
+
+
 @pytest.fixture
 def e_return_hotspot_log(records):
     """保存 e 版的實際事件與局部原始折線，不冒充整份真實回放。"""
@@ -410,6 +465,25 @@ def douliu_hotspot_reports():
         "[熱點行向] douliu-mobile｜ 台3線北往南240K處,速限70公里/小時。｜directional"
         "｜heading=180.0 axis=None｜公告明載方位「南」",
     ))
+
+
+@pytest.mark.parametrize("index,axis", [(1, 129.3), (2, 157.8), (3, 11.7)])
+def test_actual_douliu_axis_reports_without_destination_wording_reject_cross_direction(
+        records, douliu_hotspot_reports, index, axis):
+    report = douliu_hotspot_reports.splitlines()[index]
+    address = report.split("｜")[1].split(" ", 1)[1]
+    assert "往" not in address
+    for course, accepted in [(axis, True), (axis + 180, True), (axis + 90, False)]:
+        case = copy.deepcopy(records)
+        points = [[23.78, 120.627804], shift([23.78, 120.627804], course, 400)]
+        replace_route(case, "回程01", points)
+        point = shift(points[0], course, 100)
+        add_hotspot(case, "回程01", 5, address=address, source="douliu-mobile", lat=point[0], lon=point[1])
+        text = report + "\n" + "\n".join(checker.MARKER + json.dumps(record, ensure_ascii=False) for record in case)
+        errors = checker.check_text(text)
+        assert (errors == []) is accepted
+        if not accepted:
+            assert any("反向／橫向" in error for error in errors)
 
 
 @pytest.mark.parametrize("address_format", ["original", "cleaned", "spaced"])

@@ -238,8 +238,7 @@ def check_records(records: list[dict], *, information: list[str] | None = None,
             require(isinstance(address, str) and bool(address), f"{name} 熱點預告缺少 address，無法核對行向")
             if not isinstance(address, str):
                 continue
-            if "往" in normalized_address(address):
-                directional_hotspots.append(r)
+            directional_hotspots.append(r)
     start = [r for r in records if r["event"] == "run_start"]
     end = [r for r in records if r["event"] == "run_end"]
     require(len(start) == len(end) == 1, "缺少唯一 run_start/run_end，log 可能不完整或混了多次執行")
@@ -299,6 +298,9 @@ def check_records(records: list[dict], *, information: list[str] | None = None,
     for r in directional_hotspots:
         name, address = r["case"], normalized_address(r["address"])
         direction = (hotspot_directions or {}).get((r.get("source"), address))
+        # 保留未知方向備案；有 heading／axis 證據者不再依地址是否寫「往」篩選。
+        if "往" not in address and (direction is None or direction == (None, None)):
+            continue
         require(direction is not None, f"{name} 缺少熱點地址對應的道路行向證據：{address}")
         if direction is None:
             continue
@@ -369,10 +371,13 @@ def check_records(records: list[dict], *, information: list[str] | None = None,
     for prefix, sid in SECTION_CASES.items():
         geometry = geometries.get(prefix)
         is_huanhe = sid.startswith("ntpc-huanhe-")
+        prealert_eligible = not is_huanhe and expect_route(
+            prefix, f"{sid} 起點預告", geometry is not None and geometry.follows(
+                *SECTION_POINTS[sid], radius=60, before=300, after=60) is not None)
         if expect_route(prefix, f"{sid} 完整生命週期", geometry is not None and geometry.follows(
                 *SECTION_POINTS[sid], radius=60, before=250 if is_huanhe else 60, after=60) is not None):
             eligible_sections.add((prefix, sid))
-            keys = ("section_approach", "section_entered", "section_completed") if is_huanhe else (
+            keys = ("section_approach", "section_entered", "section_completed") if is_huanhe or prealert_eligible else (
                 "section_entered", "section_completed")
             sequence(prefix, sid, keys)
         if not is_huanhe:
