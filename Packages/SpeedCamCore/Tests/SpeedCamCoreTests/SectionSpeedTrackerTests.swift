@@ -365,6 +365,69 @@ final class SectionSpeedTrackerTests: XCTestCase {
         XCTAssertTrue(entered)
     }
 
+    func testArmedTurnaroundOrTurnOffBeforeStartDoesNotEnter() {
+        let s = distantSection()
+        for course in [90.0, 180] {
+            let tracker = SectionSpeedTracker(sections: [s], settings: strictSettings())
+            for (second, meters, heading) in [(0.0, 40.0, 0.0), (1, 47, course), (2, 65, course)] {
+                let point = GeoMath.destination(from: s.start, bearing: 180, distance: meters)
+                let result = tracker.process(VehicleFix(point: point, speedMps: 10, course: heading,
+                    timestamp: t0.addingTimeInterval(second)))
+                XCTAssertFalse(result.events.contains { if case .entered = $0 { return true }; return false })
+                XCTAssertNil(result.status)
+            }
+            XCTAssertFalse(tracker.tick(now: t0.addingTimeInterval(30))?.events.contains {
+                if case .entered = $0 { return true }; return false
+            } ?? false)
+        }
+    }
+
+    func testStoppedBeforeStartWithTenMeterGpsDriftDoesNotEnter() {
+        let s = distantSection()
+        let tracker = SectionSpeedTracker(sections: [s], settings: strictSettings())
+        let before = GeoMath.destination(from: s.start, bearing: 180, distance: 40)
+        _ = tracker.process(VehicleFix(point: before, speedMps: 10, course: 0, timestamp: t0))
+        for (index, meters) in [10.0, 20, 0, 17, 3, 20, 0, 10].enumerated() {
+            let point = GeoMath.destination(from: s.start, bearing: 180, distance: meters)
+            let result = tracker.process(VehicleFix(point: point, speedMps: 0, course: 0,
+                horizontalAccuracy: 10, timestamp: t0.addingTimeInterval(Double(index + 1))))
+            XCTAssertNil(result.status, "停在起點前 10 m，±10 m 漂移不算通過")
+            XCTAssertFalse(result.events.contains { if case .entered = $0 { return true }; return false })
+        }
+        XCTAssertFalse(tracker.isActive)
+        XCTAssertNil(tracker.tick(now: t0.addingTimeInterval(60))?.status)
+    }
+
+    func testArmedGpsJumpAcrossStartStillEntersWithOriginalClosestTime() throws {
+        let s = distantSection()
+        let tracker = SectionSpeedTracker(sections: [s], settings: strictSettings())
+        for (second, along) in [(0.0, -40.0), (14, 100)] {
+            let point = GeoMath.destination(from: s.start, bearing: along < 0 ? 180 : 0, distance: abs(along))
+            let result = tracker.process(VehicleFix(point: point, speedMps: 10, course: 0,
+                timestamp: t0.addingTimeInterval(second)))
+            if second == 0 {
+                XCTAssertNil(result.status)
+            } else {
+                XCTAssertEqual(result.events.filter { if case .entered = $0 { return true }; return false }.count, 1)
+                XCTAssertEqual(try XCTUnwrap(result.status).startTime, t0)
+            }
+        }
+    }
+
+    func testArmedCrossingProjectionStillRequiresForwardCourse() {
+        let s = distantSection()
+        for course in [90.0, 180, 270] {
+            let tracker = SectionSpeedTracker(sections: [s], settings: strictSettings())
+            _ = tracker.process(VehicleFix(
+                point: GeoMath.destination(from: s.start, bearing: 180, distance: 40),
+                speedMps: 10, course: 0, timestamp: t0))
+            let result = tracker.process(VehicleFix(
+                point: GeoMath.destination(from: s.start, bearing: 0, distance: 40),
+                speedMps: 10, course: course, timestamp: t0.addingTimeInterval(8)))
+            XCTAssertNil(result.status, "跨越起點投影但行向橫向／反向，不能當成沿路通過")
+        }
+    }
+
     func testDoesNotEnterMidSection() {
         // 離起點 1 km 才上路（交流道從區間中段上來）：照相機沒拍到起點，不算進入
         let s = distantSection()
@@ -434,6 +497,87 @@ final class SectionSpeedTrackerTests: XCTestCase {
         _ = tracker.process(VehicleFix(point: origin, speedMps: 0, course: 0, timestamp: t0.addingTimeInterval(1)))
         let result = tracker.tick(now: t0.addingTimeInterval(60))
         XCTAssertFalse(result?.events.contains { if case .entered = $0 { return true }; return false } ?? false)
+    }
+
+    func testTickAnnouncesAndEntersAcrossPrealertGpsLossBoundaries() throws {
+        for (limit, distances) in [(60, [20.0, 100, 299, 301, 350]), (90, [599.0, 601, 650])] {
+            for distance in distances {
+                let s = distantSection(limit: limit)
+                let tracker = SectionSpeedTracker(sections: [s], settings: strictSettings())
+                let speed = limit == 60 ? 10.0 : 25.0
+                let eta = distance / speed
+                let before = GeoMath.destination(from: s.start, bearing: 180, distance: distance)
+                var events = tracker.process(VehicleFix(point: before, speedMps: speed, course: 0, timestamp: t0)).events
+                var latest: SectionStatus?
+                let finish = Int(ceil(eta + s.minimumSeconds(atKmh: Double(limit)) * 1.03 + 2))
+                for second in 1...finish {
+                    if let result = tracker.tick(now: t0.addingTimeInterval(Double(second))) {
+                        events += result.events
+                        latest = result.status
+                    }
+                }
+                let previews = events.indices.filter { if case .approaching = events[$0] { return true }; return false }
+                let entries = events.indices.filter { if case .entered = events[$0] { return true }; return false }
+                XCTAssertEqual(previews.count, 1, "\(limit) km/h，起點前 \(distance) m 失聯仍須預告")
+                XCTAssertEqual(entries.count, 1, "\(limit) km/h，起點前 \(distance) m 失聯仍須進入")
+                if let preview = previews.first, let entry = entries.first { XCTAssertLessThan(preview, entry) }
+                let status = try XCTUnwrap(latest)
+                XCTAssertEqual(status.startTime.timeIntervalSince(t0), eta, accuracy: 0.01)
+                XCTAssertEqual(status.remainingSeconds, 0)
+                XCTAssertEqual(events.filter { $0 == .zeroReached }.count, 1)
+                XCTAssertTrue(events.contains { if case .remaining = $0 { return true }; return false })
+                let resumed = tracker.process(VehicleFix(
+                    point: GeoMath.destination(from: s.start, bearing: 0, distance: 150),
+                    speedMps: speed, course: 0, timestamp: t0.addingTimeInterval(Double(finish + 1))))
+                XCTAssertEqual(resumed.status?.startTime, status.startTime)
+                XCTAssertFalse(resumed.events.contains {
+                    switch $0 { case .approaching, .entered, .zeroReached: return true; default: return false }
+                })
+            }
+        }
+    }
+
+    func testPendingTunnelCandidateRejectsWrongDirectionStoppedAndOutOfRange() {
+        let s = distantSection()
+        let scenarios: [(Double, Double, Double)] = [
+            (350, 10, 180), (350, 10, 90), (350, 0, 0), (350, 2, 0), (501, 10, 0),
+        ]
+        for (distance, speed, course) in scenarios {
+            let tracker = SectionSpeedTracker(sections: [s], settings: strictSettings())
+            let point = GeoMath.destination(from: s.start, bearing: 180, distance: distance)
+            _ = tracker.process(VehicleFix(point: point, speedMps: 10, course: 0, timestamp: t0))
+            _ = tracker.process(VehicleFix(point: point, speedMps: speed, course: course,
+                                          timestamp: t0.addingTimeInterval(1)))
+            for second in 4...100 {
+                let result = tracker.tick(now: t0.addingTimeInterval(Double(second)))
+                XCTAssertNil(result?.status)
+                XCTAssertFalse(result?.events.contains { if case .approaching = $0 { return true }; return false } ?? false)
+            }
+        }
+    }
+
+    func testPendingTunnelCandidateIsNotDisplayedOrAnnouncedBeforeThreshold() {
+        let s = distantSection()
+        let tracker = SectionSpeedTracker(sections: [s], settings: strictSettings())
+        let point = GeoMath.destination(from: s.start, bearing: 180, distance: 350)
+        let first = tracker.process(VehicleFix(point: point, speedMps: 10, course: 0, timestamp: t0))
+        XCTAssertNil(first.approach)
+        XCTAssertTrue(first.events.isEmpty)
+        let early = tracker.tick(now: t0.addingTimeInterval(3))
+        XCTAssertNil(early?.approach)
+        XCTAssertTrue(early?.events.isEmpty ?? true)
+        let preview = tracker.tick(now: t0.addingTimeInterval(6))
+        XCTAssertEqual(preview?.events.filter { if case .approaching = $0 { return true }; return false }.count, 1)
+        XCTAssertEqual(preview?.approach?.distance ?? -1, 290, accuracy: 0.1)
+        let restored = tracker.process(VehicleFix(
+            point: GeoMath.destination(from: s.start, bearing: 180, distance: 250),
+            speedMps: 10, course: 0, timestamp: t0.addingTimeInterval(10)))
+        XCTAssertFalse(restored.events.contains { if case .approaching = $0 { return true }; return false })
+        let entered = tracker.process(VehicleFix(
+            point: GeoMath.destination(from: s.start, bearing: 0, distance: 10),
+            speedMps: 10, course: 0, timestamp: t0.addingTimeInterval(36)))
+        XCTAssertEqual(entered.events.filter { if case .entered = $0 { return true }; return false }.count, 1)
+        XCTAssertFalse(entered.events.contains { if case .approaching = $0 { return true }; return false })
     }
 
     func testShortNameDropsAdministrativePrefix() {
@@ -682,6 +826,114 @@ final class SectionSpeedTrackerTests: XCTestCase {
         XCTAssertTrue(result.events.contains(.zeroReached))
         XCTAssertTrue(result.events.contains(.overspeedEnded))
         XCTAssertEqual(result.status?.isOverspeed, false)
+        XCTAssertFalse(result.events.contains(.overspeedBeep))
+    }
+
+    func testActiveSettingChangesRecalculateAllCountdownFieldsFromOriginalStart() throws {
+        let s = section(length: 1_000, limit: 40)
+        for change in ["global", "override", "margin"] {
+            for useTick in [false, true] {
+                let tracker = SectionSpeedTracker(sections: [s])
+                let point = GeoMath.destination(from: s.start, bearing: 0, distance: 100)
+                let first = try XCTUnwrap(tracker.process(VehicleFix(point: point, speedMps: 12.5, course: 0,
+                                                                    timestamp: t0)).status)
+                if change == "global" { tracker.settings.sectionToleranceKmh = 0 }
+                if change == "override" { tracker.settings.sectionToleranceOverrides[s.groupID] = 0 }
+                if change == "margin" { tracker.settings.sectionSafetyMargin = 0.30 }
+                let now = t0.addingTimeInterval(67)
+                let result: SectionResult
+                if useTick {
+                    result = try XCTUnwrap(tracker.tick(now: now))
+                } else {
+                    result = tracker.process(VehicleFix(point: point, speedMps: 12.5, course: 0, timestamp: now))
+                }
+                let status = try XCTUnwrap(result.status)
+                let limit = tracker.settings.sectionEffectiveLimit(40, sectionID: s.groupID)
+                let minimum = s.minimumSeconds(atKmh: limit) * (1 + tracker.settings.sectionSafetyMargin)
+                XCTAssertEqual(status.startTime, first.startTime)
+                XCTAssertEqual(status.minimumSeconds, minimum, accuracy: 0.001)
+                XCTAssertEqual(status.remainingSeconds, minimum - now.timeIntervalSince(first.startTime), accuracy: 0.001)
+                XCTAssertEqual(status.earliestExit, first.startTime.addingTimeInterval(minimum))
+                XCTAssertEqual(status.effectiveLimitKmh, limit)
+                XCTAssertEqual(status.suggestedMaxKmh,
+                               min(limit, SpeedUnit.kmh(fromMps: status.remainingMeters / status.remainingSeconds)),
+                               accuracy: 0.001)
+                XCTAssertFalse(result.events.contains(.zeroReached))
+                if !useTick { XCTAssertEqual(status.isOverspeed, 45 > limit) }
+            }
+        }
+    }
+
+    func testLongerMinimumReopensZeroAndCanAnnounceZeroAgainOnce() throws {
+        let s = section(length: 1_000, limit: 40)
+        let tracker = SectionSpeedTracker(sections: [s])
+        let point = GeoMath.destination(from: s.start, bearing: 0, distance: 100)
+        func process(_ time: Date) -> SectionResult {
+            tracker.process(VehicleFix(point: point, speedMps: 12.5, course: 0, timestamp: time))
+        }
+        let initial = try XCTUnwrap(process(t0).status)
+        let firstZeroTime = initial.earliestExit.addingTimeInterval(0.1)
+        XCTAssertTrue(process(firstZeroTime).events.contains(.zeroReached))
+        tracker.settings.sectionToleranceKmh = 20
+        let shorter = process(firstZeroTime.addingTimeInterval(0.1))
+        XCTAssertEqual(shorter.status?.remainingSeconds, 0)
+        XCTAssertFalse(shorter.events.contains(.zeroReached), "提高容許值只會縮短時間，不重播已歸零")
+        tracker.settings.sectionToleranceKmh = 0
+        let reopened = process(firstZeroTime.addingTimeInterval(1))
+        let status = try XCTUnwrap(reopened.status)
+        XCTAssertGreaterThan(status.remainingSeconds, 0)
+        XCTAssertEqual(status.startTime, initial.startTime)
+        XCTAssertTrue(status.isOverspeed)
+        XCTAssertFalse(reopened.events.contains(.zeroReached))
+        let secondZeroTime = status.earliestExit.addingTimeInterval(0.1)
+        let secondZero = process(secondZeroTime)
+        XCTAssertEqual(secondZero.events.filter { $0 == .zeroReached }.count, 1)
+        XCTAssertFalse(secondZero.status?.isOverspeed ?? true)
+        XCTAssertFalse(process(secondZeroTime.addingTimeInterval(1)).events.contains(.zeroReached))
+    }
+
+    func testToleranceChangesDoNotResetIndependentOverspeedCooldowns() {
+        let s = section(length: 3_000, limit: 40)
+        let tracker = SectionSpeedTracker(sections: [s])
+        let point = GeoMath.destination(from: s.start, bearing: 0, distance: 100)
+        func process(_ second: Double) -> [SectionEvent] {
+            tracker.process(VehicleFix(point: point, speedMps: 55 / 3.6, course: 0,
+                                       timestamp: t0.addingTimeInterval(second))).events
+        }
+        XCTAssertTrue(process(0).contains(.overspeedBeep))
+        for (second, tolerance) in [(1.0, 0.0), (2, 20), (3, 0)] {
+            tracker.settings.sectionToleranceKmh = tolerance
+            let events = process(second)
+            XCTAssertFalse(events.contains(.overspeedBeep))
+            XCTAssertFalse(events.contains { if case .overspeedStarted = $0 { return true }; return false })
+        }
+        XCTAssertTrue(process(15).contains(.overspeedBeep))
+        tracker.settings.sectionToleranceKmh = 20
+        _ = process(29)
+        tracker.settings.sectionToleranceKmh = 0
+        let eligible = process(30)
+        XCTAssertTrue(eligible.contains(.overspeedStarted(threshold: 40)))
+        XCTAssertTrue(eligible.contains(.overspeedBeep))
+    }
+
+    func testUnreliableFixBeforeTickGapStillAppliesNewCountdownSettings() throws {
+        let s = section(length: 1_000, limit: 40)
+        let tracker = SectionSpeedTracker(sections: [s])
+        let point = GeoMath.destination(from: s.start, bearing: 0, distance: 100)
+        let initial = try XCTUnwrap(tracker.process(VehicleFix(
+            point: point, speedMps: 55 / 3.6, course: 0, timestamp: t0)).status)
+        XCTAssertTrue(initial.isOverspeed)
+        tracker.settings.sectionToleranceKmh = 20
+        let now = t0.addingTimeInterval(1)
+        let result = tracker.process(VehicleFix(point: point, speedMps: 0, course: nil,
+                                                horizontalAccuracy: 200, timestamp: now))
+        let status = try XCTUnwrap(result.status)
+        XCTAssertEqual(status.startTime, initial.startTime)
+        XCTAssertEqual(status.minimumSeconds, 61.8, accuracy: 0.001)
+        XCTAssertEqual(status.remainingSeconds, 61.8 - now.timeIntervalSince(initial.startTime), accuracy: 0.001)
+        XCTAssertEqual(status.effectiveLimitKmh, 60)
+        XCTAssertFalse(status.isOverspeed)
+        XCTAssertTrue(result.events.contains(.overspeedEnded))
         XCTAssertFalse(result.events.contains(.overspeedBeep))
     }
 

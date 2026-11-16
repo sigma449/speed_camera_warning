@@ -152,11 +152,12 @@ public final class SectionSpeedTracker {
         var minPoint: GeoPoint
     }
 
-    /// 預告過、還沒進入的區間。
+    /// 起點前候選；進入提醒距離後才預告及顯示。
     private struct Approaching {
         var section: SpeedSection
         var distance: Double
         var minDistance: Double
+        var announced = false
     }
 
     private var active: Active?
@@ -228,8 +229,14 @@ public final class SectionSpeedTracker {
 
     public func process(_ fix: VehicleFix) -> SectionResult {
         guard fix.isReliable else {
-            return tick(now: fix.timestamp)
-                ?? SectionResult(events: [], status: active.map { makeStatus($0, now: fix.timestamp) },
+            if let result = tick(now: fix.timestamp) { return result }
+            var events: [SectionEvent] = []
+            if var a = active, refreshMinimum(&a, now: fix.timestamp) {
+                updateCountdown(&a, now: fix.timestamp, events: &events)
+                clearInvalidOverspeed(&a, last: lastFix, now: fix.timestamp, events: &events)
+                active = a
+            }
+            return SectionResult(events: events, status: active.map { makeStatus($0, now: fix.timestamp) },
                                  approach: currentApproach)
         }
         if let course = fix.course, course >= 0, fix.speedKmh >= settings.minimumSpeedForCourse {
@@ -263,33 +270,35 @@ public final class SectionSpeedTracker {
         guard let last = lastFix, now.timeIntervalSince(last.timestamp) >= gpsGapSeconds else { return nil }
         var events: [SectionEvent] = []
 
+        if active == nil, var ap = approaching, let heading = lastCourse,
+           last.speedKmh >= settings.minimumSpeedForCourse,
+           isHeadingToStart(of: ap.section, from: last.point, heading: heading) {
+            let moved = max(0, last.speedMps) * now.timeIntervalSince(last.timestamp)
+            ap.distance = max(0, GeoMath.distance(last.point, ap.section.start) - moved)
+            approaching = ap
+            announceApproach(now: now, events: &events)
+        }
         if active == nil, let entered = enterWithoutFix(last: last, now: now) {
             begin(entered, events: &events)
         }
         if var a = active {
             updateCountdown(&a, now: now, events: &events)
-            if a.isOverspeed, now.timeIntervalSince(last.timestamp) >= 10 {
-                a.isOverspeed = false
-                events.append(.overspeedEnded)
-            }
+            clearInvalidOverspeed(&a, last: last, now: now, events: &events)
             a.reverseSince = nil
             a.reverseSamples = 0
             a.progress = nil
             active = a
             return SectionResult(events: events, status: makeStatus(a, now: now, assumedSpeed: last.speedMps))
         }
-        guard var ap = approaching else { return nil }
-        // 畫面上的距離也繼續往下算
-        let moved = max(0, last.speedMps) * now.timeIntervalSince(last.timestamp)
-        ap.distance = max(0, GeoMath.distance(last.point, ap.section.start) - moved)
-        approaching = ap
+        guard approaching != nil else { return nil }
         return SectionResult(events: events, status: nil, approach: currentApproach)
     }
 
     // MARK: - 內部流程
 
     private var currentApproach: SectionApproach? {
-        approaching.map { SectionApproach(section: $0.section, distance: $0.distance) }
+        guard let ap = approaching, ap.announced else { return nil }
+        return SectionApproach(section: ap.section, distance: ap.distance)
     }
 
     private func begin(_ entered: Active, events: inout [SectionEvent]) {
@@ -333,26 +342,38 @@ public final class SectionSpeedTracker {
             ap.distance = d
             ap.minDistance = min(ap.minDistance, d)
             let turnedAway = !isHeadingToStart(of: ap.section, from: fix.point, heading: heading)
-                && d > ap.minDistance + 60
+                && (!ap.announced || d > ap.minDistance + 60)
             if d > approachDistance(for: ap.section) + 200 || turnedAway {
                 approaching = nil
             } else {
                 approaching = ap
+                if fix.speedKmh >= settings.minimumSpeedForCourse,
+                   isHeadingToStart(of: ap.section, from: fix.point, heading: heading) {
+                    announceApproach(now: fix.timestamp, events: &events)
+                }
                 return
             }
         }
+        guard fix.speedKmh >= settings.minimumSpeedForCourse else { return }
         var best: (section: SpeedSection, distance: Double)?
         for s in sections where recentlyFinished[s.id] == nil && announcedApproach[s.id] == nil {
             let d = GeoMath.distance(fix.point, s.start)
-            guard d > settings.sectionGateRadius, d <= approachDistance(for: s),
+            guard d > 0, d <= approachDistance(for: s) + 200,
                   isHeadingToStart(of: s, from: fix.point, heading: heading),
                   d < (best?.distance ?? .greatestFiniteMagnitude) else { continue }
             best = (s, d)
         }
         guard let best else { return }
-        announcedApproach[best.section.id] = fix.timestamp
         approaching = Approaching(section: best.section, distance: best.distance, minDistance: best.distance)
-        events.append(.approaching(section: best.section, distance: best.distance))
+        announceApproach(now: fix.timestamp, events: &events)
+    }
+
+    private func announceApproach(now: Date, events: inout [SectionEvent]) {
+        guard var ap = approaching, !ap.announced, ap.distance <= approachDistance(for: ap.section) else { return }
+        ap.announced = true
+        approaching = ap
+        announcedApproach[ap.section.id] = now
+        events.append(.approaching(section: ap.section, distance: ap.distance))
     }
 
     /// 沒有經過起點的判定範圍（隧道口訊號差、GPS 跳點、匝道在起點之後才併入），但已經走在區間前段：
@@ -361,7 +382,7 @@ public final class SectionSpeedTracker {
         guard arming == nil, let heading = lastCourse, fix.speedKmh >= settings.minimumSpeedForCourse else { return nil }
         for s in sections where recentlyFinished[s.id] == nil && !requiresGateReentry.contains(s.id) {
             guard let spot = locateNearStart(of: s, point: fix.point),
-                  spot.lateral <= onPathDistance,
+                  spot.along > 0, spot.lateral <= onPathDistance,
                   GeoMath.angleDifference(heading, spot.bearing) <= 45 else { continue }
             let startTime = fix.timestamp.addingTimeInterval(-spot.along / max(1, fix.speedMps))
             return makeActive(s, startTime: startTime, point: fix.point, lastTime: fix.timestamp, traveled: spot.along)
@@ -397,7 +418,9 @@ public final class SectionSpeedTracker {
         } else {
             target = approaching?.section
         }
-        guard let s = target, last.speedKmh >= settings.minimumSpeedForCourse else { return nil }
+        guard let s = target, let heading = lastCourse,
+              last.speedKmh >= settings.minimumSpeedForCourse,
+              isHeadingToStart(of: s, from: last.point, heading: heading) else { return nil }
         let eta = GeoMath.distance(last.point, s.start) / max(1, last.speedMps)
         let startTime = last.timestamp.addingTimeInterval(eta)
         guard now >= startTime else { return nil }
@@ -406,14 +429,23 @@ public final class SectionSpeedTracker {
 
     /// 處理「接近起點」階段；確定通過起點時回傳啟動後的狀態。
     private func updateArming(_ fix: VehicleFix) -> Active? {
+        guard let heading = lastCourse, fix.speedKmh >= settings.minimumSpeedForCourse else {
+            arming = nil
+            return nil
+        }
         if var arm = arming {
             let d = GeoMath.distance(fix.point, arm.section.start)
+            guard GeoMath.angleDifference(heading, arm.section.entryHeading) < 90 else {
+                arming = nil
+                return nil
+            }
+            let progress = gateProgress(of: arm.section, point: fix.point)
             if d < arm.minDistance {
                 arm.minDistance = d
                 arm.minTime = fix.timestamp
                 arm.minPoint = fix.point
             }
-            let passedStart = d > arm.minDistance + 5 || d <= 5
+            let passedStart = progress.along >= 0 && progress.lateral <= onPathDistance
             if passedStart {
                 arming = nil
                 let startTime = d <= 5 ? fix.timestamp : arm.minTime
@@ -428,16 +460,21 @@ public final class SectionSpeedTracker {
             return nil
         }
 
-        guard let heading = lastCourse else { return nil }
         for s in sections where recentlyFinished[s.id] == nil {
             let d = GeoMath.distance(fix.point, s.start)
-            guard d <= settings.sectionGateRadius else { continue }
+            guard d <= settings.sectionGateRadius, gateProgress(of: s, point: fix.point).along <= 0 else { continue }
             // 有起點道路方向（里程牌計算）就用它；否則用起終點直線方向。兩者都只要求 90° 以內。
             guard GeoMath.angleDifference(heading, s.entryHeading) <= 90 else { continue }
             arming = Arming(section: s, minDistance: d, minTime: fix.timestamp, minPoint: fix.point)
             return nil
         }
         return nil
+    }
+
+    private func gateProgress(of s: SpeedSection, point: GeoPoint) -> (along: Double, lateral: Double) {
+        let distance = GeoMath.distance(s.start, point)
+        let angle = (GeoMath.bearing(from: s.start, to: point) - s.entryHeading) * .pi / 180
+        return (distance * cos(angle), abs(distance * sin(angle)))
     }
 
     private func advance(fix: VehicleFix, events: inout [SectionEvent]) {
@@ -600,6 +637,7 @@ public final class SectionSpeedTracker {
 
     /// 倒數提醒：跨過多個時間點時（例如 GPS 中斷），只報最新的那一個。
     private func updateCountdown(_ a: inout Active, now: Date, events: inout [SectionEvent]) {
+        refreshMinimum(&a, now: now)
         let remaining = max(0, a.minimumSeconds - now.timeIntervalSince(a.startTime))
         let crossed = a.pendingMilestones.filter { Double($0) >= remaining }
         if !crossed.isEmpty {
@@ -615,6 +653,29 @@ public final class SectionSpeedTracker {
             }
             a.zeroAnnounced = true
             events.append(.zeroReached)
+        }
+    }
+
+    @discardableResult
+    private func refreshMinimum(_ a: inout Active, now: Date) -> Bool {
+        let limit = settings.sectionEffectiveLimit(a.section.speedLimit, sectionID: a.section.groupID)
+        let minimum = a.section.minimumSeconds(atKmh: limit) * (1 + settings.sectionSafetyMargin)
+        guard minimum != a.minimumSeconds else { return false }
+        a.minimumSeconds = minimum
+        let remaining = minimum - now.timeIntervalSince(a.startTime)
+        a.pendingMilestones = Self.milestones(forMinimumSeconds: minimum,
+                                              finalCountdown: settings.sectionFinalCountdown)
+            .filter { Double($0) < remaining }
+        if remaining > 0 { a.zeroAnnounced = false }
+        return true
+    }
+
+    private func clearInvalidOverspeed(_ a: inout Active, last: VehicleFix?, now: Date,
+                                       events: inout [SectionEvent]) {
+        let limit = settings.sectionEffectiveLimit(a.section.speedLimit, sectionID: a.section.groupID)
+        if a.isOverspeed, let last, now.timeIntervalSince(last.timestamp) >= 10 || last.speedKmh <= limit {
+            a.isOverspeed = false
+            events.append(.overspeedEnded)
         }
     }
 
