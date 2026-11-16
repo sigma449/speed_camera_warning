@@ -200,6 +200,34 @@ def test_conflicting_official_source_preserves_primary_id_limit_and_direction():
     assert len(report.conflicts) == 1 and report.counts["164507"]["merged"] == 1
 
 
+def test_same_named_junction_in_different_districts_keeps_both_official_devices():
+    rows = sources.parse_payload((extra.SNAPSHOTS / "172178.raw").read_bytes())
+    candidates = extra.adapt_172178(
+        [row for row in rows if row["設備編號"] in ("12", "13")], SourceReport())
+    report = SourceReport()
+    result = merge_sources([], candidates, report)
+    assert {camera.id for camera in result} == {"172178-12", "172178-13"}
+    assert {camera.district for camera in result} == {"苑裡鎮", "苗栗市"}
+    assert report.counts["172178"]["added"] == 2
+    assert report.counts["172178"]["merged"] == 0
+
+
+@pytest.mark.parametrize("district,distance,merged", [
+    ("新店區", 200, True),
+    ("汐止區", 200, False),
+    (None, 200, False),
+    ("新店區", 400, False),
+    ("新店區", 2_000, False),
+])
+def test_same_address_shortcut_requires_verified_district_and_bounded_distance(district, distance, merged):
+    original = cam("primary", address="新北市新店區中山路與中正路口")
+    incoming = cam("other", source="164507", lat=25 + distance / 111_195,
+                   address=f"新北市{district or ''}中山路與中正路口")
+    incoming.district = district
+    result = merge_sources([original], [incoming], SourceReport())
+    assert {camera.id for camera in result} == ({"primary"} if merged else {"primary", "other"})
+
+
 def test_mobile_150_metre_dedupe_retains_opposite_direction_and_fixed_wins():
     additions = [cam("m1", source="mobile", kind="mobile", lat=25.001),
                  cam("m2", source="mobile", kind="mobile", lat=25.0011),

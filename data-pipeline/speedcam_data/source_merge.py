@@ -102,6 +102,8 @@ def _address(camera: Camera) -> str:
 
 def _same_address(a: Camera, b: Camera) -> bool:
     return bool(a.city and b.city and a.city.replace("臺", "台") == b.city.replace("臺", "台")
+                and a.district and b.district
+                and a.district.replace("臺", "台") == b.district.replace("臺", "台")
                 and len(_address(a)) >= 5 and _address(a) == _address(b))
 
 
@@ -150,7 +152,7 @@ def merge_sources(base: list[Camera], additions: list[Camera], report: SourceRep
         matches = [(old, distance) for old, distance in nearby
                    if _same_kind(old, new) and direction_matches(old, new)
                    and (distance <= (150 if new.type == "mobile" else 5 if source == old.source == "osm" else radius)
-                        or source != "osm" and _same_address(old, new))]
+                        or source != "osm" and distance <= 300 and _same_address(old, new))]
         # OSM 沒有方向時只作距離重疊，不能冒稱已驗證同行向；不另造一支重複相機。
         uncertain = [(old, distance) for old, distance in nearby
                      if new.source == "osm" and old.source != "osm" and _same_kind(old, new)
