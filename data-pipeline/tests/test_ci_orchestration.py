@@ -1,5 +1,7 @@
 import hashlib
 import json
+import shlex
+import shutil
 import subprocess
 
 import pytest
@@ -7,7 +9,7 @@ import pytest
 from ci_contract_helpers import ROOT, bash, shell_workspace, tool
 from test_additional_sources import douliu_milepost_index
 from test_data_release_contract import production_input, real_build, load_bundle
-from test_workflow_contract import script
+from test_workflow_contract import script, workflow
 
 
 @pytest.fixture
@@ -112,6 +114,35 @@ def test_weekly_pr_body_preserves_multisource_license_counts_and_fallback(accept
     assert "ODbL" in body and "地方公告" in body and "斗六" in body
     assert "| douliu-mobile |" in body and "13940 改用 repo 官方快照" in body
     assert "507 點／72" in body and "不是只有警政署" in body
+
+
+@pytest.mark.parametrize("changed", ["none", "camera", "source"])
+def test_weekly_step_does_not_open_date_only_prs(acceptance_evidence, tmp_path, changed):
+    _, directory, _ = acceptance_evidence
+    _, environment = shell_workspace(tmp_path)
+    shutil.copytree(directory / "ci-data", tmp_path / "build" / "ci-data")
+    target = tmp_path / "SpeedCam" / "Resources" / "cameras.json"
+    target.parent.mkdir(parents=True)
+    old = json.loads((directory / "ci-data" / "cameras.json").read_text(encoding="utf-8"))
+    old["generatedAt"] = "2000-01-01T00:00:00Z"
+    if changed == "camera":
+        old["cameras"][0]["speedLimit"] = 10
+    if changed == "source":
+        old["sources"].append("舊來源")
+    target.write_text(json.dumps(old, ensure_ascii=False), encoding="utf-8")
+    previous = target.read_bytes()
+    steps = workflow("data.yml")["jobs"]["refresh"]["steps"]
+    body = next(step["run"] for step in steps if "data-pr-body.py" in step.get("run", ""))
+    data_directory = shlex.quote(str(tmp_path / "build" / "ci-data"))
+    body = body.replace("scripts/ci/data-bundle.py verify",
+                        shlex.quote(str(ROOT / "scripts" / "ci" / "data-bundle.py")) + " verify --directory " + data_directory)
+    body = body.replace("scripts/ci/data-pr-body.py",
+                        shlex.quote(str(ROOT / "scripts" / "ci" / "data-pr-body.py")) + " --directory " + data_directory)
+    runner = tmp_path / "weekly-step.sh"
+    runner.write_text("set -euo pipefail\n" + body, encoding="utf-8", newline="\n")
+    result = bash(str(runner), cwd=tmp_path, env=environment)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert target.read_bytes() == (previous if changed == "none" else (directory / "ci-data" / "cameras.json").read_bytes())
 
 
 def test_failed_xcode_producer_is_nonzero_and_keeps_complete_log(tmp_path):

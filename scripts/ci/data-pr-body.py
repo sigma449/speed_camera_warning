@@ -6,11 +6,15 @@ from pathlib import Path
 import subprocess
 import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "data-pipeline"))
+from build_cameras import unchanged
+
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--directory", type=Path, default=Path("build/ci-data"))
     parser.add_argument("--output", type=Path, default=Path("build/data-pr-body.md"))
+    parser.add_argument("--install", type=Path)
     parser.add_argument("--commit", required=True)
     parser.add_argument("--manifest-sha", required=True)
     args = parser.parse_args(argv)
@@ -19,6 +23,13 @@ def main(argv=None):
                              "--manifest-sha", args.manifest_sha, "--release"])
     if result.returncode:
         return result.returncode
+    if args.install:
+        data = (args.directory / "cameras.json").read_bytes()
+        if unchanged(str(args.install), json.loads(data)):
+            print("資料內容、來源與建置狀態未變，保留 repo 日期，不寫入僅日期變更。")
+        else:
+            args.install.parent.mkdir(parents=True, exist_ok=True)
+            args.install.write_bytes(data)
     manifest = json.loads((args.directory / "manifest.json").read_text(encoding="utf-8"))
     sources = json.loads((args.directory / "sources.json").read_text(encoding="utf-8"))
     lines = ["由「Refresh camera data」流程產生；包含官方、地方公告、OSM 與人工補充，不是只有警政署。",

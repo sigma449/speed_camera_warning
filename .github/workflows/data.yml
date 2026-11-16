@@ -34,9 +34,9 @@ jobs:
           COMMIT: ${{ github.sha }}
           MANIFEST_SHA: ${{ steps.bundle.outputs.manifest-sha }}
         run: |
-          python3 scripts/ci/data-bundle.py verify --commit "${COMMIT}" --manifest-sha "${MANIFEST_SHA}" \
-            --release --install SpeedCam/Resources/cameras.json
-          python3 scripts/ci/data-pr-body.py --commit "${COMMIT}" --manifest-sha "${MANIFEST_SHA}"
+          python3 scripts/ci/data-bundle.py verify --commit "${COMMIT}" --manifest-sha "${MANIFEST_SHA}" --release
+          python3 scripts/ci/data-pr-body.py --commit "${COMMIT}" --manifest-sha "${MANIFEST_SHA}" \
+            --install SpeedCam/Resources/cameras.json
       - name: 開 PR
         uses: peter-evans/create-pull-request@v7
         with:
