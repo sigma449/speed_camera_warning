@@ -114,6 +114,9 @@ final class AppModel: ObservableObject {
     private var tickTask: Task<Void, Never>?
     private var lastActivityAttempt = Date.distantPast
     private var rerouteTask: Task<Void, Never>?
+    private var reroutePlanning = RoutePlanningState()
+    private var navigationVehicleMode: VehicleMode?
+    private var lastRerouteAttempt = Date.distantPast
     private var lastRerouteAnnouncement = Date.distantPast
     private var audioRouteObserver: NSObjectProtocol?
     private var isInCar = false
@@ -407,6 +410,7 @@ final class AppModel: ObservableObject {
         let name: String
         let subtitle: String
         let coordinate: CLLocationCoordinate2D
+        let request: RoutePlanningState.Request
         var route: MKRoute?
         /// 找不到符合車種規則的路線時，給使用者看的提醒。
         var routeWarning: String?
@@ -415,33 +419,40 @@ final class AppModel: ObservableObject {
         var wantsRoute = false
         var errorText: String?
         /// 每次預覽不同（地點或階段）都會變，畫面用來重新觸發計時與鏡頭移動。
-        var key: String { "\(ObjectIdentifier(item).hashValue)-\(stage == .place ? "place" : "route")" }
+        var key: String { "\(request.id)-\(stage == .place ? "place" : "route")" }
     }
 
     private var previewTask: Task<Void, Never>?
+    private var previewPlanning = RoutePlanningState()
 
     /// 選好目的地：先預覽地點，同時在背景規劃路線。
     func beginPreview(to item: MKMapItem, subtitle: String? = nil) {
         dismissMapPlace()
         endNavigation(silently: true)
         previewTask?.cancel()
+        let request = previewPlanning.begin(mode: settings.vehicleMode)
         preview = NavigationPreview(item: item, name: item.name ?? "未命名地點",
                                     subtitle: subtitle ?? MapItems.subtitle(of: item),
-                                    coordinate: MapItems.coordinate(of: item))
+                                    coordinate: MapItems.coordinate(of: item), request: request)
         isCalculatingRoute = true
         previewTask = Task { [weak self] in
             guard let self else { return }
             defer {
-                if self.preview?.item === item { self.isCalculatingRoute = false }
+                if self.previewPlanning.request == request {
+                    self.previewTask = nil
+                    self.isCalculatingRoute = false
+                }
             }
             do {
-                let plan = try await self.navigation.calculateRoute(to: item, mode: self.settings.vehicleMode)
-                guard !Task.isCancelled, self.preview?.item === item else { return }
+                let plan = try await self.navigation.calculateRoute(to: item, mode: request.mode)
+                guard !Task.isCancelled, self.preview?.request == request,
+                      self.previewPlanning.complete(request, currentMode: self.settings.vehicleMode) else { return }
                 self.preview?.route = plan.route
                 self.preview?.routeWarning = plan.warning?.text
                 if self.preview?.wantsRoute == true { self.preview?.stage = .route }
             } catch {
-                guard !Task.isCancelled, self.preview?.item === item else { return }
+                guard !Task.isCancelled, self.preview?.request == request,
+                      self.previewPlanning.fail(request, currentMode: self.settings.vehicleMode) else { return }
                 self.preview?.errorText = "路線規劃失敗：\(error.localizedDescription)"
             }
         }
@@ -461,14 +472,18 @@ final class AppModel: ObservableObject {
 
     /// 開始導航（使用者按下，或倒數結束）。
     func confirmPreview() {
-        guard let p = preview, let route = p.route else { return }
+        guard !isCalculatingRoute, let p = preview, let route = p.route,
+              previewPlanning.request == p.request,
+              previewPlanning.canStart(currentMode: settings.vehicleMode) else { return }
+        previewPlanning.cancel()
         preview = nil
-        startNavigation(route: route, destination: p.item, subtitle: p.subtitle)
+        startNavigation(route: route, destination: p.item, subtitle: p.subtitle, mode: p.request.mode)
     }
 
     func cancelPreview() {
         previewTask?.cancel()
         previewTask = nil
+        previewPlanning.cancel()
         preview = nil
         isCalculatingRoute = false
     }
@@ -493,8 +508,10 @@ final class AppModel: ObservableObject {
         RecentDestinationStore.save(recentDestinations)
     }
 
-    private func startNavigation(route newRoute: MKRoute, destination item: MKMapItem, subtitle: String?) {
+    private func startNavigation(route newRoute: MKRoute, destination item: MKMapItem, subtitle: String?,
+                                 mode: VehicleMode) {
         navigation.start(route: newRoute, destination: item)
+        navigationVehicleMode = mode
         route = newRoute
         destinationName = item.name
         destinationCoordinate = MapItems.coordinate(of: item)
@@ -514,9 +531,12 @@ final class AppModel: ObservableObject {
     }
 
     func endNavigation(silently: Bool = false) {
-        guard navigation.isActive else { return }
         rerouteTask?.cancel()
         rerouteTask = nil
+        reroutePlanning.cancel()
+        navigationVehicleMode = nil
+        lastRerouteAttempt = .distantPast
+        guard navigation.isActive else { return }
         navigation.stop()
         route = nil
         routeProgress = nil
@@ -527,8 +547,13 @@ final class AppModel: ObservableObject {
 
     /// 偏離路線時由 `RouteProgressTracker` 觸發；還沒回到路線上會每 15 秒再觸發一次，
     /// 所以這次失敗（沒有網路）或新路線又走錯，都不會卡在舊路線上。
-    private func reroute() {
+    private func reroute(force: Bool = false) {
         guard let destination = navigation.destination, rerouteTask == nil else { return }
+        let now = Date()
+        if !force, navigationVehicleMode != settings.vehicleMode,
+           now.timeIntervalSince(lastRerouteAttempt) < 15 { return }
+        lastRerouteAttempt = now
+        let request = reroutePlanning.begin(mode: settings.vehicleMode)
         // 重試時不要一直念
         if Date().timeIntervalSince(lastRerouteAnnouncement) >= 60 {
             lastRerouteAnnouncement = Date()
@@ -537,13 +562,17 @@ final class AppModel: ObservableObject {
         let source = lastFix.map { MapItems.item(at: $0.point) }
         rerouteTask = Task { [weak self] in
             guard let self else { return }
-            defer { self.rerouteTask = nil }
+            defer {
+                if self.reroutePlanning.request == request { self.rerouteTask = nil }
+            }
             do {
-                let plan = try await self.navigation.calculateRoute(to: destination, mode: self.settings.vehicleMode,
+                let plan = try await self.navigation.calculateRoute(to: destination, mode: request.mode,
                                                                     from: source)
                 // 等待期間使用者可能已經結束導航
-                guard !Task.isCancelled, self.navigation.destination === destination else { return }
+                guard !Task.isCancelled, self.navigation.destination === destination,
+                      self.reroutePlanning.complete(request, currentMode: self.settings.vehicleMode) else { return }
                 self.navigation.start(route: plan.route, destination: destination)
+                self.navigationVehicleMode = request.mode
                 self.route = plan.route
                 let warnings = [plan.warning?.text, self.navigation.routeHintWarning].compactMap { $0 }
                 self.statusMessage = warnings.isEmpty ? nil : warnings.joined(separator: "\n")
@@ -553,7 +582,8 @@ final class AppModel: ObservableObject {
                 }
                 self.activity.update(self.activityState(), alert: nil)
             } catch {
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, self.navigation.destination === destination,
+                      self.reroutePlanning.fail(request, currentMode: self.settings.vehicleMode) else { return }
                 self.statusMessage = "重新規劃失敗，稍後再試：\(error.localizedDescription)"
             }
         }
@@ -568,14 +598,20 @@ final class AppModel: ObservableObject {
         // 隧道裡的基地台定位不能判斷照相點和區間，當作沒有定位，由 tick 依時間推算
         let sec = fix.isReliable ? sectionTracker.process(fix) : nil
         let cam = fix.isReliable ? alertEngine.process(fix) : nil
-        let nav = navigation.process(fix)
+        let modeMatches = navigationVehicleMode == settings.vehicleMode
+        let nav = modeMatches ? navigation.process(fix) : nil
 
         if let cam { cameraTarget = cam.target }
         if let sec {
             sectionStatus = sec.status
             sectionApproach = sec.approach
         }
-        routeProgress = nav?.progress
+        if modeMatches {
+            routeProgress = nav?.progress
+        } else {
+            routeProgress?.isOffRoute = true
+            if navigation.isActive { reroute() }
+        }
 
         // 語音優先順序：近距 / 超速 > 區間 > 預告 > 導航
         handleAlertResults(camera: cam, section: sec, fix: fix)
@@ -781,6 +817,18 @@ final class AppModel: ObservableObject {
             UserDefaults.standard.set(data, forKey: Self.settingsKey)
         }
         applySettingsToComponents()
+        if old.vehicleMode != settings.vehicleMode {
+            if let p = preview {
+                beginPreview(to: p.item, subtitle: p.subtitle)
+                preview?.wantsRoute = p.wantsRoute || p.stage == .route
+            } else if navigation.isActive {
+                rerouteTask?.cancel()
+                rerouteTask = nil
+                reroutePlanning.cancel()
+                routeProgress?.isOffRoute = true
+                reroute(force: true)
+            }
+        }
         if let target = cameraTarget, !settings.isEnabled(target.camera) {
             cameraTarget = nil
             activity.update(activityState(), alert: nil)

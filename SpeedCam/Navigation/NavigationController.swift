@@ -40,9 +40,11 @@ final class NavigationController {
     /// source：重新規劃時傳最新定位。系統的「目前位置」可能還是幾秒前的，開車時會差好幾十公尺。
     func calculateRoute(to destination: MKMapItem, mode: VehicleMode,
                         from source: MKMapItem? = nil) async throws -> RoutePlan<MKRoute> {
+        try Task.checkCancellation()
         var rules = RouteRules.noData
         instructionResolver = await RoadLineStore.loadInstructionResolver()
         if mode != .car { rules = await RoadLineStore.loadRules() }
+        try Task.checkCancellation()
         return try await RoutePlanner.plan(from: source ?? MKMapItem.forCurrentLocation(), to: destination,
                                            mode: mode, rules: rules)
     }

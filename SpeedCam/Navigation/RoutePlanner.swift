@@ -19,7 +19,14 @@ enum RoutePlanner {
                 request.highwayPreference = option.avoidHighways ? .avoid : .any
                 request.tollPreference = option.avoidTolls ? .avoid : .any
             }
-            let response = try await MKDirections(request: request).calculate()
+            let directions = MKDirections(request: request)
+            let response = try await withTaskCancellationHandler(operation: {
+                try Task.checkCancellation()
+                return try await directions.calculate()
+            }, onCancel: {
+                directions.cancel()
+            })
+            try Task.checkCancellation()
             return response.routes.map { route in (route: route, facts: facts(of: route)) }
         }
         let logger = Logger(subsystem: "tw.speedcammap.app", category: "route")

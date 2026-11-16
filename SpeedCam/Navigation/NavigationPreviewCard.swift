@@ -7,7 +7,6 @@ import SwiftUI
 /// - 路線階段：「開始導航（10）」倒數，時間到或按下就開始導航；拖動地圖時倒數暫停。
 struct NavigationPreviewCard: View {
     let preview: AppModel.NavigationPreview
-    let vehicleMode: VehicleMode
     /// 倒數秒數；nil 表示沒有倒數（暫停或還沒開始）。
     let countdown: Int?
     let onShowRoute: () -> Void
@@ -61,6 +60,7 @@ struct NavigationPreviewCard: View {
                     .buttonStyle(.borderedProminent)
                     .tint(.green)
                     .controlSize(.large)
+                    .disabled(preview.route == nil)
                 }
             }
         }
@@ -82,7 +82,7 @@ struct NavigationPreviewCard: View {
         } else if let route = preview.route {
             VStack(alignment: .leading, spacing: 8) {
                 // 接成一段文字，放不下時才會整段換行，不會每一項各自斷行
-                Text([Self.distanceText(route.distance), Self.durationText(route.expectedTravelTime), vehicleMode.routeNote]
+                Text([Self.distanceText(route.distance), Self.durationText(route.expectedTravelTime), preview.request.mode.routeNote]
                     .compactMap { $0 }
                     .joined(separator: "・"))
                     .font(.headline)

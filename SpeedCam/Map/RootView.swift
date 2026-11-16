@@ -39,7 +39,7 @@ struct RootView: View {
                 }
                 Spacer()
                 if let preview = model.preview {
-                    NavigationPreviewCard(preview: preview, vehicleMode: model.vehicleMode,
+                    NavigationPreviewCard(preview: preview,
                                           countdown: previewCountdown,
                                           onShowRoute: { model.showRoutePreview() },
                                           onStart: { startPreviewedNavigation() },
@@ -186,13 +186,13 @@ struct RootView: View {
         switch p.stage {
         case .place:
             try? await Task.sleep(nanoseconds: 3_000_000_000)
-            guard !Task.isCancelled, !previewPaused else { return }
+            guard !Task.isCancelled, !previewPaused, model.preview?.key == p.key else { return }
             model.showRoutePreview()
         case .route:
             for remaining in stride(from: 10, through: 1, by: -1) {
                 previewCountdown = remaining
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
-                if Task.isCancelled { return }
+                if Task.isCancelled || model.preview?.key != p.key { return }
                 if previewPaused {
                     previewCountdown = nil
                     return

@@ -206,4 +206,51 @@ final class RouteRulesTests: XCTestCase {
             XCTAssertEqual(calls, 1)
         }
     }
+
+    func testVehicleChangeInvalidatesReadyRouteUntilReplacementCompletes() {
+        var state = RoutePlanningState()
+        let car = state.begin(mode: .car)
+        XCTAssertTrue(state.complete(car, currentMode: .car))
+        XCTAssertTrue(state.canStart(currentMode: .car))
+        XCTAssertFalse(state.canStart(currentMode: .motorcycleWhite))
+
+        let white = state.begin(mode: .motorcycleWhite)
+        XCTAssertFalse(state.canStart(currentMode: .car))
+        XCTAssertFalse(state.canStart(currentMode: .motorcycleWhite))
+        XCTAssertTrue(state.complete(white, currentMode: .motorcycleWhite))
+        XCTAssertTrue(state.canStart(currentMode: .motorcycleWhite))
+    }
+
+    func testOldRouteResultCannotCompleteOrFailANewerRequest() {
+        var state = RoutePlanningState()
+        let old = state.begin(mode: .car)
+        let current = state.begin(mode: .car)
+        XCTAssertFalse(state.complete(old, currentMode: .car))
+        XCTAssertFalse(state.fail(old, currentMode: .car))
+        XCTAssertTrue(state.isCalculating)
+        XCTAssertEqual(state.request, current)
+        XCTAssertTrue(state.complete(current, currentMode: .car))
+    }
+
+    func testSwitchingVehicleBackDoesNotReviveTheFirstRequest() {
+        var state = RoutePlanningState()
+        let first = state.begin(mode: .car)
+        _ = state.begin(mode: .motorcycleRedYellow)
+        let latest = state.begin(mode: .car)
+        XCTAssertFalse(state.complete(first, currentMode: .car))
+        XCTAssertFalse(state.complete(latest, currentMode: .motorcycleWhite))
+        XCTAssertTrue(state.complete(latest, currentMode: .car))
+    }
+
+    func testFailedAndCancelledRouteCannotStartOrReturnLate() {
+        var state = RoutePlanningState()
+        let failed = state.begin(mode: .motorcycleWhite)
+        XCTAssertTrue(state.fail(failed, currentMode: .motorcycleWhite))
+        XCTAssertFalse(state.canStart(currentMode: .motorcycleWhite))
+        XCTAssertFalse(state.complete(failed, currentMode: .motorcycleWhite))
+        let cancelled = state.begin(mode: .car)
+        state.cancel()
+        XCTAssertFalse(state.complete(cancelled, currentMode: .car))
+        XCTAssertFalse(state.canStart(currentMode: .car))
+    }
 }
