@@ -2,6 +2,9 @@
 
 ## 完整驗收入口
 
+建置環境為 macos-26／Xcode26.6、App最低iOS15／Widget26、Swift5／strict concurrency minimal；
+側載名稱、最低OS與強連結檢查仍保留。
+
 由**已在 main 註冊**的 `build-ipa.yml` 接收 `acceptance=true`，呼叫同分支的 `_acceptance.yml`。
 新檔只有 `workflow_call`，不必先合併 main 才能使用。驗收者將本機提交更新到遠端同名分支後執行：
 
@@ -213,10 +216,24 @@ H5（使用者 2026-11-16 決定）讓闖紅燈也走兩段；RouteProbe 的相�
 
 ## 本機契約與界線
 
-```powershell
-python -I -X utf8 build\swift_test.py
-python -m pytest -q data-pipeline
-```
+快測試／僅 slow／全部測試、Swift 完整與 `--filter` 指令統一見根目錄
+[`CLAUDE.md` 的「建置與測試」](../CLAUDE.md#建置與測試)。
+日常跑快測試；改 `scripts\ci\` 或 workflow 另跑 slow。pytest.ini 預設以
+`-m "not slow"` deselect，**不是 skip**；`_tests.yml` 用 `-m "slow or not slow"`，
+因此 CI 的 Python job 仍執行全部，不因本機選取少驗。
+
+H6 的量測發現：契約原本已把 sleep 換成空程式，主要成本是 Windows 為每個
+sleep／xcrun／python3 替身反覆啟動 Bash。測試專用 `BASH_ENV` 將相同替身載為函式，
+以子 shell 保留原 stdout／stderr／退出碼與程序隔離；仍保留可執行檔供 `command`／`exec` 使用。
+`shell_workspace(wait_seconds=0)` 設定測試等待，也可在該次環境覆寫 `CI_CONTRACT_WAIT_SECONDS`。
+假 simctl 另記住 create 的 iOS15 runtime，避免已完成的 UI marker 被誤當新系統而空輪詢60次。
+只有治本後實測約超過5秒的個別參數案例標 slow；**正式 `.sh` 的內容、等待／輪詢次數完全沒改**。
+
+追蹤版 Swift 入口為 `scripts\swift-test.py`，本機 `build\swift_test.py` 轉接它。
+原始碼仍 bind mount `/pkg`、Resources 仍唯讀掛 `/SpeedCam/Resources`；
+`/pkg/.build` 另掛 `speedcam-swift62-build-<checkout雜湊>` named volume，
+以 `volume-nocopy` 避免首次複製 Windows 舊快取；不同 checkout 不共用編譯狀態。
+volume 留供下次執行，其他 Swift 參數與退出碼原樣保留，沒有改 iOS15 runtime／Xcode 快取政策。
 
 Python job 包含實際 shell＋假 simctl、固定小 replay log、YAML／依賴圖／摘要、假 xcodebuild 失敗與診斷逾時契約。
 每週更新另外直接抽取 workflow 的 shell 執行，核對僅日期不同不改檔、相機／來源有變仍更新。
@@ -229,6 +246,6 @@ Swift 的新三項回歸在普通本機使用同一 builder 擷取的 7 點／21
 CI 設 `SPEEDCAM_CURRENT_DATABASE_REQUIRED=1`，必須載入同輪完整 artifact，逐段驗預告→進入→完成及反向不進入，
 不能因缺資料跳過或退回 fixture。RouteProbe 期限另有五項純 Swift 取消／晚到回歸。
 
-H3 修前／修後證據與最終完整 log 放 `build\stage-h3`；原測試均保留。
-YAML 已由 Python 解析，但不是 GitHub 服務端執行證據；本輪沒有 iOS SDK、真 simctl／MapKit、截圖目視或實播結果，
-沒有 push／觸發 workflow／產生新 IPA。新的 macOS 編譯、三組回放及外部服務資料仍須由驗收者執行確認。
+歷次驗證原文與證據位置見 `HISTORY.md`，H6 的時間／選取／規格對照放 `build\stage-h6\`。
+YAML／本機契約通過不是 GitHub 服務端、iOS SDK、真 simctl／MapKit、目視或實播證據；
+新的 macOS 編譯、三組回放及外部資料仍須驗收者執行確認，不由 Copilot push／觸發。

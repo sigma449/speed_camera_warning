@@ -6,8 +6,11 @@
 python3 build_cameras.py                 # 7320＋官方校正＋地方多來源＋OSM＋可定位公告熱點
 python3 build_cameras.py --input raw.csv # 使用本機檔案（CSV 或 JSON，可重複指定）
 python3 build_cameras.py --min-count 500 # 少於 500 筆就視為失敗
-python3 -m pytest -q                     # 測試
+python3 -m pytest -q                     # 預設快測試（不含 slow）
 ```
+
+快／僅 slow／全部測試指令統一見根目錄 `CLAUDE.md` 的「建置與測試」；
+改 CI 腳本或 workflow 另跑 slow，CI 的 Python job 始終全部執行。
 
 ## 處理內容
 
