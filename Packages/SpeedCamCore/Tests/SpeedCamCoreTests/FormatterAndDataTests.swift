@@ -154,6 +154,73 @@ final class CameraAnnouncementPolicyTests: XCTestCase {
     }
 }
 
+final class AlertAnnouncementPolicyTests: XCTestCase {
+    private final class Utterance {}
+
+    func testBatchKeepsNearAheadOfSectionAndHotspotEvenWithHotspotFirst() {
+        let camera = Camera(id: "c", type: .fixed, lat: 25, lon: 121, speedLimit: 50)
+        let hotspot = Camera(id: "m", type: .mobile, lat: 25, lon: 121)
+        let section = SpeedSection(id: "s", name: "區間", start: origin, end: origin,
+                                   lengthMeters: 1_000, speedLimit: 50)
+        let speeches = AlertAnnouncementPolicy.speech(
+            camera: CameraAlertResult(events: [.preAlert(camera: hotspot, distance: 300),
+                .nearAlert(camera: camera, distance: 90, afterPre: true)],
+                target: CameraTarget(camera: camera, distance: 90, phase: .near, isOverspeed: true)),
+            section: SectionResult(events: [.entered(section: section, minimumSeconds: 100)], status: nil),
+            speedKmh: 72, settings: AlertSettings(), suggestedKmh: nil, cameraOverspeedActive: true)
+        XCTAssertEqual(speeches.map(\.priority), [.critical, .section, .preAlert])
+        XCTAssertEqual(speeches.first?.text, "100公尺，超速")
+        XCTAssertEqual(speeches.map(\.urgent), [true, true, false])
+    }
+
+    func testLowerPriorityUrgentSectionCannotInterruptNear() {
+        var state = SpeechPlaybackState()
+        let near = Utterance(), section = Utterance()
+        XCTAssertFalse(state.submit(ObjectIdentifier(near), priority: .critical, urgent: true, isSpeaking: false))
+        XCTAssertFalse(state.submit(ObjectIdentifier(section), priority: .section, urgent: true, isSpeaking: true))
+    }
+
+    func testHigherPriorityReplacesPendingLowerBeforeSpeakingAndIgnoresOldCancellation() {
+        var state = SpeechPlaybackState()
+        let navigation = Utterance(), near = Utterance(), section = Utterance()
+        XCTAssertFalse(state.submit(ObjectIdentifier(navigation), priority: .navigation, urgent: false, isSpeaking: false))
+        XCTAssertTrue(state.submit(ObjectIdentifier(near), priority: .critical, urgent: true, isSpeaking: false))
+        state.finish(ObjectIdentifier(navigation))
+        XCTAssertFalse(state.submit(ObjectIdentifier(section), priority: .section, urgent: true, isSpeaking: true))
+    }
+
+    func testSamePriorityUrgentAndNonUrgentInterruptionRulesArePreserved() {
+        var state = SpeechPlaybackState()
+        let first = Utterance(), second = Utterance(), normal = Utterance(), latest = Utterance()
+        XCTAssertFalse(state.submit(ObjectIdentifier(first), priority: .critical, urgent: true, isSpeaking: false))
+        XCTAssertFalse(state.submit(ObjectIdentifier(second), priority: .critical, urgent: true, isSpeaking: false))
+        XCTAssertFalse(state.submit(ObjectIdentifier(normal), priority: .section, urgent: false, isSpeaking: true))
+        XCTAssertTrue(state.submit(ObjectIdentifier(latest), priority: .critical, urgent: true, isSpeaking: true))
+    }
+
+    func testSectionOverspeedSuppressionAndCountdownSuggestedSpeedRemainIntact() {
+        let result = SectionResult(events: [.overspeedStarted(threshold: 50), .remaining(seconds: 60)], status: nil)
+        let suppressed = AlertAnnouncementPolicy.speech(camera: nil, section: result, speedKmh: 60,
+            settings: AlertSettings(), suggestedKmh: 45, cameraOverspeedActive: true)
+        XCTAssertEqual(suppressed.map(\.text), [AnnouncementFormatter.sectionRemaining(seconds: 60, suggestedKmh: 45)])
+        let audible = AlertAnnouncementPolicy.speech(camera: nil, section: result, speedKmh: 60,
+            settings: AlertSettings(), suggestedKmh: 45, cameraOverspeedActive: false)
+        XCTAssertEqual(audible.map(\.priority), [.critical, .section])
+        XCTAssertEqual(audible.first?.text, AnnouncementFormatter.sectionOverspeed(threshold: 50))
+    }
+
+    func testFinishedAndStoppedSpeechCannotLeaveStalePriorityProtection() {
+        var state = SpeechPlaybackState()
+        let near = Utterance(), navigation = Utterance(), section = Utterance()
+        _ = state.submit(ObjectIdentifier(near), priority: .critical, urgent: true, isSpeaking: false)
+        _ = state.submit(ObjectIdentifier(navigation), priority: .navigation, urgent: false, isSpeaking: true)
+        state.finish(ObjectIdentifier(near))
+        XCTAssertTrue(state.submit(ObjectIdentifier(section), priority: .section, urgent: true, isSpeaking: true))
+        state.reset()
+        XCTAssertTrue(state.submit(ObjectIdentifier(navigation), priority: .navigation, urgent: true, isSpeaking: true))
+    }
+}
+
 final class ToneGeneratorTests: XCTestCase {
     func testWavHeaderAndLength() {
         let data = ToneGenerator.wavData(frequency: 1_000, duration: 0.1, sampleRate: 8_000)

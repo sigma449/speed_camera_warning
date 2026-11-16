@@ -629,61 +629,22 @@ final class AppModel: ObservableObject {
     }
 
     private func handleAlertResults(camera: CameraAlertResult?, section: SectionResult?, fix: VehicleFix?) {
-        let hotspotPre = camera?.events.contains {
-            if case let .preAlert(camera, _) = $0 { return camera.type == .mobile }
-            return false
-        } == true
-        if !hotspotPre, let camera, let fix { handleCameraResult(camera, fix: fix) }
-        for event in section?.events ?? [] { handleSectionEvent(event) }
-        if hotspotPre, let camera, let fix { handleCameraResult(camera, fix: fix) }
-    }
-
-    private func handleCameraResult(_ result: CameraAlertResult, fix: VehicleFix) {
-        for speech in CameraAnnouncementPolicy.speech(for: result, speedKmh: fix.speedKmh, settings: settings) {
-            announcer.speak(speech.text, urgent: speech.urgent)
+        for speech in AlertAnnouncementPolicy.speech(
+            camera: camera, section: section, speedKmh: fix?.speedKmh, settings: settings,
+            suggestedKmh: sectionStatus?.suggestedWholeKmh,
+            cameraOverspeedActive: cameraTarget?.isOverspeed == true) {
+            announcer.speak(speech.text, urgent: speech.urgent, priority: speech.priority)
         }
-        for event in result.events {
+        let cameraEvents = fix == nil ? [] : camera?.events ?? []
+        for event in cameraEvents {
             switch event {
             case .passed: announcer.passTone()
             case .overspeedStarted, .overspeedBeep: announcer.beep()
             case .preAlert, .nearAlert, .overspeedEnded: break
             }
         }
-    }
-
-    /// 播報時念門檻距離（300、100…）比念「296 公尺」自然；第一次偵測就已經很近時改念實際距離。
-    private func spoken(_ distance: Double, threshold: Double) -> Double {
-        AnnouncementFormatter.announcedDistance(distance, threshold: threshold)
-    }
-
-    private func handleSectionEvent(_ event: SectionEvent) {
-        switch event {
-        case let .approaching(section, distance):
-            let threshold = settings.thresholds(speedLimit: section.speedLimit, currentSpeedKmh: 0).pre
-            announcer.speak(AnnouncementFormatter.sectionApproaching(
-                section: section, announcedDistance: spoken(distance, threshold: threshold)))
-        case let .entered(section, minimumSeconds):
-            announcer.speak(AnnouncementFormatter.sectionEntered(
-                section: section, minimumSeconds: minimumSeconds,
-                effectiveLimitKmh: settings.sectionEffectiveLimit(section.speedLimit, sectionID: section.groupID)), urgent: true)
-        case let .remaining(seconds):
-            announcer.speak(AnnouncementFormatter.sectionRemaining(seconds: seconds,
-                                                                   suggestedKmh: sectionStatus?.suggestedWholeKmh))
-        case .zeroReached:
-            announcer.speak(AnnouncementFormatter.sectionZero)
-        case let .completed(_, averageKmh, withinLimit):
-            announcer.speak(AnnouncementFormatter.sectionCompleted(averageKmh: averageKmh, withinLimit: withinLimit))
-        case .aborted:
-            break
-        case let .overspeedStarted(threshold):
-            // 照相機前的超速警示已經在嗶的話就不重複
-            guard cameraTarget?.isOverspeed != true else { break }
-            announcer.speak(AnnouncementFormatter.sectionOverspeed(threshold: threshold), urgent: true)
-        case .overspeedBeep:
-            guard cameraTarget?.isOverspeed != true else { break }
-            announcer.beep()
-        case .overspeedEnded:
-            break
+        for event in section?.events ?? [] {
+            if case .overspeedBeep = event, cameraTarget?.isOverspeed != true { announcer.beep() }
         }
     }
 
@@ -923,7 +884,8 @@ final class AppModel: ObservableObject {
 
     func testVoice() {
         let sample = Camera(id: "test", type: .fixed, lat: 0, lon: 0, heading: nil, speedLimit: 50)
-        announcer.speak(AnnouncementFormatter.cameraAlert(camera: sample, announcedDistance: settings.generalPreDistance), urgent: true)
+        announcer.speak(AnnouncementFormatter.cameraAlert(camera: sample, announcedDistance: settings.generalPreDistance),
+                        urgent: true, priority: .critical)
     }
 
     func testBeep() {

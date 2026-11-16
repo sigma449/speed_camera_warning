@@ -12,6 +12,7 @@ final class VoiceAnnouncer: NSObject, AVSpeechSynthesizerDelegate {
     private var beepPlayer: AVAudioPlayer?
     private var passPlayer: AVAudioPlayer?
     private var deactivateTask: Task<Void, Never>?
+    private var playbackState = SpeechPlaybackState()
 
     var voiceEnabled = true
     var beepEnabled = true
@@ -25,17 +26,18 @@ final class VoiceAnnouncer: NSObject, AVSpeechSynthesizerDelegate {
         passPlayer?.prepareToPlay()
     }
 
-    /// 念出一句話。urgent = true 時會打斷正在念的內容（例如近距提醒、超速）。
-    func speak(_ text: String, urgent: Bool = false) {
+    /// urgent 只允許打斷同等或較低優先度；未插播的內容仍交給原本的語音引擎。
+    func speak(_ text: String, urgent: Bool = false, priority: SpeechPriority = .navigation) {
         guard voiceEnabled, !text.isEmpty else { return }
         activateSession()
-        if urgent && synthesizer.isSpeaking {
-            synthesizer.stopSpeaking(at: .word)
-        }
         let utterance = AVSpeechUtterance(string: text)
         utterance.voice = voice
         utterance.rate = 0.53
         utterance.volume = 1.0
+        if playbackState.submit(ObjectIdentifier(utterance), priority: priority,
+                                urgent: urgent, isSpeaking: synthesizer.isSpeaking) {
+            synthesizer.stopSpeaking(at: .word)
+        }
         synthesizer.speak(utterance)
     }
 
@@ -58,6 +60,7 @@ final class VoiceAnnouncer: NSObject, AVSpeechSynthesizerDelegate {
     }
 
     func stopAll() {
+        playbackState.reset()
         synthesizer.stopSpeaking(at: .immediate)
         beepPlayer?.stop()
         passPlayer?.stop()
@@ -98,12 +101,14 @@ final class VoiceAnnouncer: NSObject, AVSpeechSynthesizerDelegate {
 
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
         Task { @MainActor [weak self] in
+            self?.playbackState.finish(ObjectIdentifier(utterance))
             self?.scheduleDeactivate(after: 0.4)
         }
     }
 
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
         Task { @MainActor [weak self] in
+            self?.playbackState.finish(ObjectIdentifier(utterance))
             self?.scheduleDeactivate(after: 0.4)
         }
     }

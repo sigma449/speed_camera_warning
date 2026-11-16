@@ -3,10 +3,12 @@ import Foundation
 public struct SpokenAnnouncement: Equatable, Sendable {
     public var text: String
     public var urgent: Bool
+    public var priority: SpeechPriority
 
-    public init(text: String, urgent: Bool = false) {
+    public init(text: String, urgent: Bool = false, priority: SpeechPriority? = nil) {
         self.text = text
         self.urgent = urgent
+        self.priority = priority ?? (urgent ? .critical : .preAlert)
     }
 }
 
