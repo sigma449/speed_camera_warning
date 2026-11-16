@@ -134,7 +134,11 @@ public struct Camera: Codable, Hashable, Identifiable, Sendable {
         return type.enforcesSpeed
     }
 
-    public var usesTwoStageAlert: Bool { enforcesSpeed }
+    /// 闖紅燈沿用兩段提醒；科技須明列「闖紅燈」，不由泛稱號誌違規推定。
+    public var usesTwoStageAlert: Bool {
+        enforcesSpeed || type == .redLight
+            || (type == .tech && enforcementItemList.contains { $0.contains("闖紅燈") })
+    }
 
     private var enforcementItemList: [String] {
         (enforcementItems ?? "").components(separatedBy: CharacterSet(charactersIn: "、，,；;／/\n\r"))

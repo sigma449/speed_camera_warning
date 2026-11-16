@@ -397,6 +397,7 @@ func logReplay(camera: CameraAlertResult?, section: SectionResult?, stamp: Strin
             fields["address"] = c.address
             fields["cameraType"] = c.type.rawValue
             fields["enforcesSpeed"] = c.enforcesSpeed
+            fields["usesTwoStageAlert"] = c.usesTwoStageAlert
             fields["source"] = c.source ?? "legacy"
             fields["distance"] = distance
             fields["announcedDistance"] = AnnouncementFormatter.announcedDistance(distance, threshold: threshold)

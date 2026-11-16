@@ -69,6 +69,32 @@ final class AnnouncementFormatterTests: XCTestCase {
                               enforcementItems: "違規停車").isParkingOnlyTechnology)
     }
 
+    func testRedLightTechnologyUsesSharedEnforcementItemParsingWithoutInferringOtherSignalViolations() {
+        for items in ["闖紅燈", " 闖紅燈及路口淨空 ", "違規停車；\n闖紅燈，未停讓行人",
+                      "未停讓行人／闖紅燈", "紅燈右轉,闖紅燈",
+                      "路口各項違規(闖紅燈、不依標誌標線號誌行駛等)"] {
+            let tech = Camera(id: "t", type: .tech, lat: 25, lon: 121, enforcementItems: items)
+            XCTAssertTrue(tech.usesTwoStageAlert, items)
+            XCTAssertFalse(tech.enforcesSpeed, items)
+            XCTAssertFalse(tech.isParkingOnlyTechnology, items)
+            for type in [CameraType.mobile, .noise] {
+                var other = tech
+                other.type = type
+                XCTAssertFalse(other.usesTwoStageAlert, "\(type) \(items)")
+            }
+        }
+        let singleStageItems: [String?] = [
+            nil, "", "紅燈右轉", "紅燈越線", "路口淨空", "未依標誌標線號誌行駛",
+            "違規停車、紅燈右轉", "違規停車、併排停車",
+        ]
+        for items in singleStageItems {
+            let tech = Camera(id: "t", type: .tech, lat: 25, lon: 121, address: "闖紅燈測試路",
+                              enforcementItems: items, conditions: "闖紅燈")
+            XCTAssertFalse(tech.usesTwoStageAlert, items ?? "nil")
+            XCTAssertFalse(tech.enforcesSpeed, items ?? "nil")
+        }
+    }
+
     /// 使用者實測：近距時語音精簡一點，用幾公尺就好。
     func testNearAlertAfterPreOnlySaysDistance() {
         XCTAssertEqual(AnnouncementFormatter.cameraNearAfterPre(announcedDistance: 100), "100公尺")
@@ -151,6 +177,19 @@ final class CameraAnnouncementPolicyTests: XCTestCase {
         XCTAssertEqual(speech(distance: 89, targetID: "other").first?.text, "100公尺")
         XCTAssertEqual(speech(distance: 184, limit: nil).first?.text, "200公尺")
         XCTAssertEqual(speech(distance: 89, type: .redLight).first?.text, "100公尺")
+    }
+
+    func testRedLightNearSpeechKeepsDistanceOnlyDespiteStaleOverspeedFlag() {
+        for type in [CameraType.redLight, .tech] {
+            let camera = Camera(id: "red", type: type, lat: 25, lon: 121, speedLimit: 80,
+                                enforcementItems: type == .tech ? "闖紅燈及路口淨空" : nil)
+            for (distance, text) in [(184.0, "200公尺"), (25.0, "30公尺")] {
+                let result = CameraAlertResult(events: [.nearAlert(camera: camera, distance: distance, afterPre: true)],
+                    target: CameraTarget(camera: camera, distance: distance, phase: .near, isOverspeed: true))
+                XCTAssertEqual(CameraAnnouncementPolicy.speech(for: result, speedKmh: 100,
+                    settings: AlertSettings()), [SpokenAnnouncement(text: text, urgent: true)])
+            }
+        }
     }
 }
 

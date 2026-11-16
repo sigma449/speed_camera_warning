@@ -221,6 +221,14 @@ def check_records(records: list[dict], *, information: list[str] | None = None,
         for r in rows:
             if r["event"] not in {"camera_pre", "camera_near"}:
                 continue
+            if r["event"] == "camera_near":
+                require(r.get("cameraType") != "noise", f"{name} 聲音照相不應產生近距第二次提醒")
+                if "usesTwoStageAlert" in r:
+                    require(r["usesTwoStageAlert"] is True, f"{name} 非兩段類型不應產生近距提醒")
+                if r.get("cameraType") == "tech" and r.get("enforcesSpeed") is not True:
+                    require(r.get("usesTwoStageAlert") is True, f"{name} 非測速科技近距缺少核心闖紅燈兩段資格")
+                require(not (r.get("enforcesSpeed") is False and r.get("overspeed") is True),
+                        f"{name} 非測速照相近距不應標示超速")
             speeches = r.get("speeches")
             hotspot = (r.get("cameraType") == "mobile" or r.get("source") == "ntpc-mobile"
                        or str(r.get("id", "")).startswith("ntpc-mobile-")

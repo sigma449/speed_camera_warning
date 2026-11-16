@@ -28,13 +28,131 @@ final class CameraAlertEngineTests: XCTestCase {
     }
 
     func testMobileNoiseAndNonSpeedCamerasOnlyAnnounceOnceWithoutBeeping() {
-        for type in [CameraType.mobile, .noise, .tech, .redLight] {
-            let cam = camera(north: 1_000, limit: 50, type: type)
+        for type in [CameraType.mobile, .noise, .tech] {
+            var cam = camera(north: 1_000, limit: 50, type: type)
+            if type == .tech { cam.enforcementItems = "紅燈右轉、未停讓行人" }
             let events = runAlerts(engine([cam]), straightTrack(from: origin, bearing: 0, speedKmh: 70, seconds: 80))
             XCTAssertEqual(events.filter { $0.event.isPre }.count, 1, type.rawValue)
             XCTAssertEqual(events.first { $0.event.isPre }?.event.distance ?? 0, 300, accuracy: 20)
             XCTAssertFalse(events.contains { $0.event.isNear || $0.event.isOverspeedStarted || $0.event.isBeep })
             XCTAssertEqual(events.filter { $0.event.isPassed }.count, 1)
+        }
+    }
+
+    func testRedLightAndTechnologyAlertOncePerStageWithoutOverspeed() {
+        let types: [(CameraType, String?)] = [
+            (.redLight, nil), (.tech, "闖紅燈"), (.tech, "違規停車；闖紅燈及路口淨空"),
+            (.tech, "路口各項違規(闖紅燈、不依標誌標線號誌行駛等)"),
+        ]
+        let thresholds: [(limit: Int?, speed: Double, pre: Double, near: Double)] = [
+            (50, 70, 300, 100), (80, 100, 600, 200),
+            (nil, 70, 300, 100), (nil, 90, 600, 200),
+        ]
+        for (type, items) in types {
+            for th in thresholds {
+                var cam = camera(north: 1_010, limit: th.limit, type: type)
+                cam.enforcementItems = items
+                let events = runAlerts(engine([cam]),
+                    straightTrack(from: origin, bearing: 0, speedKmh: th.speed, seconds: 80))
+                let pre = events.filter { $0.event.isPre }
+                let near = events.filter { $0.event.isNear }
+                XCTAssertEqual(pre.count, 1, "\(type) \(items ?? "") \(th)")
+                XCTAssertEqual(near.count, 1, "\(type) \(items ?? "") \(th)")
+                XCTAssertEqual(pre.first?.event.distance ?? -1, th.pre, accuracy: th.speed / 3.6)
+                XCTAssertEqual(near.first?.event.distance ?? -1, th.near, accuracy: th.speed / 3.6)
+                XCTAssertLessThan(pre.first?.time ?? .infinity, near.first?.time ?? -.infinity)
+                for event in near {
+                    if case let .nearAlert(_, _, afterPre) = event.event { XCTAssertTrue(afterPre) }
+                }
+                XCTAssertEqual(events.filter { $0.event.isPassed }.count, 1)
+                XCTAssertFalse(events.contains { $0.event.isOverspeedStarted || $0.event.isBeep || $0.event.isOverspeedEnded })
+            }
+        }
+    }
+
+    func testRedLightFirstFixInsideNearRangeKeepsFullSpeechWithoutOverspeed() {
+        let scenarios: [(limit: Int?, speed: Double, distance: Double, spoken: String)] = [
+            (50, 90, 91, "100公尺"), (50, 90, 25, "30公尺"),
+            (80, 100, 184, "200公尺"), (nil, 90, 184, "200公尺"),
+        ]
+        for type in [CameraType.redLight, .tech] {
+            for scenario in scenarios {
+                var cam = camera(north: scenario.distance, limit: scenario.limit, type: type)
+                if type == .tech { cam.enforcementItems = "闖紅燈及路口淨空" }
+                let engine = engine([cam])
+                let fix = VehicleFix(point: origin, speedMps: scenario.speed / 3.6, course: 0, timestamp: t0)
+                let result = engine.process(fix)
+                XCTAssertEqual(result.events.count, 1)
+                if case let .nearAlert(_, _, afterPre) = result.events.first {
+                    XCTAssertFalse(afterPre)
+                } else {
+                    XCTFail("首次進入近距範圍應發 near，而非 pre")
+                }
+                XCTAssertEqual(result.target?.phase, .near)
+                XCTAssertEqual(result.target?.isOverspeed, false)
+                let name = type == .redLight ? "闖紅燈照相" : "路口科技執法：闖紅燈及路口淨空"
+                XCTAssertEqual(CameraAnnouncementPolicy.speech(for: result, speedKmh: scenario.speed,
+                    settings: engine.settings), [SpokenAnnouncement(text: "前方\(scenario.spoken)，\(name)", urgent: true)])
+                XCTAssertTrue(engine.process(fix).events.isEmpty)
+            }
+        }
+    }
+
+    func testRedLightAndTechnologyGetNoFixPreAndNearWithoutBeepingOrEarlyPass() {
+        for type in [CameraType.redLight, .tech] {
+            for (distance, address) in [(500.0, "測試路"), (2_500.0, "測試隧道")] {
+                var cam = camera(north: distance, limit: 50, type: type, address: address)
+                if type == .tech { cam.enforcementItems = "違規停車、闖紅燈" }
+                let engine = engine([cam])
+                XCTAssertTrue(engine.process(VehicleFix(point: origin, speedMps: 20, course: 0, timestamp: t0)).events.isEmpty)
+                XCTAssertNil(engine.tick(now: t0.addingTimeInterval(2)))
+                let preTime = (distance - 280) / 20
+                let nearTime = (distance - 90) / 20
+                let pre = engine.tick(now: t0.addingTimeInterval(preTime))
+                let near = engine.tick(now: t0.addingTimeInterval(nearTime))
+                XCTAssertEqual(pre?.events.filter(\.isPre).count, 1)
+                XCTAssertEqual(near?.events.filter(\.isNear).count, 1)
+                XCTAssertEqual(near?.target?.phase, .near)
+                XCTAssertEqual(near?.target?.isOverspeed, false)
+                if let near {
+                    XCTAssertEqual(CameraAnnouncementPolicy.speech(for: near, speedKmh: 72,
+                        settings: engine.settings), [SpokenAnnouncement(text: "100公尺", urgent: true)])
+                }
+                let repeated = engine.tick(now: t0.addingTimeInterval(nearTime + 1))
+                let beyond = engine.tick(now: t0.addingTimeInterval(distance / 20 + 1))
+                XCTAssertEqual(repeated?.events, [])
+                XCTAssertEqual(beyond?.events, [])
+                XCTAssertFalse(((pre?.events ?? []) + (near?.events ?? [])).contains {
+                    $0.isOverspeedStarted || $0.isBeep || $0.isPassed
+                })
+                let after = GeoMath.destination(from: cam.point, bearing: 0, distance: 100)
+                let resumed = engine.process(VehicleFix(point: after, speedMps: 20, course: 0,
+                    timestamp: t0.addingTimeInterval(distance / 20 + 5)))
+                XCTAssertEqual(resumed.events, [.passed(camera: cam)])
+            }
+        }
+    }
+
+    func testNearbyHotspotDoesNotDelayRedLightPreAlertIncludingNoFix() {
+        for type in [CameraType.redLight, .tech] {
+            for useTick in [false, true] {
+                let offset = useTick ? 500.0 : 0
+                var red = camera("red", north: 290 + offset, type: type)
+                if type == .tech { red.enforcementItems = "闖紅燈" }
+                let mobile = camera("mobile", north: 230 + offset, type: .mobile)
+                let engine = engine([mobile, red])
+                let initial = engine.process(VehicleFix(point: origin, speedMps: 20, course: 0, timestamp: t0))
+                let result: CameraAlertResult?
+                if useTick {
+                    XCTAssertTrue(initial.events.isEmpty)
+                    result = engine.tick(now: t0.addingTimeInterval(offset / 20))
+                } else {
+                    result = initial
+                }
+                XCTAssertEqual(result?.target?.camera.id, red.id)
+                XCTAssertEqual(result?.events.filter(\.isPre).count, 1)
+                XCTAssertFalse(result?.target?.isOverspeed ?? true)
+            }
         }
     }
 

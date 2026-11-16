@@ -593,6 +593,44 @@ def test_non_overspeed_and_fast_near_thresholds_are_checked(records):
     assert any("200公尺" in error for error in checker.check_records(records))
 
 
+@pytest.mark.parametrize("kind,enforces_speed,two_stage,accepted", [
+    ("redLight", False, True, True),
+    ("redLight", False, None, True),
+    ("tech", False, True, True),
+    ("tech", False, False, False),
+    ("tech", False, None, False),
+    ("tech", True, None, True),
+    ("redLightSpeed", True, True, True),
+    ("mobile", False, False, False),
+    ("noise", False, False, False),
+    ("noise", False, True, False),
+])
+def test_near_eligibility_allows_red_light_but_keeps_other_single_stage_restrictions(
+        records, kind, enforces_speed, two_stage, accepted):
+    end = row(records, "回程01", "case_end")
+    extra = dict(end, event="camera_near", t=100, id="red-light-test", cameraType=kind,
+                 enforcesSpeed=enforces_speed, afterPre=True, overspeed=False,
+                 announcedDistance=100, speeches=["100公尺"])
+    if two_stage is not None:
+        extra["usesTwoStageAlert"] = two_stage
+    records.insert(records.index(end), extra)
+    errors = checker.check_records(records)
+    if accepted:
+        assert errors == []
+    else:
+        assert any("近距" in error for error in errors)
+
+
+@pytest.mark.parametrize("kind", ["redLight", "tech"])
+def test_non_speed_red_light_near_cannot_claim_overspeed(records, kind):
+    end = row(records, "回程01", "case_end")
+    extra = dict(end, event="camera_near", t=100, id="red-light-test", cameraType=kind,
+                 enforcesSpeed=False, usesTwoStageAlert=True, afterPre=True, overspeed=True,
+                 announcedDistance=100, speeches=["100公尺，超速"])
+    records.insert(records.index(end), extra)
+    assert any("非測速" in error and "超速" in error for error in checker.check_records(records))
+
+
 @pytest.mark.parametrize("bad", ["", "舊版只有中文事件\n案例完成：成功 23，失敗 0",
                                 "REPLAY1108 {broken", "REPLAY1108 null", 'REPLAY1108 {"schema":2}'])
 def test_empty_old_or_malformed_logs_do_not_vacuously_pass(bad):

@@ -147,7 +147,7 @@ public final class CameraAlertEngine {
         updateTracked(fix: fix, heading: heading, events: &events)
         addNewCandidates(fix: fix, heading: heading)
 
-        // 單次提醒不能擋住已進入預告範圍的測速目標。
+        // 單次提醒不能擋住已進入預告範圍的兩段提醒目標。
         let candidates = tracked
             .filter { isRelevant($0.value.camera, distance: $0.value.distance, from: fix.point, heading: heading, isTracked: true) }
             .map { (key: $0.key, distance: $0.value.distance) }
@@ -260,12 +260,12 @@ public final class CameraAlertEngine {
         }),
               let camera = tracked[nearest.key]?.camera else { return nil }
         guard !camera.usesTwoStageAlert,
-              let speedTarget = candidates.filter({ tracked[$0.key]?.camera.usesTwoStageAlert == true })
+              let twoStageTarget = candidates.filter({ tracked[$0.key]?.camera.usesTwoStageAlert == true })
                 .min(by: { $0.distance < $1.distance }),
-              let speedCamera = tracked[speedTarget.key]?.camera,
-              speedTarget.distance <= settings.thresholds(speedLimit: speedCamera.speedLimit, currentSpeedKmh: speedKmh).pre
+              let twoStageCamera = tracked[twoStageTarget.key]?.camera,
+              twoStageTarget.distance <= settings.thresholds(speedLimit: twoStageCamera.speedLimit, currentSpeedKmh: speedKmh).pre
         else { return nearest.key }
-        return speedTarget.key
+        return twoStageTarget.key
     }
 
     /// 隧道比搜尋半徑長時，隧道裡的照相點在定位中斷前還沒開始追蹤，這裡一次找出來。

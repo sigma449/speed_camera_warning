@@ -87,6 +87,30 @@ final class ActivityAlertPolicyTests: XCTestCase {
         XCTAssertTrue(bodies.allSatisfy { $0.hasPrefix("前方") && $0.hasSuffix("公尺，速限50") }, "\(bodies)")
     }
 
+    func testRedLightAndTechnologyNearActivityAlertsKeepPriorityWithoutSpeedLimit() {
+        let point = GeoMath.destination(from: origin, bearing: 0, distance: 1_000)
+        for type in [CameraType.redLight, .tech] {
+            let cam = Camera(id: "red", type: type, lat: point.lat, lon: point.lon, heading: 0, speedLimit: 50,
+                             enforcementItems: type == .tech ? "闖紅燈及路口淨空" : nil)
+            let engine = CameraAlertEngine(index: SpatialIndex(cameras: [cam]))
+            var contents: [ActivityAlertContent] = []
+            for fix in straightTrack(from: origin, bearing: 0, speedKmh: 70, seconds: 80) {
+                let result = engine.process(fix)
+                if let content = alert(result.events) { contents.append(content) }
+                if result.events.contains(where: \.isNear) {
+                    let near = alert(result.events)
+                    XCTAssertEqual(near?.title, type == .redLight ? "闖紅燈照相" : "路口科技執法")
+                    XCTAssertTrue(near?.body.hasPrefix("前方90公尺") ?? false)
+                    XCTAssertEqual(alert(result.events, [.entered(section: section, minimumSeconds: 680)]), near)
+                    XCTAssertEqual(alert(result.events + [.overspeedStarted(limit: 50, speedKmh: 70)])?.title, "您已超速")
+                    if type == .tech { XCTAssertEqual(near?.body, "前方90公尺，取締：闖紅燈及路口淨空") }
+                }
+            }
+            XCTAssertEqual(contents.count, 2)
+            XCTAssertTrue(contents.allSatisfy { !$0.body.contains("速限") && !$0.title.contains("超速") })
+        }
+    }
+
     func testAlertsSettingDefaultsToOnAndOldSavedSettingsStayOn() throws {
         XCTAssertTrue(AlertSettings().liveActivityAlertsEnabled)
         let saved = try JSONDecoder().decode(AlertSettings.self, from: Data(#"{"liveActivityEnabled":true}"#.utf8))
