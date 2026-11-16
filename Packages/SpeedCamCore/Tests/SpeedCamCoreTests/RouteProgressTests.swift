@@ -52,6 +52,37 @@ final class RouteProgressTests: XCTestCase {
         XCTAssertFalse(p.isOffRoute)
     }
 
+    func testProjectionAtEndDoesNotArriveWhileFarAwayOrOffRoute() {
+        let end = GeoMath.destination(from: origin, bearing: 0, distance: 1_000)
+        for offset in [75.0, 500] {
+            let tracker = RouteProgressTracker(polyline: [origin, end], steps: [])
+            let far = GeoMath.destination(from: end, bearing: 90, distance: offset)
+            for second in 0...6 {
+                let result = tracker.process(VehicleFix(point: far, speedMps: 10, course: 0,
+                    horizontalAccuracy: 5, timestamp: t0.addingTimeInterval(Double(second))))
+                XCTAssertFalse(result.events.contains(.arrived), "側距 \(offset) m 不能只因投影在終點就抵達")
+                if second == 6 { XCTAssertTrue(result.progress?.isOffRoute == true) }
+            }
+            let arrived = tracker.process(VehicleFix(point: end, speedMps: 0, course: 0,
+                horizontalAccuracy: 5, timestamp: t0.addingTimeInterval(7)))
+            XCTAssertEqual(arrived.events.filter { $0 == .arrived }.count, 1)
+        }
+    }
+
+    func testArrivalAllowsRoadsideBuildingWithoutRequiringExactRoadCenterline() {
+        let end = GeoMath.destination(from: origin, bearing: 0, distance: 1_000)
+        for offset in [0.0, 20, 40] {
+            let tracker = RouteProgressTracker(polyline: [origin, end], steps: [])
+            let entrance = GeoMath.destination(from: end, bearing: 90, distance: offset)
+            var events: [RouteEvent] = []
+            for second in 0...2 {
+                events += tracker.process(VehicleFix(point: entrance, speedMps: 0, course: nil,
+                    horizontalAccuracy: 5, timestamp: t0.addingTimeInterval(Double(second)))).events
+            }
+            XCTAssertEqual(events.filter { $0 == .arrived }.count, 1, "路邊 \(offset) m 的建物仍能抵達")
+        }
+    }
+
     /// 實測問題：右轉民生西路時顯示「右轉吉林路」，轉吉林路時顯示「左轉長春路」，轉長春路時顯示目的地。
     /// 每一步的指示要在開到這一步終點之前顯示，走完才換下一個。
     func testInstructionShownBeforeItsOwnManeuverPoint() {

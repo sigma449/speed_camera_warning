@@ -138,8 +138,11 @@ public final class RouteProgressTracker {
 
         let isOffRoute = updateOffRoute(fix: fix, segment: segment, distance: projection.distance, events: &events)
 
-        // 抵達判斷
-        if !arrived && remaining <= arrivalDistance {
+        // 路邊建物容許數十公尺誤差，但不能把遠處投影到終點當成抵達。
+        let endpointRadius = max(arrivalDistance, offRouteDistance)
+        if !arrived && !isOffRoute && remaining <= arrivalDistance
+            && projection.distance <= endpointRadius
+            && GeoMath.distance(fix.point, polyline[polyline.count - 1]) <= endpointRadius {
             arrived = true
             events.append(.arrived)
         }
