@@ -13,6 +13,18 @@ final class SectionPathRegressionTests: XCTestCase {
         var point: GeoPoint { GeoPoint(lat: lat, lon: lon) }
     }
 
+    private struct TunnelReplays: Decodable {
+        let cases: [TunnelReplay]
+    }
+
+    private struct TunnelReplay: Decodable {
+        let section: SpeedSection
+        let route: [[Double]]
+        let speedKmh: Double
+        let gpsGaps: [[Int]]
+        let anchors: [ReplayAnchor]
+    }
+
     private func fixture<T: Decodable>(_ name: String, as type: T.Type) throws -> T {
         let url = try XCTUnwrap(Bundle.module.url(forResource: name, withExtension: "json", subdirectory: "Fixtures"))
         return try JSONDecoder().decode(type, from: Data(contentsOf: url))
@@ -93,5 +105,69 @@ final class SectionPathRegressionTests: XCTestCase {
         XCTAssertFalse(result.events.contains { if case .aborted = $0 { return true }; return false },
                        "原 log 的 t=382 定位本身也不能中止")
         XCTAssertTrue(tracker.isActive)
+    }
+
+    func testAcceptanceDongaoCompletesAfterMissingTheEndGateDuringGpsLoss() throws {
+        let replay = try tunnelReplay("auto-台9-110.96-108.224-r")
+        let lifecycle = replayTunnel(replay)
+        XCTAssertEqual(lifecycle.map(\.event), ["entered", "completed"])
+        XCTAssertEqual(lifecycle.map(\.second), [378, 550])
+    }
+
+    func testAcceptanceXueshanDoesNotEstimateEntryIntoNearbyBeiyiSection() throws {
+        let replay = try tunnelReplay("beiyi-4-r")
+        XCTAssertTrue(replayTunnel(replay, includeApproach: true).isEmpty,
+                      "國5失聯前的行向不會經過北宜門架，不能預告、進入或事後以中止掩蓋")
+    }
+
+    private func tunnelReplay(_ id: String) throws -> TunnelReplay {
+        let snapshot = try fixture("tunnel_replay_2026_11_16", as: TunnelReplays.self)
+        return try XCTUnwrap(snapshot.cases.first { $0.section.id == id })
+    }
+
+    private func replayTunnel(_ replay: TunnelReplay, includeApproach: Bool = false) -> [(second: Int, event: String)] {
+        let path = replay.route.map { GeoPoint(lat: $0[0], lon: $0[1]) }
+        var cumulative = [0.0]
+        for (a, b) in zip(path, path.dropFirst()) {
+            cumulative.append(cumulative.last! + GeoMath.distance(a, b))
+        }
+        let tracker = SectionSpeedTracker(sections: [replay.section])
+        var lifecycle: [(second: Int, event: String)] = []
+        var segment = 0
+        var along = 0.0
+        var second = 0
+        while along < cumulative.last! {
+            while segment < path.count - 2 && cumulative[segment + 1] <= along { segment += 1 }
+            let a = path[segment], b = path[segment + 1]
+            let ratio = min(1, max(0, (along - cumulative[segment])
+                                  / max(0.01, cumulative[segment + 1] - cumulative[segment])))
+            let point = GeoPoint(lat: a.lat + (b.lat - a.lat) * ratio,
+                                 lon: a.lon + (b.lon - a.lon) * ratio)
+            for anchor in replay.anchors where anchor.t == Double(second) {
+                XCTAssertLessThan(GeoMath.distance(point, anchor.point), 0.001,
+                                  "重建定位須與原 log 的事件定位一致")
+            }
+            let now = t0.addingTimeInterval(Double(second))
+            let result: SectionResult?
+            if replay.gpsGaps.contains(where: { $0[0] <= second && second < $0[1] }) {
+                result = tracker.tick(now: now)
+            } else {
+                result = tracker.process(VehicleFix(point: point, speedMps: replay.speedKmh / 3.6,
+                    course: GeoMath.bearing(from: a, to: b), horizontalAccuracy: 5, timestamp: now))
+            }
+            for event in result?.events ?? [] {
+                switch event {
+                case .entered: lifecycle.append((second, "entered"))
+                case .completed: lifecycle.append((second, "completed"))
+                case .aborted: lifecycle.append((second, "aborted"))
+                case .approaching where includeApproach: lifecycle.append((second, "approaching"))
+                default: break
+                }
+            }
+            along += replay.speedKmh / 3.6
+            second += 1
+        }
+        XCTAssertFalse(tracker.isActive)
+        return lifecycle
     }
 }

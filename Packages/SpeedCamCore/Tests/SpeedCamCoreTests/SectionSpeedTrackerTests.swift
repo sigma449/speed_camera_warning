@@ -478,6 +478,44 @@ final class SectionSpeedTrackerTests: XCTestCase {
         XCTAssertTrue(events.contains { $0.event == .zeroReached })
     }
 
+    func testGpsRecoveryCompletesOnlyWithReliableForwardEndGateCrossing() {
+        let s = section(length: 900)
+        let scenarios: [(after: Double, lateral: Double, gap: Double, course: Double, accuracy: Double, completes: Bool)] = [
+            (100, 0, 30, 0, 5, true),
+            (-10, 0, 30, 0, 5, false),
+            (100, 300, 30, 0, 5, false),
+            (100, 0, 30, 180, 5, false),
+            (100, 0, 30, 0, 60, false),
+            (2_000, 0, 3, 0, 5, false),
+            (100, 0, 1, 0, 5, false),
+        ]
+        for scenario in scenarios {
+            let tracker = SectionSpeedTracker(sections: [s])
+            func fix(_ point: GeoPoint, _ second: Double, course: Double = 0, accuracy: Double = 5) -> VehicleFix {
+                VehicleFix(point: point, speedMps: 10, course: course, horizontalAccuracy: accuracy,
+                           timestamp: t0.addingTimeInterval(second))
+            }
+            _ = tracker.process(fix(GeoMath.destination(from: s.start, bearing: 0, distance: 10), 0))
+            _ = tracker.process(fix(GeoMath.destination(from: s.end, bearing: 180, distance: 200), 69))
+            for second in 70..<Int(69 + scenario.gap) {
+                _ = tracker.tick(now: t0.addingTimeInterval(Double(second)))
+            }
+            let after = GeoMath.destination(from: s.end, bearing: scenario.after >= 0 ? 0 : 180,
+                                             distance: abs(scenario.after))
+            let point = GeoMath.destination(from: after, bearing: 90, distance: scenario.lateral)
+            let result = tracker.process(fix(point, 69 + scenario.gap, course: scenario.course,
+                                             accuracy: scenario.accuracy))
+            XCTAssertEqual(result.events.contains { if case .completed = $0 { return true }; return false },
+                           scenario.completes, "\(scenario)")
+            if scenario.completes {
+                guard case let .completed(_, average, _)? = result.events.last else {
+                    return XCTFail("應在恢復定位時完成")
+                }
+                XCTAssertEqual(average, 36, accuracy: 0.1, "平均應回推跨越終點時間，不能用定位恢復時間")
+            }
+        }
+    }
+
     func testTickDoesNothingWhileGpsIsFine() {
         let tracker = SectionSpeedTracker(sections: [section()], settings: strictSettings())
         for f in straightTrack(from: origin, bearing: 0, speedKmh: 50, seconds: 30) {

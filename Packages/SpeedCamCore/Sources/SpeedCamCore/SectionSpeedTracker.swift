@@ -269,16 +269,17 @@ public final class SectionSpeedTracker {
         }
         recentlyFinished = recentlyFinished.filter { fix.timestamp.timeIntervalSince($0.value) < 300 }
         announcedApproach = announcedApproach.filter { fix.timestamp.timeIntervalSince($0.value) < 300 }
+        let previousFix = lastFix
         lastFix = fix
 
         var events: [SectionEvent] = []
 
         if active != nil {
-            advance(fix: fix, events: &events)
+            advance(fix: fix, previousFix: previousFix, events: &events)
         } else if let entered = updateArming(fix) ?? lateEntry(fix) {
             begin(entered, events: &events)
             // 啟動時可能已經過了起點幾秒，立刻檢查倒數提醒。
-            advance(fix: fix, events: &events)
+            advance(fix: fix, previousFix: previousFix, events: &events)
         } else {
             updateApproach(fix, events: &events)
         }
@@ -297,7 +298,7 @@ public final class SectionSpeedTracker {
 
         if active == nil, var ap = approaching, let heading = lastCourse,
            last.speedKmh >= settings.minimumSpeedForCourse,
-           isHeadingToStart(of: ap.section, from: last.point, heading: heading) {
+           canEstimateStart(of: ap.section, from: last.point, heading: heading) {
             let moved = max(0, last.speedMps) * now.timeIntervalSince(last.timestamp)
             ap.distance = max(0, GeoMath.distance(last.point, ap.section.start) - moved)
             approaching = ap
@@ -358,6 +359,14 @@ public final class SectionSpeedTracker {
         return GeoMath.angleDifference(heading, s.entryHeading) <= 90
             && GeoMath.angleDifference(toStart, heading) <= 70
             && GeoMath.angleDifference(toStart, s.entryHeading) <= 70
+    }
+
+    private func canEstimateStart(of s: SpeedSection, from point: GeoPoint, heading: Double) -> Bool {
+        guard isHeadingToStart(of: s, from: point, heading: heading) else { return false }
+        let angle = GeoMath.angleDifference(heading, GeoMath.bearing(from: point, to: s.start)) * .pi / 180
+        let lateral = GeoMath.distance(point, s.start) * sin(angle)
+        // 射線須碰到道路寬容＋門架半徑，不能只把旁邊國道到門架的直線距離減到零。
+        return lateral <= onPathDistance + settings.sectionGateRadius
     }
 
     private func updateApproach(_ fix: VehicleFix, events: inout [SectionEvent]) {
@@ -445,7 +454,7 @@ public final class SectionSpeedTracker {
         }
         guard let s = target, let heading = lastCourse,
               last.speedKmh >= settings.minimumSpeedForCourse,
-              isHeadingToStart(of: s, from: last.point, heading: heading) else { return nil }
+              canEstimateStart(of: s, from: last.point, heading: heading) else { return nil }
         let eta = GeoMath.distance(last.point, s.start) / max(1, last.speedMps)
         let startTime = last.timestamp.addingTimeInterval(eta)
         guard now >= startTime else { return nil }
@@ -502,7 +511,7 @@ public final class SectionSpeedTracker {
         return (distance * cos(angle), abs(distance * sin(angle)))
     }
 
-    private func advance(fix: VehicleFix, events: inout [SectionEvent]) {
+    private func advance(fix: VehicleFix, previousFix: VehicleFix?, events: inout [SectionEvent]) {
         guard var a = active else { return }
 
         if hasReversed(&a, fix: fix) {
@@ -553,9 +562,10 @@ public final class SectionSpeedTracker {
         let overshot = a.traveled >= a.section.lengthMeters + 150
             && a.minEndDistance <= settings.sectionGateRadius * 3
 
-        if leftEndGate || overshot {
+        let recoveredEndTime = previousFix.flatMap { endCrossingDuringGap(of: a.section, from: $0, to: fix) }
+        if leftEndGate || overshot || recoveredEndTime != nil {
             // 以最接近終點那一刻的時間計算平均速度（和終點照相的位置一致）。
-            let endTime = a.minEndTime ?? fix.timestamp
+            let endTime = recoveredEndTime ?? a.minEndTime ?? fix.timestamp
             let total = endTime.timeIntervalSince(a.startTime)
             let avgKmh = total > 0 ? SpeedUnit.kmh(fromMps: a.section.lengthMeters / total) : 0
             if a.isOverspeed { events.append(.overspeedEnded) }
@@ -580,6 +590,27 @@ public final class SectionSpeedTracker {
         }
 
         active = a
+    }
+
+    private func endCrossingDuringGap(of s: SpeedSection, from previous: VehicleFix, to fix: VehicleFix) -> Date? {
+        let duration = fix.timestamp.timeIntervalSince(previous.timestamp)
+        guard duration >= gpsGapSeconds, previous.horizontalAccuracy <= 30, fix.horizontalAccuracy <= 30,
+              previous.speedKmh >= settings.minimumSpeedForCourse,
+              fix.speedKmh >= settings.minimumSpeedForCourse, let course = fix.course, course >= 0,
+              GeoMath.distance(previous.point, fix.point) <= max(80, max(previous.speedMps, fix.speedMps) * duration * 1.8)
+        else { return nil }
+        let path = s.displayPath
+        let exitHeading = GeoMath.bearing(from: path[path.count - 2], to: path[path.count - 1])
+        guard GeoMath.angleDifference(course, exitHeading) <= 45,
+              GeoMath.angleDifference(GeoMath.bearing(from: previous.point, to: fix.point), exitHeading) <= 45
+        else { return nil }
+        let beforeAngle = GeoMath.angleDifference(GeoMath.bearing(from: s.end, to: previous.point), exitHeading)
+        let afterAngle = GeoMath.angleDifference(GeoMath.bearing(from: s.end, to: fix.point), exitHeading)
+        guard beforeAngle > 90, afterAngle < 90 else { return nil }
+        let crossing = GeoMath.project(s.end, ontoSegment: previous.point, fix.point)
+        guard crossing.t > 0, crossing.t < 1, crossing.distance <= settings.sectionGateRadius else { return nil }
+        // 只在可靠定位恢復、前後定位確實跨過終點時補完成；tick 本身不推算通過。
+        return previous.timestamp.addingTimeInterval(duration * crossing.t)
     }
 
     /// 只接受精確、連續且物理上合理的沿路後退；不能用起點方位判山路髮夾彎。
