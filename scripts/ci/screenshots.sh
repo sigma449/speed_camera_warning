@@ -7,6 +7,7 @@ APP_PATH="${1:?用法：screenshots.sh path/to/SpeedCam.app}"
 BUNDLE_ID="tw.speedcammap.app"
 OUT="screenshots"
 mkdir -p "${OUT}"
+source "$(dirname "${BASH_SOURCE[0]}")/simulator-checks.sh"
 
 # 挑一台可用的 iPhone 模擬器（優先 iOS 26 以上）
 UDID=$(xcrun simctl list devices available -j | python3 -c '
@@ -86,26 +87,16 @@ wait_for_comparison() {
   sleep 6
 }
 
-assert_running() {
-  local list
-  if ! list=$(xcrun simctl spawn "${UDID}" launchctl list); then
-    echo "::warning::無法讀取 App 執行狀態；仍嘗試截圖"
-    return 0
-  fi
-  if ! grep -Fq "UIKitApplication:${BUNDLE_ID}" <<<"${list}"; then
-    echo "::error::App 在「$1」已停止執行（閃退）"
-    return 1
-  fi
-}
-
 shot() {
-  assert_running "$1"
+  local status=0
+  assert_running "$1" || status=$?
   xcrun simctl io "${UDID}" screenshot "${OUT}/$1.png"
   if [[ ! -s "${OUT}/$1.png" ]]; then
     echo "::error::截圖沒有產生：$1"
     return 1
   fi
   echo "已截圖 $1"
+  return "${status}"
 }
 
 # 1) Live Activity 預覽頁
@@ -193,19 +184,20 @@ xcrun simctl terminate "${UDID}" "${BUNDLE_ID}" 2>/dev/null || true
 sleep 2
 xcrun simctl terminate "${UDID}" "${BUNDLE_ID}" 2>/dev/null || true
 STRESS_ERR="${PWD}/${OUT}/search-stress-stderr.txt"
-xcrun simctl launch --terminate-running-process --stderr="${STRESS_ERR}" "${UDID}" "${BUNDLE_ID}" \
-  -autoStartCruise NO -AppleLanguages "(zh-Hant-TW)" -AppleLocale zh_TW -typeSearch "台北車站"
+STRESS_START=$(date "+%Y-%m-%d %H:%M:%S")
+STRESS_RESULT=$(xcrun simctl launch --terminate-running-process --stderr="${STRESS_ERR}" "${UDID}" "${BUNDLE_ID}" \
+  -autoStartCruise NO -AppleLanguages "(zh-Hant-TW)" -AppleLocale zh_TW -typeSearch "台北車站")
+APP_PID="${STRESS_RESULT##*: }"
+if [[ ! "${APP_PID}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "::error::搜尋壓測無法取得本輪 PID"
+  exit 1
+fi
 sleep 55
 shot "08b-search-typing-stress"
 echo "---- App 的錯誤輸出（最後 40 行）----"
 tail -40 "${STRESS_ERR}" 2>/dev/null || echo "（沒有錯誤輸出）"
-# 以 App 自己記錄的「typing test finished」判斷（launchctl 的檢查曾經誤判）
-if xcrun simctl spawn "${UDID}" log show --last 3m --style compact \
-     --predicate 'subsystem == "tw.speedcammap.app" AND category == "search"' 2>/dev/null | grep -q "typing test finished"; then
-  echo "搜尋壓力測試：完成，沒有閃退"
-else
-  echo "::warning::搜尋壓力測試：沒有跑完（可能閃退），請看截圖 08b"
-fi
+check_search_finished screenshots "${STRESS_START}"
+echo "搜尋壓力測試：本輪完成"
 sleep 3
 CRASH=$(find "${HOME}/Library/Logs/DiagnosticReports" /Library/Logs/DiagnosticReports -name "SpeedCam*.ips" -mmin -20 2>/dev/null | head -1 || true)
 if [[ -n "${CRASH}" ]]; then

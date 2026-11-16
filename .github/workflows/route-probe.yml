@@ -24,14 +24,24 @@ jobs:
         run: bash scripts/ci/select-xcode.sh
       - name: 下載測速資料（只有 replay 需要）
         if: github.event.inputs.mode == 'replay'
-        run: python3 data-pipeline/build_cameras.py --min-count 500
+        run: |
+          mkdir -p build
+          set -o pipefail
+          python3 data-pipeline/build_cameras.py --min-count 500 2>&1 | tee build/data-build.log
       - name: 路線實測
+        timeout-minutes: 20
+        env:
+          DATA_BUILD_LOG: build/data-build.log
         run: bash scripts/ci/route-probe.sh "${{ github.event.inputs.mode }}" "${{ github.event.inputs.cases }}" route-probe-results.jsonl
       - name: 保留結果
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: route-probe
-          path: route-probe-results.jsonl
+          path: |
+            route-probe-results.jsonl
+            build/data-build.log
+            build/route-probe/*.log
+            build/route-probe/checker-result.json
           retention-days: 30
           if-no-files-found: ignore

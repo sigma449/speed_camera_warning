@@ -38,7 +38,8 @@ swiftc -swift-version 5 -emit-library -static -emit-module -module-name SpeedCam
 # 多個檔案時，頂層程式碼一定要放在 main.swift
 cp scripts/ci/route-probe.swift "${BUILD}/main.swift"
 swiftc -swift-version 5 -I "${BUILD}" -L "${BUILD}" -lSpeedCamCore \
-  "${BUILD}/main.swift" SpeedCam/Navigation/RoutePlanner.swift SpeedCam/Data/MapItems.swift SpeedCam/Data/LegacySupport.swift \
+  "${BUILD}/main.swift" scripts/ci/request-deadline.swift \
+  SpeedCam/Navigation/RoutePlanner.swift SpeedCam/Data/MapItems.swift SpeedCam/Data/LegacySupport.swift \
   -o "${APP}/Contents/MacOS/RouteProbe"
 codesign --force --sign - "${APP}"
 
@@ -47,5 +48,11 @@ defaults write -g AppleLanguages -array zh-Hant-TW en
 defaults write -g AppleLocale -string zh_TW
 killall geod 2>/dev/null || true
 
-"${APP}/Contents/MacOS/RouteProbe" "${MODE}" "${CASES}" "${OUTPUT}" SpeedCam/Resources/road_lines.json \
-  SpeedCam/Resources/cameras.json SpeedCam/Resources/route_hints.json -AppleLanguages '(zh-Hant-TW, en)' -AppleLocale zh_TW
+COMMAND=("${APP}/Contents/MacOS/RouteProbe" "${MODE}" "${CASES}" "${OUTPUT}" SpeedCam/Resources/road_lines.json
+  SpeedCam/Resources/cameras.json SpeedCam/Resources/route_hints.json -AppleLanguages '(zh-Hant-TW, en)' -AppleLocale zh_TW)
+if [[ "${MODE}" == replay ]]; then
+  python3 scripts/ci/run-replay.py --cases "${CASES}" --data-log "${DATA_BUILD_LOG:?必須提供同輪資料建置報告}" \
+    --directory "${BUILD}" -- bash scripts/ci/exec-command.sh "${COMMAND[@]}"
+else
+  "${COMMAND[@]}" 2>&1 | tee "${BUILD}/probe.log"
+fi

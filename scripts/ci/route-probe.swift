@@ -150,8 +150,11 @@ func runPlans(cases: [ProbeCase], rules: RouteRules, output: FileHandle) async -
                 "mode": mode.rawValue,
             ]
             do {
-                let plan = try await RoutePlanner.plan(from: mapItem(testCase.from), to: mapItem(testCase.to),
-                                                       mode: mode, rules: rules)
+                let plan = try await withRequestDeadline(caseName: "\(testCase.from.name) → \(testCase.to.name)／\(mode.rawValue)",
+                                                        stage: "指定車種規劃", seconds: 180) {
+                    try await RoutePlanner.plan(from: mapItem(testCase.from), to: mapItem(testCase.to),
+                                                mode: mode, rules: rules)
+                }
                 let points = MapItems.coordinates(of: plan.route.polyline)
                 let freeway = rules.freeways.overlap(with: points)
                 let restricted = rules.whitePlateRestricted.overlap(with: points)
@@ -519,7 +522,7 @@ func runReplay(legs: [ReplayLeg], databasePath: String, rules: RouteRules?,
     var succeeded = 0
     var failed = 0
     var resolvedPlaces: [String: Place] = [:]
-    func resolve(_ place: Place) async throws -> Place {
+    func resolve(_ place: Place, caseName: String) async throws -> Place {
         guard let query = place.query else { return place }
         if let cached = resolvedPlaces[query] { return cached }
         let request = MKLocalSearch.Request()
@@ -527,7 +530,15 @@ func runReplay(legs: [ReplayLeg], databasePath: String, rules: RouteRules?,
         request.region = MKCoordinateRegion(center: CLLocationCoordinate2D(latitude: place.lat, longitude: place.lon),
                                            latitudinalMeters: 5_000, longitudinalMeters: 5_000)
         request.resultTypes = [.pointOfInterest, .address]
-        let response = try await MKLocalSearch(request: request).start()
+        let search = MKLocalSearch(request: request)
+        let response = try await withRequestDeadline(caseName: caseName, stage: "目的地搜尋") {
+            try await withTaskCancellationHandler(operation: {
+                try Task.checkCancellation()
+                return try await search.start()
+            }, onCancel: {
+                search.cancel()
+            })
+        }
         guard let item = response.mapItems.first else {
             throw NSError(domain: "RouteProbeSearch", code: 1, userInfo: [NSLocalizedDescriptionKey: "查不到 \(query)"])
         }
@@ -549,8 +560,8 @@ func runReplay(legs: [ReplayLeg], databasePath: String, rules: RouteRules?,
         let from: Place
         let to: Place
         do {
-            from = try await resolve(leg.from)
-            to = try await resolve(leg.to)
+            from = try await resolve(leg.from, caseName: leg.name)
+            to = try await resolve(leg.to, caseName: leg.name)
             if leg.from.query != nil || leg.to.query != nil {
                 print("  實際搜尋起點：\(from.name) \(from.lat),\(from.lon)")
                 print("  實際搜尋終點：\(to.name) \(to.lat),\(to.lon)")
@@ -568,8 +579,9 @@ func runReplay(legs: [ReplayLeg], databasePath: String, rules: RouteRules?,
                 return 66
             }
             do {
-                let plan = try await RoutePlanner.plan(from: mapItem(from), to: mapItem(to),
-                                                       mode: mode, rules: rules)
+                let plan = try await withRequestDeadline(caseName: leg.name, stage: "指定車種規劃", seconds: 180) {
+                    try await RoutePlanner.plan(from: mapItem(from), to: mapItem(to), mode: mode, rules: rules)
+                }
                 route = plan.route
                 print("  車種=\(mode.rawValue)，請求\(plan.requestIndex + 1)，路線\(plan.routeIndex + 1)，提醒=\(plan.warning?.text ?? "無")")
             } catch {
@@ -823,7 +835,7 @@ func runReplay(legs: [ReplayLeg], databasePath: String, rules: RouteRules?,
     replayRecord("run_end", leg: "", second: 0, point: GeoPoint(lat: 0, lon: 0),
                  fields: ["succeeded": succeeded, "failed": failed,
                           "correctManeuvers": correctManeuvers, "totalManeuvers": totalManeuvers])
-    return succeeded > 0 && failed == 0 ? 0 : 1
+    return succeeded == legs.count && failed == 0 && totalManeuvers > 0 && correctManeuvers == totalManeuvers ? 0 : 1
 }
 
 func run() async -> Int32 {

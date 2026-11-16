@@ -7,6 +7,7 @@ APP_PATH="${1:?用法：ios15-run.sh path/to/SpeedCam.app}"
 BUNDLE_ID="tw.speedcammap.app"
 OUT="screenshots"
 mkdir -p "${OUT}"
+source "$(dirname "${BASH_SOURCE[0]}")/simulator-checks.sh"
 
 UDID=$(xcrun simctl create "iPhone 7 iOS 15" com.apple.CoreSimulator.SimDeviceType.iPhone-7 com.apple.CoreSimulator.SimRuntime.iOS-15-5)
 echo "模擬器 ${UDID}"
@@ -54,32 +55,15 @@ wait_for_ui() {
 }
 
 shot() {
-  assert_running "$1"
+  local status=0
+  assert_running "$1" || status=$?
   xcrun simctl io "${UDID}" screenshot "${OUT}/$1.png"
   if [[ ! -s "${OUT}/$1.png" ]]; then
     echo "::error::截圖沒有產生：$1"
     return 1
   fi
   echo "已截圖 $1"
-}
-
-# App 還在不在。一開就閃退的話，launch 本身不會失敗，要這樣才看得出來。
-assert_running() {
-  # 先存成變數再比對：grep -q 比對到就結束，配上 pipefail 會因為 SIGPIPE 被誤判成失敗。
-  local list
-  if ! list=$(xcrun simctl spawn "${UDID}" launchctl list); then
-    echo "::warning::無法讀取 App 執行狀態；仍嘗試截圖"
-    return 0
-  fi
-  if ! grep -q "UIKitApplication:${BUNDLE_ID}" <<<"${list}"; then
-    echo "::error::App 在「$1」已經不在執行了（閃退）"
-    # 閃退報告要幾秒才會寫好
-    sleep 8
-    report_crashes || true
-    xcrun simctl spawn "${UDID}" log show --last 2m --style compact --predicate 'process == "SpeedCam"' 2>/dev/null | tail -40 || true
-    exit 1
-  fi
-  echo "「$1」App 正常執行中"
+  return "${status}"
 }
 
 report_crashes() {

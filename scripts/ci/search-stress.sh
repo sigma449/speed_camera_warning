@@ -5,9 +5,14 @@ set -euo pipefail
 
 APP_PATH="${1:?用法：search-stress.sh path/to/SpeedCam.app [輪數]}"
 RUNS="${2:-3}"
+if [[ ! "${RUNS}" =~ ^[1-9][0-9]*$ ]]; then
+  echo "::error::輪數必須是正整數：${RUNS}"
+  exit 64
+fi
 BUNDLE_ID="tw.speedcammap.app"
 OUT="screenshots"
 mkdir -p "${OUT}"
+source "$(dirname "${BASH_SOURCE[0]}")/simulator-checks.sh"
 
 UDID=$(xcrun simctl list devices available -j | python3 -c '
 import json, sys, re
@@ -27,6 +32,10 @@ for runtime, devices in data.items():
 if best:
     print(best[1])
 ')
+if [[ -z "${UDID}" ]]; then
+  echo "::error::找不到 iOS 26 以上的 iPhone 模擬器"
+  exit 1
+fi
 echo "使用模擬器 ${UDID}"
 xcrun simctl boot "${UDID}" || true
 xcrun simctl bootstatus "${UDID}" -b > /dev/null
@@ -41,15 +50,26 @@ for run in $(seq 1 "${RUNS}"); do
   sleep 2
   ERR="${PWD}/${OUT}/stress-${run}-stderr.txt"
   START=$(date "+%Y-%m-%d %H:%M:%S")
-  xcrun simctl launch --terminate-running-process --stderr="${ERR}" "${UDID}" "${BUNDLE_ID}" \
-    -autoStartCruise NO -AppleLanguages "(zh-Hant-TW)" -AppleLocale zh_TW -typeSearch "台北車站"
+  if ! RESULT=$(xcrun simctl launch --terminate-running-process --stderr="${ERR}" "${UDID}" "${BUNDLE_ID}" \
+    -autoStartCruise NO -AppleLanguages "(zh-Hant-TW)" -AppleLocale zh_TW -typeSearch "台北車站"); then
+    echo "::error::第 ${run} 輪無法啟動 App：${RESULT}"
+    failures=$((failures + 1))
+    continue
+  fi
+  echo "${RESULT}"
+  APP_PID="${RESULT##*: }"
+  if [[ ! "${APP_PID}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "::error::第 ${run} 輪無法取得 App PID"
+    failures=$((failures + 1))
+    continue
+  fi
   sleep 58
   xcrun simctl io "${UDID}" screenshot "${OUT}/stress-${run}.png" > /dev/null
-  if xcrun simctl spawn "${UDID}" log show --start "${START}" --style compact \
-       --predicate 'subsystem == "tw.speedcammap.app" AND category == "search"' 2>/dev/null | grep -q "typing test finished"; then
+  if assert_running "搜尋第 ${run} 輪" && check_search_finished "${run}" "${START}" \
+      && assert_running "搜尋第 ${run} 輪完成"; then
     echo "結果：完成，沒有閃退"
   else
-    echo "::warning::結果：沒有跑完（可能閃退）"
+    echo "::error::結果：未完成或無法確認本輪程序"
     failures=$((failures + 1))
   fi
 
@@ -92,6 +112,9 @@ for t in r.get("threads", []):
         print(f"  {img:28} {fr.get('symbol', '?')}  {fr.get('sourceFile', '')}:{fr.get('sourceLine', '')}")
 PY
   fi
-done
+done || true
 
-echo "閃退次數：${failures}／${RUNS}"
+echo "失敗輪數：${failures}／${RUNS}"
+if [[ "${failures}" -ne 0 ]]; then
+  exit 1
+fi
