@@ -22,8 +22,15 @@ def run_liveness(tmp_path, script, scenario):
     return bash("-c", command, cwd=tmp_path, env=env)
 
 
-@pytest.mark.parametrize("scenario", ["dies", "old-pid", "old-time", "log-error", "unfinished", "replaced",
-                                     "bad-time", "old-offset", "bad-json"])
+@pytest.mark.parametrize("scenario", [
+    "dies", pytest.param("old-pid", marks=pytest.mark.slow),
+    pytest.param("old-time", marks=pytest.mark.slow),
+    pytest.param("log-error", marks=pytest.mark.slow),
+    pytest.param("unfinished", marks=pytest.mark.slow), "replaced",
+    pytest.param("bad-time", marks=pytest.mark.slow),
+    pytest.param("old-offset", marks=pytest.mark.slow),
+    pytest.param("bad-json", marks=pytest.mark.slow),
+])
 def test_stress_rejects_missing_current_process_completion(tmp_path, scenario):
     env = fake_simulator(tmp_path, scenario)
     result = bash("scripts/ci/search-stress.sh", "SpeedCam.app", "2", cwd=tmp_path, env=env)
@@ -32,6 +39,7 @@ def test_stress_rejects_missing_current_process_completion(tmp_path, scenario):
 
 
 @pytest.mark.parametrize("scenario", ["good", "large", "transient", "offset-time"])
+@pytest.mark.slow
 def test_stress_accepts_current_round_without_pipefail_false_negative(tmp_path, scenario):
     env = fake_simulator(tmp_path, scenario)
     result = bash("scripts/ci/search-stress.sh", "SpeedCam.app", "2", cwd=tmp_path, env=env)
@@ -39,6 +47,7 @@ def test_stress_accepts_current_round_without_pipefail_false_negative(tmp_path, 
     assert "0／2" in result.stdout
 
 
+@pytest.mark.slow
 def test_stress_separates_successful_query_json_from_simulator_stderr(tmp_path):
     env = fake_simulator(tmp_path, "stderr-warning")
     result = bash("scripts/ci/search-stress.sh", "SpeedCam.app", "2", cwd=tmp_path, env=env)
@@ -62,7 +71,9 @@ def test_stress_keeps_query_evidence_without_promoting_missing_completion(tmp_pa
         assert "getpwuid_r" in result.stdout + result.stderr
 
 
-@pytest.mark.parametrize("entry", ["screenshots.sh", "ios15-run.sh"])
+@pytest.mark.parametrize("entry", [
+    pytest.param("screenshots.sh", marks=pytest.mark.slow), "ios15-run.sh",
+])
 def test_screenshot_search_entries_accept_json_with_separate_query_diagnostics(tmp_path, entry):
     env = fake_simulator(tmp_path, "stderr-warning")
     result = bash(f"scripts/ci/{entry}", "SpeedCam.app", "search", cwd=tmp_path, env=env)

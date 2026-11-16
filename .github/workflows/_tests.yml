@@ -91,7 +91,7 @@ jobs:
         run: |
           mkdir -p build/evidence/pipeline-tests
           set -o pipefail
-          python -m pytest -q data-pipeline 2>&1 | tee build/evidence/pipeline-tests/pytest.log
+          python -m pytest -q data-pipeline -m "slow or not slow" 2>&1 | tee build/evidence/pipeline-tests/pytest.log
       - name: 記錄結果
         if: always()
         env:

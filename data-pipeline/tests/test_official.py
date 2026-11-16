@@ -226,6 +226,7 @@ def test_freeway_audit_checks_the_named_freeway_not_any_nearby_highway():
     assert len([m for m in logs if "國道座標異常" in m]) == 1
 
 
+@pytest.mark.slow
 def test_production_build_keeps_official_fixes_when_mileposts_are_offline(monkeypatch, tmp_path, capsys):
     base = [camera_row(), {"Address": "環河路（中央路至白馬寺，雙向）",
                           "Latitude": "24.97182", "Longitude": "121.529236", "direct": "東西雙向(區間測速)"}]

@@ -20,6 +20,8 @@ if args[:4] == ["simctl", "list", "devices", "available"]:
     print(json.dumps({"devices": {"com.apple.CoreSimulator.SimRuntime.iOS-26-0": [
         {"name": "iPhone 17", "udid": "test-device"}]}}))
 elif args[:2] == ["simctl", "create"]:
+    state["legacy"] = args[-1].endswith("iOS-15-5")
+    save()
     print("test-device")
 elif args[:2] == ["simctl", "launch"]:
     state["round"] += 1
@@ -81,7 +83,7 @@ elif "log" in args and "show" in args:
         launch = state.get("launch", [])
         def argument(name, default):
             return launch[launch.index(name) + 1] if name in launch else default
-        legacy = "true" if "-legacyUI" in launch else "false"
+        legacy = "true" if "-legacyUI" in launch or state.get("legacy") else "false"
         print(f"place selection ready legacy={legacy}")
         print(f"map comparison ready mode={argument('-routeComparison', 'preview')} "
               f"style={argument('-routeLineStyle', 'current')} emphasis={argument('-mapEmphasis', 'current')} "

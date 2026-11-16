@@ -2,6 +2,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
 
@@ -119,6 +120,14 @@ def test_ios_waits_for_both_linux_test_jobs():
     assert "SPEEDCAM_CURRENT_DATABASE_REQUIRED" in json.dumps(tests["core-tests"])
     assert "probe-deadline.swift" in json.dumps(tests["core-tests"])
     assert "changes" in document["jobs"]["data"]["needs"]
+
+
+def test_ci_python_job_overrides_local_fast_selection():
+    steps = workflow("_tests.yml")["jobs"]["pipeline-tests"]["steps"]
+    command = next(step["run"] for step in steps if "python -m pytest" in step.get("run", ""))
+    arguments = shlex.split(command)
+    assert arguments[arguments.index("-m", arguments.index("pytest")) + 1] == "slow or not slow"
+    assert "data-pipeline" in arguments
 
 
 def test_acceptance_ipa_requires_every_independent_gate():
