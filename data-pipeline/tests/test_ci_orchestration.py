@@ -113,7 +113,7 @@ def test_weekly_pr_body_preserves_multisource_license_counts_and_fallback(accept
     body = output.read_text(encoding="utf-8")
     assert "ODbL" in body and "地方公告" in body and "斗六" in body
     assert "| douliu-mobile |" in body and "13940 改用 repo 官方快照" in body
-    assert "507 點／72" in body and "不是只有警政署" in body
+    assert "509 點／72" in body and "不是只有警政署" in body
 
 
 @pytest.mark.parametrize("changed", ["none", "camera", "source"])

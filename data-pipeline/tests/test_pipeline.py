@@ -306,6 +306,20 @@ def test_yinhe_manual_camera_has_user_limit_and_does_not_merge_with_348():
     assert new.id != next(camera.id for camera in cameras if camera.address == old["設置地點"])
 
 
+@pytest.mark.parametrize("lat,heading,limit", [("25.1077335", 148.7, 40), ("25.0973876", 275.2, 50)])
+def test_user_reported_shilin_cameras_are_fixed_speed_with_user_limits(lat, heading, limit):
+    # 2026-11-16 使用者以街景確認的國安局前（下山）與至善路一段（往仰德大道），官方清冊未收
+    rows = sources.read_local_rows([os.path.join(HERE, "..", "manual", "cameras_extra.csv")])
+    row = next(row for row in rows if row["座標緯度"] == lat)
+    report = NormalizeReport()
+    cameras = normalize_rows([row], report)
+    assert len(cameras) == 1
+    camera = cameras[0]
+    assert camera.type == "fixed" and camera.speedLimit == limit
+    assert camera.heading == pytest.approx(heading)
+    assert camera.city == "臺北市" and camera.district == "士林區"
+
+
 @pytest.mark.parametrize("text,expected", [("240.6°", 240.6), ("0°", 0), ("360°", None), ("-1°", None)])
 def test_explicit_manual_direction_degrees(text, expected):
     assert parse_direction(text) == expected

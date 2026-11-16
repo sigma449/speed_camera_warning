@@ -5,7 +5,7 @@
     "data-pipeline/manual/sections.csv": "bf311c76cd7de117583ad2d26b0087966445669807c48d05ecc277674315ac8d",
     "data-pipeline/manual/ntpc_sections_126156.csv": "f337fccce4917115d1504238433ac578687e990a6fabd0327fea64cf5e1fddf2",
     "data-pipeline/manual/freeway_cameras_13940.csv": "054888babd82c41605ce979df8f7eea174cca05f981d8278385fb5918c294642",
-    "data-pipeline/manual/cameras_extra.csv": "e666b0594bb0774ca48c25f4cdf38e6a6d824652d3b18f6f2b1b67e3c3bbe13a",
+    "data-pipeline/manual/cameras_extra.csv": "c94535afeefe3d6d541dba498586e4928a488cff038a5fbebe4ef722cc16b3b4",
     "data-pipeline/snapshots/douliu-mobile.raw": "c00a12f921e3f091a0d719b03933b7e21a9da106c526940244e3657bda3005aa"
   },
   "capacity": {"cameras": 500, "sections": 51},
