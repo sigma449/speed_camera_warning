@@ -78,10 +78,10 @@ class TextSegment:
 
     @property
     def key(self) -> tuple:
-        """去重用：同一條路、同一個里程範圍（雙向不分起訖）。"""
+        """解析階段保留單向行向，座標校正後才合併真正同向的碰撞。"""
         a, b = round(self.start_km, 2), round(self.end_km, 2)
         return (self.road, min(a, b), max(a, b), self.bidirectional) if self.bidirectional \
-            else (self.road, a, b, False)
+            else (self.road, a, b, False, self.travel_bearing)
 
 
 @dataclass
@@ -278,7 +278,7 @@ def to_sections(segments: list[TextSegment], resolver, exclude: set = frozenset(
         if d is not None and d <= max_point_m:
             group_ok[s.group] = True
 
-    out: list[dict] = []
+    candidates: list[tuple[dict, str, str]] = []
     for i, s in enumerate(segments):
         rk = range_key(s.road, s.start_km, s.end_km)
         label = f"{s.road}線 {_fmt_km(s.start_km)}K–{_fmt_km(s.end_km)}K"
@@ -314,7 +314,7 @@ def to_sections(segments: list[TextSegment], resolver, exclude: set = frozenset(
         end = {"lat": round(b[0], 6), "lon": round(b[1], 6)}
         place = f"{s.city} " if s.city else ""
         base_id = f"auto-{s.road}-{_fmt_km(s.start_km)}-{_fmt_km(s.end_km)}"
-        directions = [(start, end, start_km, end_km, "f")]
+        directions = [(start, end, start_km, end_km, "f" if start_km == s.start_km else "r")]
         if s.bidirectional:
             directions.append((end, start, end_km, start_km, "r"))
         for st, en, k_from, k_to, suffix in directions:
@@ -329,7 +329,30 @@ def to_sections(segments: list[TextSegment], resolver, exclude: set = frozenset(
             }
             if heading is not None:
                 sec["startHeading"] = heading
-            out.append(sec)
+            candidates.append((sec, base_id, suffix))
         log(f"  自動區間：{place}{label}，速限 {s.speed_limit}，{'雙向' if s.bidirectional else '單向'}，"
             f"{start['lat']},{start['lon']} → {end['lat']},{end['lon']}")
+    # 先保留所有原有格式的 ID，新增的反向碰撞不能搶走後續既有 -f／-r。
+    reserved = {sec["id"]: (sec["road"], sec["startKm"], sec["endKm"]) for sec, _, _ in candidates}
+    published: dict[str, tuple] = {}
+    seen: set[tuple] = set()
+    out: list[dict] = []
+    for sec, base_id, suffix in candidates:
+        direction = (sec["road"], sec["startKm"], sec["endKm"])
+        key = (sec["id"], direction)
+        if key in seen:
+            log(f"  自動區間合併重複行向：{sec['id']} {sec['startKm']}K→{sec['endKm']}K")
+            continue
+        seen.add(key)
+        if sec["id"] in published:
+            collision_id = f"{base_id}-{suffix}"
+            if reserved.get(collision_id) == direction:
+                log(f"  自動區間碰撞行向由既有 ID 涵蓋：{collision_id}")
+                continue
+            if collision_id in reserved or collision_id in published:
+                raise ValueError(f"自動區間 ID 有衝突的行向：{collision_id}")
+            log(f"  自動區間保留新增碰撞行向：{sec['id']} → {collision_id}")
+            sec["id"] = collision_id
+        published[sec["id"]] = direction
+        out.append(sec)
     return out

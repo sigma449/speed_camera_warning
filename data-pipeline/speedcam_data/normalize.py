@@ -306,9 +306,9 @@ class NormalizeReport:
                 f"高架 {self.elevated}、平面 {self.surface}；類型：{types}")
 
 
-def dedupe_key(lat: float, lon: float, heading: Optional[float]) -> tuple:
+def dedupe_key(lat: float, lon: float, heading: Optional[float], axis: Optional[float] = None) -> tuple:
     """約 11 m 內、同方向視為同一支照相機。"""
-    return (round(lat, 4), round(lon, 4), heading)
+    return (round(lat, 4), round(lon, 4), heading, axis)
 
 
 def make_id(lat: float, lon: float, heading: Optional[float]) -> str:
@@ -336,6 +336,7 @@ def heading_from_address(address: str) -> Optional[float]:
 def normalize_rows(rows: Iterable[dict], report: Optional[NormalizeReport] = None) -> list[Camera]:
     report = report or NormalizeReport()
     merged: dict[tuple, Camera] = {}
+    used_ids: set[str] = set()
     for row in rows:
         report.total_rows += 1
         coords = parse_coordinates(pick(row, "lat"), pick(row, "lon"))
@@ -371,7 +372,7 @@ def normalize_rows(rows: Iterable[dict], report: Optional[NormalizeReport] = Non
         if cam.type == "section":
             report.section_cameras.append(
                 f"{cam.city or ''}{cam.district or ''} {cam.address}｜{lat:.5f},{lon:.5f}｜方向 {pick(row, 'direction')!r}｜速限 {cam.speedLimit}")
-        key = dedupe_key(lat, lon, heading)
+        key = dedupe_key(lat, lon, heading, axis)
         if key in merged:
             report.duplicates_merged += 1
             old = merged[key]
@@ -383,6 +384,11 @@ def normalize_rows(rows: Iterable[dict], report: Optional[NormalizeReport] = Non
                 old.address = cam.address
             old.level = old.level or cam.level
             continue
+        if cam.id in used_ids:
+            # 原本被吞掉的不同軸向才用新 ID；第一筆與其他既有設備不改號。
+            raw = f"{cam.id},axis={axis if axis is not None else '-'}"
+            cam.id = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:12]
+        used_ids.add(cam.id)
         merged[key] = cam
 
     cameras = sorted(merged.values(), key=lambda c: c.id)

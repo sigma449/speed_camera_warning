@@ -157,6 +157,40 @@ def test_ids_are_stable_and_unique():
     assert sorted(a) == sorted(b)
 
 
+@pytest.mark.parametrize("directions", [
+    ["南北雙向", "東西雙向", "南北雙向"],
+    ["東西雙向", "南北雙向", "東西雙向"],
+    ["雙向", "南北雙向", "東西雙向"],
+])
+def test_axis_collisions_keep_each_direction_and_preserve_first_legacy_id(directions):
+    rows = [{"Address": "中山路口", "Latitude": "25.03", "Longitude": "121.565",
+             "direct": direction, "limit": "50"} for direction in directions]
+    legacy_id = normalize_rows(rows[:1])[0].id
+    expected_axes = {parse_axis(direction) for direction in directions}
+    cameras = normalize_rows(rows)
+    assert {camera.axis for camera in cameras} == expected_axes
+    assert len({camera.id for camera in cameras}) == len(expected_axes)
+    assert next(camera.id for camera in cameras if camera.axis == parse_axis(directions[0])) == legacy_id
+    for axis in expected_axes:
+        original = next(row for row in rows if parse_axis(row["direct"]) == axis)
+        assert normalize_rows([original])[0].id == legacy_id, "無碰撞單筆仍沿用舊 ID"
+    renamed_rows = [dict(row, Address="改名路口") for row in rows]
+    assert [(camera.id, camera.axis) for camera in normalize_rows(renamed_rows)] == [
+        (camera.id, camera.axis) for camera in cameras]
+
+
+def test_adding_axis_collision_does_not_change_other_existing_ids():
+    rows = sources.read_local_rows([fixture("national_sample.csv")])
+    baseline = normalize_rows(rows)
+    collision = next(camera for camera in baseline if camera.axis == 0)
+    new = {"Address": "不同軸向的設備", "Latitude": str(collision.lat), "Longitude": str(collision.lon),
+           "direct": "東西雙向", "limit": "50"}
+    cameras = normalize_rows(rows + [new])
+    assert len(cameras) == len(baseline) + 1
+    assert {camera.id for camera in baseline} <= {camera.id for camera in cameras}
+    assert next(camera for camera in cameras if camera.id == collision.id).axis == 0
+
+
 def test_output_schema_matches_swift_model(tmp_path):
     rows = sources.read_local_rows([fixture("national_sample.csv"), fixture("county_big5.csv")])
     sections = parse_sections_csv(
@@ -691,6 +725,50 @@ def test_one_way_order_is_corrected_by_stated_direction():
     index = _line_index(road="台64", km_to=30)
     secs = section_text.to_sections(segs, index.resolve, log=lambda *_: None)
     assert secs[0]["start"]["lon"] < secs[0]["end"]["lon"]
+
+
+@pytest.mark.parametrize("directions", [["東向", "西向"], ["西向", "東向"]])
+def test_opposite_one_way_sections_survive_extraction_with_only_collision_getting_new_id(directions):
+    index = _line_index(km_to=5)
+    rows = [{"Address": "台9線1K至2K（區間測速）", "direct": direction, "limit": "60"}
+            for direction in directions]
+    original = section_text.to_sections(section_text.extract_from_rows(rows[:1]),
+                                        index.resolve, log=lambda *_: None)[0]
+    parsed = section_text.extract_from_rows(rows + rows[:1])
+    assert len(parsed) == 2
+    sections = section_text.to_sections(parsed, index.resolve, log=lambda *_: None)
+    assert {(section["startKm"], section["endKm"]) for section in sections} == {(1, 2), (2, 1)}
+    assert len({section["id"] for section in sections}) == 2
+    assert sections[0] == original
+    added = sections[1]
+    assert added["id"] in {original["id"] + "-f", original["id"] + "-r"}
+    assert added["id"].removesuffix("-f").removesuffix("-r") == original["id"]
+    assert section_text.to_sections(section_text.extract_from_rows(rows[1:]),
+                                    index.resolve, log=lambda *_: None)[0]["id"] == original["id"]
+
+
+def test_direction_corrected_duplicate_sections_are_merged_after_resolving():
+    index = _line_index(km_to=5)
+    segments = [section_text.TextSegment("台9", 1, 2, False, 60, "東向", travel_bearing=90),
+                section_text.TextSegment("台9", 1, 2, False, 60, "東北向", travel_bearing=45),
+                section_text.TextSegment("台9", 1, 2, False, 60, "西向", travel_bearing=270)]
+    sections = section_text.to_sections(segments, index.resolve, log=lambda *_: None)
+    assert [(section["startKm"], section["endKm"]) for section in sections] == [(1, 2), (2, 1)]
+    assert [section["id"] for section in sections] == ["auto-台9-1-2", "auto-台9-1-2-r"]
+
+
+def test_recovered_single_direction_does_not_take_existing_bidirectional_ids():
+    index = _line_index(km_to=5)
+    single = section_text.TextSegment("台9", 1, 2, False, 60, "東向", travel_bearing=90)
+    opposite = section_text.TextSegment("台9", 1, 2, False, 60, "西向", travel_bearing=270)
+    both = section_text.TextSegment("台9", 1, 2, True, 60, "雙向")
+    for existing in [[single, both], [both, single]]:
+        baseline = section_text.to_sections(existing, index.resolve, log=lambda *_: None)
+        sections = section_text.to_sections([both, single, opposite] if existing[0] is both else
+                                            [single, opposite, both], index.resolve, log=lambda *_: None)
+        assert len({section["id"] for section in sections}) == len(sections)
+        assert {section["id"]: section for section in sections} == {section["id"]: section for section in baseline}
+        assert {(section["startKm"], section["endKm"]) for section in sections} == {(1, 2), (2, 1)}
 
 
 def test_sibling_segments_of_one_entry_use_relaxed_distance():
