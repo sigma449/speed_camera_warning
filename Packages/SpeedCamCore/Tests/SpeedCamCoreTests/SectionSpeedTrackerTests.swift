@@ -937,6 +937,141 @@ final class SectionSpeedTrackerTests: XCTestCase {
         XCTAssertFalse(result.events.contains(.overspeedBeep))
     }
 
+    func testLengthUpdatePreservesActiveStartPathAndOverspeedCooldownForProcessAndTick() throws {
+        let s = mappedSection()
+        for useTick in [false, true] {
+            let tracker = SectionSpeedTracker(sections: [s])
+            let point = GeoMath.destination(from: s.start, bearing: 0, distance: 100)
+            let initial = try XCTUnwrap(tracker.process(VehicleFix(
+                point: point, speedMps: 55 / 3.6, course: 0, timestamp: t0)).status)
+            XCTAssertTrue(initial.isOverspeed)
+            let path = [s.start, GeoMath.destination(from: s.start, bearing: 0, distance: 1_500), s.end]
+            tracker.updatePath(path, forSectionID: s.id)
+            try tracker.updateLength(4_000, forSectionID: s.id)
+            let now = t0.addingTimeInterval(useTick ? 3 : 1)
+            let result = useTick
+                ? try XCTUnwrap(tracker.tick(now: now))
+                : tracker.process(VehicleFix(point: point, speedMps: 55 / 3.6, course: 0, timestamp: now))
+            let status = try XCTUnwrap(result.status)
+            XCTAssertEqual(status.startTime, initial.startTime)
+            XCTAssertEqual(status.section.path, path)
+            XCTAssertEqual(status.section.lengthMeters, 4_000)
+            XCTAssertEqual(status.minimumSeconds, 296.64, accuracy: 0.001)
+            XCTAssertEqual(status.earliestExit, initial.startTime.addingTimeInterval(296.64))
+            XCTAssertEqual(status.remainingSeconds, 296.64 - now.timeIntervalSince(initial.startTime), accuracy: 0.001)
+            XCTAssertGreaterThanOrEqual(status.traveledMeters, initial.traveledMeters)
+            XCTAssertTrue(status.isOverspeed)
+            XCTAssertFalse(result.events.contains(.overspeedBeep))
+            XCTAssertFalse(result.events.contains { if case .entered = $0 { return true }; return false })
+            XCTAssertFalse(result.events.contains { if case .overspeedStarted = $0 { return true }; return false })
+        }
+    }
+
+    func testLengthUpdateKeepsApproachAnnouncementAndClosestArmingTime() throws {
+        let s = mappedSection()
+        func fix(_ along: Double, _ second: Double) -> VehicleFix {
+            VehicleFix(point: GeoMath.destination(from: s.start, bearing: along < 0 ? 180 : 0, distance: abs(along)),
+                       speedMps: 10, course: 0, timestamp: t0.addingTimeInterval(second))
+        }
+        let approach = SectionSpeedTracker(sections: [s])
+        XCTAssertNotNil(approach.process(fix(-250, 0)).approach)
+        try approach.updateLength(4_000, forSectionID: s.id)
+        let closer = approach.process(fix(-200, 1))
+        XCTAssertEqual(closer.approach?.section.lengthMeters, 4_000)
+        XCTAssertFalse(closer.events.contains { if case .approaching = $0 { return true }; return false })
+        let tunnel = try XCTUnwrap(approach.tick(now: t0.addingTimeInterval(22)))
+        XCTAssertEqual(tunnel.status?.section.lengthMeters, 4_000)
+        XCTAssertEqual(tunnel.status?.startTime, t0.addingTimeInterval(21))
+
+        let armed = SectionSpeedTracker(sections: [s])
+        _ = armed.process(fix(-5, 0))
+        try armed.updateLength(4_000, forSectionID: s.id)
+        let entered = armed.process(fix(20, 3))
+        XCTAssertEqual(entered.status?.startTime, t0)
+        XCTAssertEqual(entered.status?.section.lengthMeters, 4_000)
+        XCTAssertEqual(entered.events.filter { if case .entered = $0 { return true }; return false }.count, 1)
+    }
+
+    func testLengthUpdatePreservesCompletedSectionCooldown() throws {
+        let s = section(length: 600)
+        let tracker = SectionSpeedTracker(sections: [s])
+        let events = runSections(tracker, straightTrack(from: origin, bearing: 0, speedKmh: 36, seconds: 110))
+        XCTAssertEqual(events.filter { if case .completed = $0.event { return true }; return false }.count, 1)
+        try tracker.updateLength(800, forSectionID: s.id)
+        let before = GeoMath.destination(from: s.start, bearing: 180, distance: 250)
+        let approach = tracker.process(VehicleFix(point: before, speedMps: 10, course: 0,
+                                                  timestamp: t0.addingTimeInterval(120)))
+        XCTAssertNil(approach.approach)
+        let inside = GeoMath.destination(from: s.start, bearing: 0, distance: 100)
+        let suppressed = tracker.process(VehicleFix(point: inside, speedMps: 10, course: 0,
+                                                     timestamp: t0.addingTimeInterval(121)))
+        XCTAssertNil(suppressed.status)
+        XCTAssertFalse(suppressed.events.contains { if case .entered = $0 { return true }; return false })
+        let eligible = tracker.process(VehicleFix(point: inside, speedMps: 10, course: 0,
+                                                  timestamp: t0.addingTimeInterval(500)))
+        XCTAssertNotNil(eligible.status)
+    }
+
+    func testLengthUpdatePreservesGateReentryRequirementAfterAbort() throws {
+        let s = mappedSection()
+        let tracker = SectionSpeedTracker(sections: [s])
+        let events = runSections(tracker, segmentedTrack(from: origin,
+            segments: [(0, 60, 60), (180, 60, 25)]))
+        XCTAssertEqual(events.filter { if case .aborted = $0.event { return true }; return false }.count, 1)
+        XCTAssertFalse(tracker.isActive)
+        try tracker.updateLength(4_000, forSectionID: s.id)
+        func fix(_ along: Double, _ second: Double) -> VehicleFix {
+            VehicleFix(point: GeoMath.destination(from: s.start, bearing: along < 0 ? 180 : 0, distance: abs(along)),
+                       speedMps: 10, course: 0, timestamp: t0.addingTimeInterval(second))
+        }
+        XCTAssertNil(tracker.process(fix(100, 86)).status, "長度更新不能恢復段內 late-entry")
+        _ = tracker.process(fix(-30, 87))
+        let reentered = tracker.process(fix(10, 91))
+        XCTAssertEqual(reentered.status?.section.lengthMeters, 4_000)
+        XCTAssertEqual(reentered.events.filter { if case .entered = $0 { return true }; return false }.count, 1)
+    }
+
+    func testLengthIncreaseReopensCountdownWithoutRestartingTheSection() throws {
+        let s = section(length: 1_000, limit: 40)
+        let tracker = SectionSpeedTracker(sections: [s])
+        let point = GeoMath.destination(from: s.start, bearing: 0, distance: 100)
+        func process(_ time: Date) -> SectionResult {
+            tracker.process(VehicleFix(point: point, speedMps: 12.5, course: 0, timestamp: time))
+        }
+        let initial = try XCTUnwrap(process(t0).status)
+        let zeroTime = initial.earliestExit.addingTimeInterval(0.1)
+        XCTAssertTrue(process(zeroTime).events.contains(.zeroReached))
+        try tracker.updateLength(2_000, forSectionID: s.id)
+        let reopened = process(zeroTime.addingTimeInterval(1))
+        let status = try XCTUnwrap(reopened.status)
+        XCTAssertEqual(status.startTime, initial.startTime)
+        XCTAssertGreaterThan(status.remainingSeconds, 0)
+        XCTAssertEqual(status.minimumSeconds, initial.minimumSeconds * 2, accuracy: 0.001)
+        XCTAssertFalse(reopened.events.contains { if case .entered = $0 { return true }; return false })
+        let newZero = status.earliestExit.addingTimeInterval(0.1)
+        XCTAssertEqual(process(newZero).events.filter { $0 == .zeroReached }.count, 1)
+        XCTAssertFalse(process(newZero.addingTimeInterval(1)).events.contains(.zeroReached))
+    }
+
+    func testInvalidLengthUpdatesThrowWithoutChangingActiveState() throws {
+        let s = mappedSection()
+        let tracker = SectionSpeedTracker(sections: [s])
+        let point = GeoMath.destination(from: s.start, bearing: 0, distance: 100)
+        let initial = try XCTUnwrap(tracker.process(VehicleFix(point: point, speedMps: 10, course: 0, timestamp: t0)).status)
+        for length in [0, -1, Double.nan, .infinity] {
+            XCTAssertThrowsError(try tracker.updateLength(length, forSectionID: s.id)) {
+                XCTAssertEqual($0 as? SectionSpeedTracker.LengthUpdateError, .invalidLength)
+            }
+        }
+        XCTAssertThrowsError(try tracker.updateLength(2_000, forSectionID: "missing")) {
+            XCTAssertEqual($0 as? SectionSpeedTracker.LengthUpdateError, .unknownSection)
+        }
+        let after = try XCTUnwrap(tracker.process(VehicleFix(
+            point: point, speedMps: 10, course: 0, timestamp: t0.addingTimeInterval(1))).status)
+        XCTAssertEqual(after.startTime, initial.startTime)
+        XCTAssertEqual(after.section, initial.section)
+    }
+
     func testOfficialGateCrossingStartsBothDirectionsWithinSixtyMeters() {
         let gates: [(String, GeoPoint, GeoPoint, Double, Double)] = [
             ("beiyi-2-f", GeoPoint(lat: 24.9504174, lon: 121.6477995), GeoPoint(lat: 24.9429879, lon: 121.6708659), 134, 5835.3),

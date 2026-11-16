@@ -107,6 +107,17 @@ public struct SectionResult: Equatable, Sendable {
 /// - 區間內車速超過「速限＋區間容許值」時，每隔固定秒數嗶一聲
 /// - 倒數每跨過一個整分鐘提醒一次，最後 30、10 秒再各提醒一次，歸零時提醒一次
 public final class SectionSpeedTracker {
+    public enum LengthUpdateError: LocalizedError, Equatable {
+        case invalidLength, unknownSection
+
+        public var errorDescription: String? {
+            switch self {
+            case .invalidLength: return "區間長度必須是大於零的有限數值"
+            case .unknownSection: return "找不到要更新長度的區間"
+            }
+        }
+    }
+
     public var settings: AlertSettings
     public private(set) var sections: [SpeedSection]
     /// 超過這個秒數沒有新定位，`tick` 才開始依時間推算。
@@ -178,6 +189,20 @@ public final class SectionSpeedTracker {
     public func replaceSections(_ sections: [SpeedSection]) {
         self.sections = sections
         reset()
+    }
+
+    /// 背景長度修正不重設追蹤；下一次輸出沿用原起始時間重算倒數。
+    public func updateLength(_ length: Double, forSectionID id: String) throws {
+        guard length.isFinite, length > 0 else { throw LengthUpdateError.invalidLength }
+        guard sections.contains(where: { $0.id == id }) else { throw LengthUpdateError.unknownSection }
+        for i in sections.indices where sections[i].id == id { sections[i].lengthMeters = length }
+        if var a = active, a.section.id == id {
+            a.section.lengthMeters = length
+            a.expectedTravelMeters = max(length, GeoMath.length(of: a.section.displayPath))
+            active = a
+        }
+        if arming?.section.id == id { arming?.section.lengthMeters = length }
+        if approaching?.section.id == id { approaching?.section.lengthMeters = length }
     }
 
     /// 貼齊後的路形也交給追蹤器，但不重設正在進行的倒數。

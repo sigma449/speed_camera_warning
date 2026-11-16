@@ -765,11 +765,17 @@ final class AppModel: ObservableObject {
             // 只更新長度（等待期間路形可能已經貼齊道路，不要被舊的覆蓋）
             let lengths = Dictionary(refined.map { ($0.id, $0.lengthMeters) }, uniquingKeysWith: { a, _ in a })
             for i in database.sections.indices {
-                if let length = lengths[database.sections[i].id] {
+                let id = database.sections[i].id
+                guard let length = lengths[id], length != database.sections[i].lengthMeters else { continue }
+                do {
+                    try sectionTracker.updateLength(length, forSectionID: id)
                     database.sections[i].lengthMeters = length
+                } catch {
+                    statusMessage = "區間長度更新失敗：\(error.localizedDescription)"
+                    Logger(subsystem: "tw.speedcammap.app", category: "sectionLength")
+                        .error("區間 \(id, privacy: .public) 長度 \(length) 更新失敗：\(error.localizedDescription, privacy: .public)")
                 }
             }
-            sectionTracker.replaceSections(database.sections)
             alertEngine.sections = database.sections
         }
     }
