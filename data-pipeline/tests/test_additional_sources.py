@@ -554,15 +554,64 @@ def test_sound_location_uses_same_verified_geocoder_and_retains_noise_only_rules
                 for r in raw]
     requests += [dict(city="臺北市", district=r["district"], address=r["address"]) for r in tp]
     geocoder = load_geocoder(requests, offline=True, log=lambda _: None)
+    strict_ch = [geocoder.locate(r["city"], r["district"], r["address"]) for r in requests if r["city"] == "彰化縣"]
+    strict_tp = [geocoder.locate(r["city"], r["district"], r["address"]) for r in requests if r["city"] == "臺北市"]
+    assert sum(r.point is not None for r in strict_ch) == 4 and sum(r.point is not None for r in strict_tp) == 10
     report = SourceReport()
     ch_cameras = extra.adapt_173697(raw, report, geocoder)
     tp_cameras = extra.adapt_tp_noise(tp, report, geocoder)
-    assert len(ch_cameras) == 4 and len(tp_cameras) == 10
+    assert len(ch_cameras) == 7 and len(tp_cameras) == 25
     assert all(c.type == "noise" and not c.enforces_speed and c.speedLimit is None
-               and c.positionMethod == "door" and c.axis is not None and "定位依據" in c.conditions
+               and c.positionMethod == "door" and "定位依據" in c.conditions
                for c in ch_cameras + tp_cameras)
-    assert report.counts["173697"]["locationFailed"] == 5
-    assert report.counts["tp-noise"]["locationFailed"] == 18
+    assert all(c.axis is not None and c.heading is None for c in ch_cameras + tp_cameras if c.id != "tp-noise-13")
+    assert [(c.sourceID, c.heading, c.axis) for c in tp_cameras if c.heading is not None] == [("13", 266.8, None)]
+    assert report.counts["173697"]["locationFailed"] == 2
+    assert report.counts["tp-noise"]["locationFailed"] == 3
+    assert report.location_failures["173697"] == {"unsupported_address": 1, "door_not_found": 1}
+    assert report.location_failures["tp-noise"] == {"road_too_far": 1, "door_not_found": 1, "road_ambiguous": 1}
+    original = {
+        "173697-111N01": (24.078705, 120.544916, 21.4),
+        "173697-112N03": (23.953850, 120.497986, 92.4),
+        "173697-112N01": (24.049029, 120.440134, 104.7),
+        "173697-112N02": (24.076080, 120.547505, 120.7),
+        "tp-noise-1": (25.103369, 121.537020, 163.7),
+        "tp-noise-3": (25.029141, 121.537979, .9),
+        "tp-noise-8": (25.068160, 121.574772, 1.7),
+        "tp-noise-10": (25.077882, 121.571595, 115.8),
+        "tp-noise-15": (25.061367, 121.525598, 1.2),
+        "tp-noise-17": (24.983613, 121.567749, 72.9),
+        "tp-noise-19": (25.048182, 121.552016, 90.5),
+        "tp-noise-20": (25.131616, 121.473681, 48.8),
+        "tp-noise-21": (25.131842, 121.496067, 156.3),
+        "tp-noise-25": (25.047594, 121.564050, 68.7),
+    }
+    published = {c.id: c.to_json() for c in ch_cameras + tp_cameras}
+    assert {key: (published[key]["lat"], published[key]["lon"], published[key]["axis"]) for key in original} == original
+    additions = [c for c in ch_cameras + tp_cameras if c.id not in original and c.heading is None]
+    assert len(additions) == 17
+    assert all("分向車道無法判定，沿路雙向" in c.conditions for c in additions)
+    zhishan = published["tp-noise-2"]
+    assert (zhishan["lat"], zhishan["lon"], zhishan["axis"]) == (25.108327, 121.557443, 169.7)
+    target = next(r for r in report.locations if r.get("details", {}).get("directionTarget"))
+    assert target["details"]["directionTarget"]["name"] == "大直橋"
+    assert target["details"]["positionChoice"] == "carriageway"
+
+
+def test_mobile_announcements_keep_strict_divider_rejections_when_sound_adapters_opt_in():
+    from speedcam_data.geocoding import normalize_address
+    report = SourceReport()
+    cameras, _ = extra.load_mobile(report, offline=True, log=lambda _: None)
+    blocked = [r for r in report.locations if r["source"] == "ntpc-mobile" and r.get("reasonCode") == "road_ambiguous"]
+    assert len(blocked) == 49 and len({normalize_address(r["row"]) for r in blocked}) == 42
+    assert all(r["reason"] == "35 m 內有分離或不同軸向的同名道路投影；不選最近一條" for r in blocked)
+    assert report.counts["ntpc-mobile"]["usable"] == 89
+    assert report.counts["ntpc-mobile"]["locationSuccess"] == 89
+    assert report.counts["ntpc-mobile"]["directional"] == 2
+    assert report.counts["ntpc-mobile"]["unresolved"] == 87
+    noise = [c for c in cameras if c.type == "noise"]
+    assert len(noise) == 32
+    assert len(merge_sources([], noise, SourceReport())) == 32
 
 
 def test_corrupt_schema_snapshot_and_failed_download_skip_only_that_optional_source(monkeypatch, tmp_path):
