@@ -22,6 +22,10 @@ REQUIRED_SECTIONS = {
     "ziqiang-tunnel-f", "ziqiang-tunnel-r", "xinhai-tunnel-f", "xinhai-tunnel-r",
     "ntpc-huanhe-f", "ntpc-huanhe-r",
 }
+REQUIRED_DOULIU = {
+    "douliu-mobile-213fc176856a", "douliu-mobile-39626731dd14",
+    "douliu-mobile-4818a938bf50", "douliu-mobile-90179b1d2878",
+}
 
 
 def sha256(path: Path) -> str:
@@ -46,8 +50,15 @@ def release_blockers(db: dict) -> list[str]:
     missing = REQUIRED_SECTIONS - {section["id"] for section in db["sections"]}
     if missing:
         blockers.append("缺少必要雙向區間：" + "、".join(sorted(missing)))
-    if not db.get("sourceReport", {}).get("sources", {}).get("7320"):
-        blockers.append("缺少當輪 7320 來源報告")
+    if db.get("sourceReport", {}).get("sources", {}).get("7320", {}).get("usable", 0) < 500:
+        blockers.append("當輪 7320 可用資料不足 500 筆或缺少來源報告")
+    douliu = {camera["id"] for camera in db["cameras"] if camera.get("source") == "douliu-mobile"
+              and camera["type"] == "mobile" and camera.get("speedLimit") is None}
+    if not REQUIRED_DOULIU <= douliu:
+        blockers.append("已核斗六四點缺漏，或熱點被誤設測速門檻")
+    if not any(camera.get("source") == "manual" and "銀河" in camera["address"]
+               and camera["type"] == "fixed" and camera.get("speedLimit") == 40 for camera in db["cameras"]):
+        blockers.append("銀河人工點缺漏或不再是已確認的固定測速 40")
     for key in ("cameras", "sections"):
         ids = [row["id"] for row in db[key]]
         if len(set(ids)) != len(ids):

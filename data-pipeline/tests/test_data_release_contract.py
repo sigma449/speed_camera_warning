@@ -33,6 +33,8 @@ def load_bundle():
 @pytest.fixture
 def production_input(monkeypatch, tmp_path, douliu_milepost_index):
     fixture = json.loads(INPUT.read_text(encoding="utf-8"))
+    for path, digest in fixture["inputSHA256LF"].items():
+        assert hashlib.sha256((ROOT / path).read_bytes().replace(b"\r\n", b"\n")).hexdigest() == digest, path
     national = list(fixture["national"])
     for index in range(fixture["capacity"]["cameras"]):
         national.append(dict(Address=f"契約合成照相點{index}", Latitude=str(22.5 + index // 50 * 0.1),
@@ -86,6 +88,8 @@ def test_real_builder_records_required_input_state(production_input, tmp_path):
     assert len(db["sections"]) >= 70 and len(db["cameras"]) >= 500
     assert not any("金門大橋" in s["name"] for s in db["sections"]), "單點公告不能變成虛構雙端"
     assert len([c for c in db["cameras"] if c.get("source") == "douliu-mobile"]) == 4
+    counts = db["sourceReport"]["sources"]["douliu-mobile"]
+    assert (counts["locationSuccess"], counts["added"], counts["merged"]) == (5, 4, 1)
     assert all(c.get("speedLimit") is None for c in db["cameras"] if c.get("source") == "douliu-mobile")
     assert next(c for c in db["cameras"] if "銀河" in c["address"])["speedLimit"] == 40
     by_id = {s["id"]: s for s in db["sections"]}
@@ -126,12 +130,14 @@ def test_same_bundle_from_real_builder_to_release_gate(production_input, monkeyp
     else:
         fixture_path = ROOT / "Packages" / "SpeedCamCore" / "Tests" / "SpeedCamCoreTests" / "Fixtures" / "current_database_v1.json"
         fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+        assert fixture["inputManifestSHA256LF"] == hashlib.sha256(INPUT.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
         for key in ("cameras", "sections"):
             actual = {row["id"]: row for row in json.loads(installed.read_text(encoding="utf-8"))[key]}
             assert all(actual[row["id"]] == row for row in fixture[key]), "核心小型 fixture 必須來自同一真建置入口"
 
 
-@pytest.mark.parametrize("fault", ["cameras", "sources", "log", "manifest", "commit", "sections"])
+@pytest.mark.parametrize("fault", ["cameras", "sources", "log", "manifest", "commit", "sections",
+                                  "missing-douliu", "hotspot-speed", "galaxy-limit"])
 def test_bundle_rejects_tampering_wrong_revision_and_section_collapse(production_input, tmp_path, fault):
     bundle = load_bundle()
     directory = tmp_path / "bundle"
@@ -139,6 +145,13 @@ def test_bundle_rejects_tampering_wrong_revision_and_section_collapse(production
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     if fault == "sections":
         db["sections"] = db["sections"][:19]
+    if fault == "missing-douliu":
+        db["cameras"] = [c for c in db["cameras"] if c.get("source") != "douliu-mobile"]
+    if fault == "hotspot-speed":
+        next(c for c in db["cameras"] if c.get("source") == "douliu-mobile")["speedLimit"] = 70
+    if fault == "galaxy-limit":
+        next(c for c in db["cameras"] if "銀河" in c["address"])["speedLimit"] = 50
+    if fault in ("sections", "missing-douliu", "hotspot-speed", "galaxy-limit"):
         (directory / "cameras.json").write_text(json.dumps(db), encoding="utf-8")
     bundle.create_manifest(directory, commit)
     manifest_path = directory / "manifest.json"
