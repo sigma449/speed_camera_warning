@@ -24,13 +24,23 @@ final class NavigationController {
         if let center {
             request.region = MKCoordinateRegion(center: center, latitudinalMeters: 50_000, longitudinalMeters: 50_000)
         }
-        let response = try await MKLocalSearch(request: request).start()
-        return response.mapItems
+        return try await performSearch(request)
     }
 
     /// 使用者點了自動完成的候選：查出實際地點（可能是一個，也可能是一類地點的多個結果）。
     func search(completion: MKLocalSearchCompletion) async throws -> [MKMapItem] {
-        let response = try await MKLocalSearch(request: MKLocalSearch.Request(completion: completion)).start()
+        try await performSearch(MKLocalSearch.Request(completion: completion))
+    }
+
+    private func performSearch(_ request: MKLocalSearch.Request) async throws -> [MKMapItem] {
+        let search = MKLocalSearch(request: request)
+        let response = try await withTaskCancellationHandler(operation: {
+            try Task.checkCancellation()
+            return try await search.start()
+        }, onCancel: {
+            search.cancel()
+        })
+        try Task.checkCancellation()
         return response.mapItems
     }
 

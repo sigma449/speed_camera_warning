@@ -20,6 +20,8 @@ struct SearchView: View {
     @State private var isSearching = false
     @State private var errorText: String?
     @State private var didApplyInitialQuery = false
+    @State private var searchTask: Task<Void, Never>?
+    @State private var searchRequests = SearchRequestState()
     @FocusState private var searchFocused: Bool
 
     var body: some View {
@@ -44,6 +46,7 @@ struct SearchView: View {
             .searchFocusedIfAvailable($searchFocused)
             .onSubmit(of: .search) { runSearch(query) }
             .onChange(of: query) { newValue in
+                if searchRequests.updateQuery(newValue) { cancelSearch() }
                 if newValue != resultsQuery {
                     results = []
                     resultsQuery = nil
@@ -52,6 +55,7 @@ struct SearchView: View {
                 completer.update(query: newValue, near: model.searchCenter)
             }
             .onAppear {
+                searchRequests.present(query: query)
                 if !didApplyInitialQuery, let initial = model.initialSearchQuery {
                     didApplyInitialQuery = true
                     query = initial
@@ -59,6 +63,9 @@ struct SearchView: View {
                     // 打開就可以直接打字
                     searchFocused = true
                 }
+            }
+            .onDisappear {
+                endSearchPresentation()
             }
             .task {
                 if let text = model.searchTypingTest {
@@ -69,7 +76,7 @@ struct SearchView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("關閉") { dismiss() }
+                    Button("關閉") { closeSearch() }
                 }
                 ToolbarItem(placement: .principal) {
                     Label(model.vehicleMode.routeTitle,
@@ -116,6 +123,8 @@ struct SearchView: View {
             Section {
                 ForEach(model.recentDestinations) { recent in
                     Button {
+                        guard searchRequests.isPresented else { return }
+                        endSearchPresentation()
                         model.beginPreview(to: recent)
                         dismiss()
                     } label: {
@@ -229,26 +238,66 @@ struct SearchView: View {
 
     /// 選好地點：關掉搜尋，回到地圖先預覽地點和路線，再開始導航。
     private func navigate(to item: MKMapItem) {
+        guard searchRequests.isPresented else { return }
+        endSearchPresentation()
         model.beginPreview(to: item)
         dismiss()
     }
 
-    /// 點了候選：只有一個地點就直接預覽；是一類地點（例如「加油站」）就列出結果。
-    private func select(_ suggestion: MKLocalSearchCompletion) {
+    private func cancelSearch() {
+        searchTask?.cancel()
+        searchTask = nil
+        searchRequests.invalidate()
+        isSearching = false
+    }
+
+    private func endSearchPresentation() {
+        searchRequests.dismiss()
+        cancelSearch()
+        completer.update(query: "", near: nil)
+    }
+
+    private func closeSearch() {
+        endSearchPresentation()
+        dismiss()
+    }
+
+    private func beginSearch() -> SearchRequestState.Request? {
+        cancelSearch()
+        guard let request = searchRequests.begin(query: query) else { return nil }
         isSearching = true
         errorText = nil
-        Task {
-            defer { isSearching = false }
+        return request
+    }
+
+    private func isCurrent(_ request: SearchRequestState.Request) -> Bool {
+        !Task.isCancelled && searchRequests.accepts(request, currentQuery: query)
+    }
+
+    private func finishSearch(_ request: SearchRequestState.Request) {
+        if searchRequests.finish(request) {
+            searchTask = nil
+            isSearching = false
+        }
+    }
+
+    /// 點了候選：只有一個地點就直接預覽；是一類地點（例如「加油站」）就列出結果。
+    private func select(_ suggestion: MKLocalSearchCompletion) {
+        guard let request = beginSearch() else { return }
+        searchTask = Task { @MainActor in
+            defer { finishSearch(request) }
             do {
                 let items = try await model.search(completion: suggestion)
+                guard isCurrent(request) else { return }
                 if items.count == 1, let item = items.first {
                     navigate(to: item)
                 } else if items.isEmpty {
                     errorText = "找不到「\(suggestion.title)」"
                 } else {
-                    show(items, for: query, sortByDistance: suggestion.subtitle.isEmpty)
+                    show(items, for: request.query, sortByDistance: suggestion.subtitle.isEmpty)
                 }
             } catch {
+                guard isCurrent(request) else { return }
                 errorText = "搜尋失敗：\(error.localizedDescription)"
             }
         }
@@ -257,18 +306,19 @@ struct SearchView: View {
     private func runSearch(_ text: String, sortByDistance: Bool = false) {
         let text = text.trimmingCharacters(in: .whitespaces)
         guard !text.isEmpty else { return }
-        isSearching = true
-        errorText = nil
-        Task {
-            defer { isSearching = false }
+        guard let request = beginSearch() else { return }
+        searchTask = Task { @MainActor in
+            defer { finishSearch(request) }
             do {
                 let items = try await model.search(text)
+                guard isCurrent(request) else { return }
                 if items.isEmpty {
                     errorText = "找不到「\(text)」"
                 } else {
-                    show(items, for: text, sortByDistance: sortByDistance)
+                    show(items, for: request.query, sortByDistance: sortByDistance)
                 }
             } catch {
+                guard isCurrent(request) else { return }
                 errorText = "搜尋失敗：\(error.localizedDescription)"
             }
         }
