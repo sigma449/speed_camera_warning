@@ -42,6 +42,7 @@ Live Activity 在 iOS 26 會出現在 CarPlay 儀表板，**不需要 entitlemen
   - **第二階段 E（使用者 2026-11-13 決定）**：不同熱點之間不設語音間隔；完整移除 `mobileHotspotVoiceDistance`、累計行駛與消音狀態，不是設成 0。舊設定中的該欄位忽略、其餘偏好保留；同一照相點原有的通過冷卻不變。
   - **第二階段 G（2026-11-13 修正）**：已追蹤熱點在 30 m 內仍須符合原本 45° 單向／道路軸向判斷，只保留「照相點是否在前方」的極近寬容；最後定位距熱點 30 m 內的 `tick` 也不能繞過判向。未知方向的既有備案、其他照相類型、冷卻及隧道距離推算不變，不依地址或案例名稱消音。
   - **同秒語音**：沿用「近距／超速 > 區間 > 熱點預告 > 導航」的優先順序。有熱點預告的批次先處理區間事件，再排入熱點語音，正常定位與隧道 `tick` 共用同一入口；其他相機事件及緊急插播規則不變，不另建語音佇列或補播機制。
+    H2：批次排序與跨批插播判斷放在 Core；低優先的 urgent 也不能打斷近距／超速，同級沿用原插播規則。
   - 取締項目**全部是停車類**的科技點不成為核心提醒目標，地圖與原始詳細資訊保留；混合其他項目仍提醒，語音、橫幅與 Live Activity 共用「非停車在前、停車在後」的穩定排序。未知項目、「停車再開」「不停讓行人」不能當成純停車消音。
   - 設定「提醒類型」的「移動式熱點」「科技執法（非測速）」「聲音照相」各自預設開啟（`mobileHotspotsEnabled`、`nonSpeedTechEnabled`、`noiseCamerasEnabled`）；含測速科技不受非測速開關影響。關閉時不顯示地圖點／核心目標，不重設其他測速或區間狀態。
   - 三類接近狀態用黃色，圖示分別為望遠鏡／錄影／喇叭，沒有可靠測速門檻時不畫速限牌。手機顯示完整取締細項；Live Activity 放不下時先縮為第一項「取締：闖紅燈等」，仍放不下才只顯類型，超速與近距導航優先不變。
@@ -73,6 +74,7 @@ Live Activity 在 iOS 26 會出現在 CarPlay 儀表板，**不需要 entitlemen
 - **北宜公路（台9線）**4 段雙向區間，表定 40：19–23.1K、26.2–32.2K、33.3–37.2K、**56.6**–68.6K（第 4 段經使用者確認是 56.6K）。
   前三段改用 126156 各方向不同的官方門架及公告長度，`beiyi-N-f/r`／`groupID`／既有容許值保留；第 4 段不在 126156，仍用里程牌端點並明列資料缺口。接回里程牌路形前先裁掉門架之外的點，不能先往回接線而把進入方向算反。
 - **車種**：汽車／紅黃牌機車／白牌機車（`VehicleMode`，2026-11-06 使用者決定）。舊設定的 `motorcycle` 對應到白牌，行為不變。規則在 `RouteRules`：
+  - **H2**：規劃請求及可採用的路線綁定車種／世代。預覽中切換就取消重算，完成前不能開始或被舊倒數送出；說明用實際規劃車種。導航中切換走既有重新規劃，舊結果不能覆蓋新路線。
   - **紅黃牌**：避開國道和收費道路，可以走快速道路和市區高架。做法：只避開收費並要多條路線，排除有收費或走國道的路線，都不行才退回避開高速。
     不能用 `highwayPreference = .avoid`（Apple 的 highway 連快速道路和市區高架都算）；只避開收費又會走免費國道（實測國 2、4、6、8、10 都會），所以要比對線形。
   - **白牌**：只走平面道路。避開高速和收費，再排除 Apple 不算 highway 的高架和快速道路（`data-pipeline/manual/white_plate_restricted.csv`，例如新生高架、洲美快速道路）。
@@ -112,13 +114,16 @@ Live Activity 在 iOS 26 會出現在 CarPlay 儀表板，**不需要 entitlemen
   一次定位只發一則；每分鐘倒數和持續嗶聲只靠聲音，不跳提醒。Apple 文件說 CarPlay 不在 Dashboard 頁面時會顯示成畫面底部的通知。
   聲音是系統預設音（文件沒有靜音選項），設定頁可以關（`liveActivityAlertsEnabled`，預設開啟）。
 - **開啟 App 就自動開始巡航**（預設開啟，設定頁可以關；`AppPreferences.autoStartCruise`）。
+- **定位恢復（H2）**：新舊定位工作退出時清理對應世代並記錄原因；仍在巡航且有權限時，由每秒工作／回前景檢查，至少間隔 5 秒重啟。舊工作不能清到新工作；舊版暫時性 `locationUnknown` 保留定位工作。
 - **搜尋目的地**：要像 Google 地圖那樣邊打字邊出現候選（`MKLocalSearchCompleter`），另有快速搜尋（加油站、停車場…）和最近的目的地（最多 15 筆）。
+  H2：搜尋與候選選取共用可取消工作，以世代、查詢文字及畫面存活驗證回填；關閉／選定後立即失效化，晚到結果不能改目的地。
 - **地圖選點（第二階段 B）**：iOS 17 以上用 `MapFeature`，iOS 16 的 MKMapView 用 `selectableMapFeatures`；所有版本都能長按任意位置，iOS 15 只有長按。先顯示名稱、地址或原始座標的選點卡，按「開始導航」才進既有地點 3 秒／路線 10 秒預覽，不直接開始導航。導航中與預覽中一律停用選點，照相點仍開詳細資訊；預覽仍隱藏照相點。選點卡開啟時暫停跟隨／自動回中心、隱藏底部操作與回中心按鈕，只留一個主要動作。反查失敗明列提示與 log、仍可用原座標；取消或改選後的舊結果不能覆蓋新點。POI、長按、相機分流及清晰度仍待 iOS 實際操作／截圖驗收。
 - **區間在地圖上順著路形畫**：資料處理用里程牌座標產生 `path`（[[緯度, 經度], ...]，Douglas–Peucker 簡化到 6 m），
   App 用 `SpeedSection.displayPath` 畫，沒有 path 時畫起終點直線；同一段的兩個方向只畫一次。
   使用者實機發現里程牌路形在髮夾彎會抄近路，所以 App 再用 Apple 地圖的路線規劃貼齊道路（`SectionPathSnapper`）：
   先試起點 → 終點一次規劃（長度 0.85～1.2 倍、偏離里程牌路形 ≤ 200 m 才採用），不行就沿路形每 1.2 km 分段規劃；
   結果存在 Application Support 的 `snappedSectionPaths.v2.json`，依方向別 `section.id` 和有順序的精確起終點簽章驗證；端點變更就重算，不再讀 v1，也不以 `groupID` 跨方向套用。每個方向只算一次；請求間隔 1.5 秒，地圖中心附近的先做。貼齊結果同步交給區間核心，不重設正在跑的倒數。
+  H2：背景估算長度修正依區間 ID 就地套用，保留 active、原起始時間、預告、超速節流及重入／完成冷卻；不覆蓋新路形，沒有長度變更也不能重設核心。
 - **回到目前位置按鈕**（右下角，`MapFollowController`）：依車速縮放（`MapFollowCamera.distance`），預設行進方向朝上；
   跟隨中再按一次會依序切換「行進方向朝上 → 北方朝上 → 3D」，選擇會記住。巡航中由 App 自己算鏡頭（MapCamera），
   沒有定位時改用系統的 `.userLocation` 跟隨。
@@ -218,8 +223,9 @@ App 的啟動參數（CI 截圖用）：
 
 ## 建置與測試
 
-- **Swift 核心邏輯**（250 個測試）：`python -I -X utf8 build\swift_test.py`，H1 全通過、0 跳過；原 233 項保留，新增 17 項，含全部 79 段生命週期及熱點方向矩陣。Docker 須唯讀掛載 `SpeedCam\Resources` 到 `/SpeedCam/Resources`，不能靠缺資料跳過真實道路或人工提示測試。CI／原生 Swift 用 `swift test --package-path Packages/SpeedCamCore`。
-- **Python 資料處理與 replay 檢查器**（564 個測試）：`python -m pytest -q data-pipeline`，H1 全通過、0 跳過；原 514 項保留、新增 50 項，檢查器為 195 項。H1 不刪除或放寬既有測試；完整紀錄在 `build\stage-h1\swift.log`／`pytest.log`。
+- **Swift 核心邏輯**（274 個測試）：`python -I -X utf8 build\swift_test.py`，H2 全通過、0 跳過；H1 的 250 項全部保留，新增 24 項車種／請求世代、定位恢復、搜尋、語音優先序及長度更新回歸。Docker 須唯讀掛載 `SpeedCam\Resources` 到 `/SpeedCam/Resources`，不能靠缺資料跳過真實道路或人工提示測試。CI／原生 Swift 用 `swift test --package-path Packages/SpeedCamCore`。
+- **Python 資料處理與 replay 檢查器**（564 個測試）：`python -m pytest -q data-pipeline`，H2 全通過、0 跳過；本輪未改 Python 或既有測試，檢查器仍為 195 項。完整紀錄在 `build\stage-h2\swift.log`／`pytest.log`。
+- **H2 App 接線回歸**（另計 20 項）：`python -I -X utf8 build\stage-h2\run_app_regressions.py all --label final`，在 `build` 隔離副本抽取實際 App 方法，搭 Linux 平台替身驗證非同步完成順序／收尾及語音送出。五項皆有 `*-before.log` 失敗與 `*-final.log` 通過；不是 iOS SDK 建置、UI 操作或實播。
 - **iOS App** 只能在 GitHub Actions 編譯：
   - `CI`（每次 push）：Swift 測試、pytest、iOS 模擬器建置和截圖。截圖會以 base64 印在 log 裡（`scripts/ci/print-screenshots.sh`），因為雲端 session 下載不了 artifact。
   - `Build IPA`（手動）：`gh workflow run build-ipa.yml --repo sigma449/speed_camera_warning --ref main`。會下載最新資料、編譯未簽署的 IPA（artifact `SpeedCam-ipa`，保留 30 天）。
@@ -325,16 +331,24 @@ App 的啟動參數（CI 截圖用）：
 ## Git
 
 - 單人專案，直接 commit 到 `main` 再 push。`Build IPA` 是手動觸發的 workflow，要在預設分支上才會出現在 Actions 頁面。
-- **本輪例外**：H1 由 `d230203` 接續，只在本機 `copilot/test2-1108` 分組做繁體中文 commit，不 push、不觸發 workflow、不動 main。
-  僅用本機 git／Python 及既有 Swift 測試入口，修 A01、A03～A08、T02／T03（含 C02／C03）；不接新來源，暫存與驗證紀錄放 `build\stage-h1\`。
-  `docs/speed_camera_detector_test2_1108.docx`、`docs/copilot_review.md` 不加入git。
+- **本輪例外**：H2 由 `a739cb3` 接續，只在本機 `copilot/test2-1108` 分組做繁體中文 commit，不 push、不觸發 workflow、不動 main。
+  僅用本機 git／Python 及既有 Swift 測試入口，修 A02、A09、A10、A11、A12；不接新來源，暫存與驗證紀錄放 `build\stage-h2\`。
+  `docs\speed_camera_detector_test2_1108.docx`、`docs\copilot_review.md` 不加入 git；既有測試不刪除、不放寬。
   F 的三份調查原樣複製規則保留為歷史；本輪對調查、`build\survey2\`、`build\stage-f\`及原始回放輸入維持只讀。
   F／G不刪不放寬既有測試；E移除兩項熱點檢查是當時使用者決定的規格變更，不是F／G的變動。
 - commit 訊息用繁體中文：第一行寫做了什麼，內文寫原因。
 
-## 目前進度和下一步（H1 本機修正；尚未另建 IPA）
+## 目前進度和下一步（H2 本機修正；尚未另建 IPA）
 
-**H1（本輪）**：A01 核行政區及同址 300 m 上限；A03 找候選 run 的合格連續子段，保留真實平行側道反例；
+**H2（本輪）**：A02 車種／路線與請求綁定、A09 新舊定位受控恢復、A10 搜尋世代及關閉防護、
+A11 Core 語音優先序、A12 背景長度就地更新均已修正，未改已確認門檻或新增語音佇列。
+Swift **274**（新增 24）／Python **564** 全通過、均 **0 跳過**；另有 **20** 項 App 方法替身回歸通過，各項修正前皆已重現失敗。
+RootView 只改共用預覽卡與倒數防護；新舊地圖共用同一預覽狀態／鏡頭，LegacyMapView 已隨重算移除舊預覽線，無須重複修改。
+A12 為仍支援的估算長度路徑；F 的 82 段沒有 `lengthEstimated=true`，不宣稱既有 F 資料曾觸發。
+已逐行檢查 App 差異及呼叫端；未編譯 iOS 15／26、未跑新 MapKit replay、搜尋壓測、截圖、背景定位或語音實播／IPA。
+以下 H1／G 及更早紀錄均為歷史，不能當成 H2 的 iOS 驗收。
+
+**H1（前輪）**：A01 核行政區及同址 300 m 上限；A03 找候選 run 的合格連續子段，保留真實平行側道反例；
 A04 只在順向跨越起點後進入，停等 ±10 m 不進入；A05 同驗實際終點距離／側距及未偏離，路邊 40 m 仍可抵達；
 A06 依原起始時間同步重算與恢復倒數，不清超速冷卻；A07／A08 保留軸向與相反單向，只有新增碰撞才用新 ID。
 T02 已涵蓋 heading／axis、跨零角度、29／30／31 m、追蹤／未追蹤、process／tick、同點順序；
