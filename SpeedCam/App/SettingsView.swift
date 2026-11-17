@@ -69,6 +69,18 @@ struct SettingsView: View {
                     } footer: {
                         Text("三種預設開啟，需有可靠位置資料才會提醒。移動式是公告熱點，不表示目前有取締。熱點、聲音照相和非測速科技只預告一次、不發超速嗶聲；含測速的科技設備不受「非測速」開關影響。")
                     }
+                    Section {
+                        NavigationLink {
+                            UserCameraEditsView()
+                        } label: {
+                            LabeledValue("管理照相點",
+                                value: "\(model.userCameraEdits.added.count) 新增・\(model.userCameraEdits.modified.count) 修改・\(model.userCameraEdits.hidden.count) 隱藏")
+                        }
+                    } header: {
+                        Text("我的照相點")
+                    } footer: {
+                        Text("只存在這支手機。可修改、復原、刪除或匯出給維護者；不會自動上傳。")
+                    }
                 }
 
 

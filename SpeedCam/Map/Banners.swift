@@ -226,56 +226,88 @@ struct LevelTag: View {
 
 struct CameraDetailCard: View {
     let camera: Camera
+    var isUserAdded = false
+    var isUserModified = false
+    var onEdit: (() -> Void)? = nil
+    var onHide: (() -> Void)? = nil
+    var onDelete: (() -> Void)? = nil
+    var onRestore: (() -> Void)? = nil
     let onClose: () -> Void
+    @State private var confirmDelete = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            CameraIndicator(limit: camera.enforcesSpeed ? camera.speedLimit : nil, symbol: camera.symbolName, size: 48)
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Label(camera.type.displayName, systemImage: camera.symbolName).font(.headline)
-                    if let level = camera.levelName {
-                        LevelTag(text: level)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                CameraIndicator(limit: camera.enforcesSpeed ? camera.speedLimit : nil, symbol: camera.symbolName, size: 48)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Label(camera.type.displayName, systemImage: camera.symbolName).font(.headline)
+                        if let level = camera.levelName {
+                            LevelTag(text: level)
+                        }
+                    }
+                    if isUserAdded || isUserModified {
+                        Text(isUserAdded ? "自行新增" : "已自行修改").font(.subheadline.weight(.semibold))
+                    }
+                    Text(camera.address).font(.subheadline)
+                    if ["milestone", "door", "lamp", "intersection", "official-milepost",
+                        "existing-official-junction"].contains(camera.positionMethod ?? "") {
+                        Text("位置依公告地址推定").font(.footnote.weight(.semibold))
+                    }
+                    if let detail = camera.enforcementDetail {
+                        Text(detail).font(.subheadline)
+                    }
+                    if let conditions = camera.conditions {
+                        Text(conditions).font(.footnote)
+                    }
+                    Text("取締方向：\(UserCameraDirection(camera: camera).description)")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    if let source = camera.source, let value = camera.sourceURL, let url = URL(string: value) {
+                        Link("資料來源：\(source)", destination: url).font(.footnote)
                     }
                 }
-                Text(camera.address).font(.subheadline)
-                if ["milestone", "door", "lamp", "intersection", "official-milepost",
-                    "existing-official-junction"].contains(camera.positionMethod ?? "") {
-                    Text("位置依公告地址推定").font(.footnote.weight(.semibold))
+                Spacer(minLength: 0)
+                Button(action: onClose) {
+                    Image(systemName: "xmark.circle.fill").font(.title2)
+                        .frame(minWidth: 44, minHeight: 44)
                 }
-                if let detail = camera.enforcementDetail {
-                    Text(detail).font(.subheadline)
+                .accessibilityLabel("關閉照相點資訊")
+            }
+            if camera.type != .section {
+                HStack(spacing: 12) {
+                    if let onEdit { secondaryAction("修改", action: onEdit) }
+                    if isUserAdded {
+                        if onDelete != nil { secondaryAction("刪除") { confirmDelete = true } }
+                    } else if let onHide {
+                        secondaryAction("隱藏", action: onHide)
+                    }
                 }
-                if let conditions = camera.conditions {
-                    Text(conditions).font(.footnote)
-                }
-                Text(directionText).font(.footnote).foregroundStyle(.secondary)
-                if let source = camera.source, let value = camera.sourceURL, let url = URL(string: value) {
-                    Link("資料來源：\(source)", destination: url).font(.footnote)
+                if isUserModified, !isUserAdded, let onRestore {
+                    secondaryAction("還原成原始資料", action: onRestore)
                 }
             }
-            Spacer()
-            Button(action: onClose) {
-                Image(systemName: "xmark.circle.fill").font(.title2)
-                    .frame(minWidth: 44, minHeight: 44)
-            }
-            .accessibilityLabel("關閉照相點資訊")
         }
         .padding(14)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18))
+        .confirmationDialog("刪除這個自行新增的照相點？", isPresented: $confirmDelete, titleVisibility: .visible) {
+            Button("刪除照相點", role: .destructive) { onDelete?() }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("刪除後無法復原。")
+        }
     }
 
-    private var directionText: String {
-        guard let h = camera.heading else {
-            switch camera.axis {
-            case 0: return "取締方向：南北雙向"
-            case 90: return "取締方向：東西雙向"
-            default: return "取締方向：雙向或資料未提供"
-            }
+    private func secondaryAction(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.body.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .padding(.horizontal, 8)
+                .background(Color.primary.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.primary.opacity(0.5)))
         }
-        let names = ["北", "東北", "東", "東南", "南", "西南", "西", "西北"]
-        let idx = Int((GeoMath.normalize(h) + 22.5) / 45) % 8
-        return "取締方向：往\(names[idx])行駛的車輛"
+        .buttonStyle(.plain)
+        .foregroundStyle(.primary)
     }
 }
 

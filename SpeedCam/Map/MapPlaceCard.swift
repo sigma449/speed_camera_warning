@@ -4,6 +4,7 @@ import SwiftUI
 struct MapPlaceCard: View {
     let place: MapPlaceSelection.Place
     let onStart: () -> Void
+    let onAddCamera: () -> Void
     let onClose: () -> Void
 
     var body: some View {
@@ -48,6 +49,15 @@ struct MapPlaceCard: View {
             }
             .buttonStyle(.plain)
             .accessibilityHint("先預覽地點與路線，再開始導航")
+            Button(action: onAddCamera) {
+                Text("新增照相點")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+                    .background(Color.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.6)))
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("在手機儲存這個位置的照相點，不會上傳")
         }
         .padding(16)
         .foregroundStyle(.white)
@@ -84,6 +94,6 @@ struct MapPlaceGalleryView: View {
     }
 
     private func card(_ place: MapPlaceSelection.Place) -> some View {
-        MapPlaceCard(place: place, onStart: {}, onClose: {})
+        MapPlaceCard(place: place, onStart: {}, onAddCamera: {}, onClose: {})
     }
 }

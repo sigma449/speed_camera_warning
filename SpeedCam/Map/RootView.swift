@@ -14,6 +14,7 @@ struct RootView: View {
     @State private var selectedCameraID: String?
     @State private var showSearch = false
     @State private var showSettings = false
+    @State private var cameraEditor: UserCameraEditorRequest?
     /// 導航預覽的倒數（秒）；nil 表示沒有倒數。
     @State private var previewCountdown: Int?
     /// 預覽時使用者拖動了地圖：停止自動前進，等使用者按。
@@ -21,44 +22,55 @@ struct RootView: View {
     @State private var reportedComparisonReady = false
 
     var body: some View {
-        ZStack {
-            map
-                .ignoresSafeArea()
+        GeometryReader { viewport in
+            ZStack {
+                map
+                    .ignoresSafeArea()
 
-            VStack(spacing: 8) {
-                if let progress = model.routeProgress {
-                    NavigationBanner(progress: progress, destination: model.destinationName)
-                }
-                if let section = model.sectionStatus {
-                    SectionBanner(status: section, currentSpeed: model.currentSpeedKmh)
-                } else if let target = model.bannerTarget {
-                    CameraBanner(target: target)
-                }
-                if let message = model.statusMessage {
-                    MessageBanner(text: message) { model.statusMessage = nil }
-                }
-                Spacer()
-                if let preview = model.preview {
-                    NavigationPreviewCard(preview: preview,
-                                          countdown: previewCountdown,
-                                          onShowRoute: { model.showRoutePreview() },
-                                          onStart: { startPreviewedNavigation() },
-                                          onCancel: { cancelPreview() })
-                } else {
-                    if let place = model.selectedMapPlace {
-                        MapPlaceCard(place: place, onStart: { model.previewSelectedMapPlace() },
-                                     onClose: { model.dismissMapPlace() })
-                    } else if let camera = selectedCamera {
-                        CameraDetailCard(camera: camera) { selectedCameraID = nil }
+                VStack(spacing: 8) {
+                    if let progress = model.routeProgress {
+                        NavigationBanner(progress: progress, destination: model.destinationName)
                     }
-                    if model.selectedMapPlace == nil && model.mapAppearance.comparison == nil { recenterRow }
+                    if let section = model.sectionStatus {
+                        SectionBanner(status: section, currentSpeed: model.currentSpeedKmh)
+                    } else if let target = model.bannerTarget {
+                        CameraBanner(target: target)
+                    }
+                    if let message = model.statusMessage {
+                        MessageBanner(text: message) { model.statusMessage = nil }
+                    }
+                    Spacer()
+                    if let preview = model.preview {
+                        NavigationPreviewCard(preview: preview,
+                                              countdown: previewCountdown,
+                                              onShowRoute: { model.showRoutePreview() },
+                                              onStart: { startPreviewedNavigation() },
+                                              onCancel: { cancelPreview() })
+                    } else {
+                        if let place = model.selectedMapPlace {
+                            MapCardScrollView(maximumHeight: viewport.size.height * 0.65) {
+                                MapPlaceCard(place: place, onStart: { model.previewSelectedMapPlace() },
+                                             onAddCamera: {
+                                                 cameraEditor = UserCameraEditorRequest(camera: model.newUserCamera(at: place),
+                                                     isNew: true, canChangeType: true,
+                                                     currentHeading: model.suggestedCameraHeading(at: place.point))
+                                             },
+                                             onClose: { model.dismissMapPlace() })
+                            }
+                        } else if let camera = selectedCamera {
+                            MapCardScrollView(maximumHeight: viewport.size.height * 0.65) {
+                                cameraDetail(camera)
+                            }
+                        }
+                        if model.selectedMapPlace == nil && model.mapAppearance.comparison == nil { recenterRow }
+                    }
+                    if model.selectedMapPlace == nil && model.mapAppearance.comparison == nil {
+                        BottomBar(showSearch: $showSearch, showSettings: $showSettings)
+                    }
                 }
-                if model.selectedMapPlace == nil && model.mapAppearance.comparison == nil {
-                    BottomBar(showSearch: $showSearch, showSettings: $showSettings)
-                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
             }
-            .padding(.horizontal, 12)
-            .padding(.bottom, 8)
         }
         .sheet(isPresented: $showSearch) {
             SearchView()
@@ -67,6 +79,14 @@ struct RootView: View {
         .sheet(isPresented: $showSettings) {
             SettingsView()
                 .environmentObject(model)
+        }
+        .sheet(item: $cameraEditor) { request in
+            UserCameraEditorView(request: request,
+                cameras: model.database.cameras,
+                sections: model.database.sections) { camera in
+                try model.saveUserCamera(camera, isNew: request.isNew)
+                if request.isNew { model.dismissMapPlace() }
+            }
         }
         .alert("需要定位權限", isPresented: Binding(get: { model.authorizationDenied },
                                               set: { if !$0 { model.acknowledgeAuthorizationAlert() } })) {
@@ -242,6 +262,29 @@ struct RootView: View {
     private var selectedCamera: Camera? {
         guard let id = selectedCameraID else { return nil }
         return model.database.cameras.first { $0.id == id }
+    }
+
+    private func cameraDetail(_ camera: Camera) -> some View {
+        CameraDetailCard(camera: camera, isUserAdded: model.isUserAddedCamera(camera.id),
+            isUserModified: model.userCameraEdits.modified[camera.id] != nil,
+            onEdit: {
+                cameraEditor = UserCameraEditorRequest(camera: camera, isNew: false,
+                    canChangeType: model.isUserAddedCamera(camera.id),
+                    currentHeading: model.suggestedCameraHeading(at: camera.point))
+            },
+            onHide: { cameraAction { try model.hideCamera(camera); selectedCameraID = nil } },
+            onDelete: { cameraAction { try model.deleteUserCamera(camera.id); selectedCameraID = nil } },
+            onRestore: { cameraAction { try model.restoreCamera(camera.id) } },
+            onClose: { selectedCameraID = nil })
+    }
+
+    private func cameraAction(_ action: () throws -> Void) {
+        do {
+            try action()
+        } catch {
+            model.statusMessage = "照相點操作失敗：\(error.localizedDescription)"
+            uiLog.error("照相點操作失敗：\(error.localizedDescription, privacy: .public)")
+        }
     }
 
     private var visibleCameras: [Camera] {

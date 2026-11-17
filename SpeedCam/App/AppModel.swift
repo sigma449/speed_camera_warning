@@ -44,6 +44,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var recentDestinations: [RecentDestination] = RecentDestinationStore.load()
     @Published var statusMessage: String?
     @Published private var mapPlaceSelection = MapPlaceSelection()
+    @Published private(set) var userCameraEdits = UserCameraEdits()
+    @Published private(set) var userCameraEditsWarning: String?
+    private(set) var originalCameras: [Camera] = []
 
     var selectedMapPlace: MapPlaceSelection.Place? { mapPlaceSelection.place }
     var canSelectMapPlace: Bool { mapAppearance.comparison == nil && mapPlaceMode == .browsing }
@@ -120,6 +123,9 @@ final class AppModel: ObservableObject {
     private var lastRerouteAnnouncement = Date.distantPast
     private var audioRouteObserver: NSObjectProtocol?
     private var isInCar = false
+    private var userCameraEditsFile: UserCameraEditsFile?
+    private var userCameraEditsWriteError: String?
+    private var lastHeadingFix: VehicleFix?
 
     private static let settingsKey = "alertSettings.v2"
     private static let legacySettingsKey = "alertSettings.v1"
@@ -154,9 +160,47 @@ final class AppModel: ObservableObject {
         alertEngine = CameraAlertEngine(index: SpatialIndex(cameras: []), settings: loaded)
         sectionTracker = SectionSpeedTracker(sections: [], settings: loaded)
 
+        if !showGallery && !demoMode {
+            do {
+                let support = try FileManager.default.url(for: .applicationSupportDirectory,
+                    in: .userDomainMask, appropriateFor: nil, create: true)
+                let file = UserCameraEditsFile(url: support.appendingPathComponent("userCameraEdits.v1.json"))
+                let result = try file.load()
+                userCameraEditsFile = file
+                userCameraEdits = result.edits
+                if let warning = result.warning {
+                    let message = "我的照相點讀取失敗，已改名保留原檔。本次先用原始資料，可重新新增。"
+                    userCameraEditsWarning = message
+                    statusMessage = message
+                    Logger(subsystem: "tw.speedcammap.app", category: "userCameras")
+                        .warning("\(warning, privacy: .public)")
+                }
+            } catch {
+                let message = "我的照相點無法讀取，暫用原始資料並停止寫入，以免覆蓋原檔。"
+                userCameraEditsWriteError = message
+                userCameraEditsWarning = message
+                statusMessage = message
+                Logger(subsystem: "tw.speedcammap.app", category: "userCameras")
+                    .error("\(message, privacy: .public) 原因：\(error.localizedDescription, privacy: .public)")
+            }
+        }
         var db = CameraStore.loadBundled()
         if demoMode || db.cameras.isEmpty && arguments.contains("-demoIfEmpty") {
             db = CameraStore.demoDatabase()
+        }
+        if showGallery, let i = arguments.firstIndex(of: "-galleryUserCameras") {
+            db = UserCameraGalleryData.database
+            do {
+                if i + 1 < arguments.count && arguments[i + 1] == "empty" {
+                    userCameraEdits = UserCameraEdits()
+                } else {
+                    userCameraEdits = try UserCameraGalleryData.edits()
+                }
+            } catch {
+                statusMessage = "照相點示例資料無效：\(error.localizedDescription)"
+                Logger(subsystem: "tw.speedcammap.app", category: "userCameras")
+                    .error("示例資料無效：\(error.localizedDescription, privacy: .public)")
+            }
         }
         applyDatabase(db)
 
@@ -210,6 +254,7 @@ final class AppModel: ObservableObject {
     func onAppear() {
         guard !didAppear else { return }
         didAppear = true
+        guard !showGallery else { return }
         if demoMode {
             startDemo()
         } else if mapAppearance.comparison == nil {
@@ -303,6 +348,7 @@ final class AppModel: ObservableObject {
         isCruising = true
         UIApplication.shared.isIdleTimerDisabled = true
         alertEngine.reset()
+        lastHeadingFix = nil
         sectionTracker.reset()
         location.start()
         if settings.liveActivityEnabled {
@@ -327,6 +373,7 @@ final class AppModel: ObservableObject {
         activity.end()
         announcer.stopAll()
         alertEngine.reset()
+        lastHeadingFix = nil
         sectionTracker.reset()
         cameraTarget = nil
         sectionStatus = nil
@@ -402,6 +449,100 @@ final class AppModel: ObservableObject {
         guard let place = mapPlaceSelection.takeForPreview(mode: mapPlaceMode) else { return }
         beginPreview(to: MapItems.item(name: place.name, coordinate: place.point.coordinate),
                      subtitle: place.address ?? place.coordinateText)
+    }
+
+    // MARK: 我的照相點
+
+    func isUserAddedCamera(_ id: String) -> Bool {
+        userCameraEdits.added.contains { $0.id == id }
+    }
+
+    func originalCamera(_ id: String) -> Camera? {
+        originalCameras.first { $0.id == id } ?? userCameraEdits.originals[id]
+    }
+
+    func suggestedCameraHeading(at point: GeoPoint) -> Double? {
+        UserCameraEdits.suggestedHeading(at: point, isCruising: isCruising,
+            lastFix: lastFix, lastHeadingFix: lastHeadingFix)
+    }
+
+    func newUserCamera(at place: MapPlaceSelection.Place) -> Camera {
+        return Camera(id: "user-\(UUID().uuidString)", type: .fixed,
+            lat: place.point.lat, lon: place.point.lon, speedLimit: 50, address: place.userCameraAddress,
+            source: "自行新增", positionMethod: "user")
+    }
+
+    func saveUserCamera(_ camera: Camera, isNew: Bool) throws {
+        var camera = camera
+        if isNew, let place = selectedMapPlace, place.point == camera.point {
+            camera.address = place.userCameraAddress
+        }
+        var edits = userCameraEdits
+        if isNew {
+            try edits.add(camera)
+        } else if isUserAddedCamera(camera.id) {
+            try edits.updateAdded(camera)
+        } else {
+            guard let original = originalCameras.first(where: { $0.id == camera.id }) else {
+                throw UserCameraEdits.EditError.invalid("目前資料已無此照相點，原設定仍保留")
+            }
+            try edits.modify(original, speedLimit: camera.speedLimit, direction: UserCameraDirection(camera: camera))
+        }
+        try commitUserCameraEdits(edits)
+    }
+
+    func hideCamera(_ camera: Camera) throws {
+        guard let original = originalCameras.first(where: { $0.id == camera.id }) else {
+            throw UserCameraEdits.EditError.invalid("找不到要隱藏的原始照相點")
+        }
+        var edits = userCameraEdits
+        try edits.hide(original)
+        try commitUserCameraEdits(edits)
+        statusMessage = "已隱藏，可到設定復原"
+    }
+
+    func unhideCamera(_ id: String) throws {
+        var edits = userCameraEdits
+        edits.unhide(id: id)
+        try commitUserCameraEdits(edits)
+    }
+
+    func restoreCamera(_ id: String) throws {
+        var edits = userCameraEdits
+        edits.restoreOriginal(id: id)
+        try commitUserCameraEdits(edits)
+    }
+
+    func deleteUserCamera(_ id: String) throws {
+        var edits = userCameraEdits
+        edits.deleteAdded(id: id)
+        try commitUserCameraEdits(edits)
+    }
+
+    private func commitUserCameraEdits(_ edits: UserCameraEdits) throws {
+        do {
+            if let error = userCameraEditsWriteError { throw UserCameraEdits.EditError.invalid(error) }
+            if let file = userCameraEditsFile {
+                try file.save(edits)
+            } else if !showGallery && !demoMode {
+                throw UserCameraEdits.EditError.invalid("我的照相點儲存位置尚未就緒")
+            } else {
+                try edits.validate()
+            }
+        } catch {
+            statusMessage = "我的照相點儲存失敗：\(error.localizedDescription)"
+            Logger(subsystem: "tw.speedcammap.app", category: "userCameras")
+                .error("儲存失敗：\(error.localizedDescription, privacy: .public)")
+            throw error
+        }
+        userCameraEdits = edits
+        database.cameras = edits.apply(to: originalCameras)
+        index = SpatialIndex(cameras: database.cameras)
+        alertEngine.replaceIndex(index, preservingState: true)
+        if let target = cameraTarget, index.camera(id: target.camera.id) != target.camera {
+            cameraTarget = nil
+        }
+        if isCruising { activity.update(activityState(), alert: nil) }
     }
 
     // MARK: 導航預覽
@@ -596,6 +737,10 @@ final class AppModel: ObservableObject {
     func handle(_ fix: VehicleFix) {
         guard isCruising else { return }
         lastFix = fix
+        if fix.isReliable, fix.speedMps.isFinite, fix.speedKmh >= 8,
+           let course = fix.course, course.isFinite, course >= 0 {
+            lastHeadingFix = fix
+        }
 
         // 隧道裡的基地台定位不能判斷照相點和區間，當作沒有定位，由 tick 依時間推算
         let sec = fix.isReliable ? sectionTracker.process(fix) : nil
@@ -742,8 +887,8 @@ final class AppModel: ObservableObject {
 
     private func applyDatabase(_ db: CameraDatabase) {
         var db = db
-        db.sections = SectionLengthRefiner.applyCached(to: db.sections)
-        if !demoMode {
+        if !showGallery { db.sections = SectionLengthRefiner.applyCached(to: db.sections) }
+        if !demoMode && !showGallery {
             db.sections = db.sections.map { s in
                 guard let snapped = pathSnapper.cachedPath(for: s) else { return s }
                 var copy = s
@@ -751,6 +896,8 @@ final class AppModel: ObservableObject {
                 return copy
             }
         }
+        originalCameras = db.cameras
+        db.cameras = userCameraEdits.apply(to: db.cameras)
         database = db
         index = SpatialIndex(cameras: db.cameras)
         alertEngine.replaceIndex(index)

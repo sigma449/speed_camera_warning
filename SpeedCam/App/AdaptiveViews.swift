@@ -41,6 +41,31 @@ struct LabeledValue: View {
     }
 }
 
+private struct MapCardHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+struct MapCardScrollView<Content: View>: View {
+    let maximumHeight: CGFloat
+    @ViewBuilder var content: () -> Content
+    @State private var contentHeight: CGFloat?
+
+    var body: some View {
+        ScrollView {
+            content()
+                .background(GeometryReader { geometry in
+                    Color.clear.preference(key: MapCardHeightKey.self, value: geometry.size.height)
+                })
+        }
+        .frame(maxHeight: min(contentHeight ?? maximumHeight, maximumHeight))
+        .onPreferenceChange(MapCardHeightKey.self) { contentHeight = $0 }
+    }
+}
+
 extension View {
     /// 打開搜尋就可以打字要 iOS 18；舊系統要自己點搜尋框。
     @ViewBuilder

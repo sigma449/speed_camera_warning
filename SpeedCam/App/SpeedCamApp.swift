@@ -8,7 +8,9 @@ struct SpeedCamApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
-                if model.showGallery, #available(iOS 17, *) {
+                if model.showGallery, ProcessInfo.processInfo.arguments.contains("-galleryUserCameras") {
+                    UserCameraGalleryView()
+                } else if model.showGallery, #available(iOS 17, *) {
                     GalleryRoot()
                 } else {
                     RootView()
