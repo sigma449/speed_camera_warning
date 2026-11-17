@@ -24,6 +24,17 @@ python3 -m pytest -q                     # 預設快測試（不含 slow）
 - **去重複**：約 11 m 內、同方向視為同一支；ID 由位置與方向產生，資料順序改變也不會變。
 - **沒有變動就不改檔**：避免每週自動更新只因日期不同就開 PR。
 
+## H12：手機自行新增的 CSV（2026-11-17）
+
+App 的「我的照相點」只在手機儲存，可分享 `cameras_extra_user.csv` 與 `camera_edits.json` 供人工核對；
+沒有自動回報／匯入。維護者核可後才將 CSV 資料列加入 `manual\cameras_extra.csv`，操作見根目錄 `docs\SETUP.md`。
+欄位與既有人工表相同，來源為「使用者於 App 自行新增（日期）」。
+保留此來源標記時，normalizer 以明列的「測速照相／闖紅燈照相」與方向欄為準，不因 POI 名稱推成區間／混合測速，
+也不套過港地址的方向校正；其他來源規則不變。
+App 核心支援任意雙向軸向，但 CSV 只表達南北／東西，其他軸向保守匯出為不指定軸向的雙向，
+精確原值保留於 JSON，須人工核對後才發布。未知方向留空，闖紅燈速限留空，不推定超速取締。
+Swift 匯出與 Python 讀取共同核對 `Packages\SpeedCamCore\Tests\SpeedCamCoreTests\Fixtures\user_cameras_export.csv`。
+
 ## H7：聲音照相的平行分向車道定位（2026-11-16）
 
 H7 原只對**彰化173697、臺北tp-noise**啟用 `Geocoder.locate(..., allow_divided=True)`；

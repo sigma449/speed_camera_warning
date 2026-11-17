@@ -10,10 +10,6 @@ if [[ "${CAPTURE_PROFILE}" == none ]]; then
   echo "本次明確略過截圖，不代表畫面驗收通過"
   exit 0
 fi
-if [[ "${CAPTURE_PROFILE}" == gallery ]]; then
-  echo "iOS 15 沒有 Live Activity 預覽；此情境改驗一般啟動與設定頁"
-  CAPTURE_PROFILE=smoke
-fi
 BUNDLE_ID="tw.speedcammap.app"
 OUT="screenshots"
 mkdir -p "${OUT}"
@@ -196,6 +192,11 @@ wait_for_ui "place selection ready legacy=true"
 sleep 6
 assert_running "地圖選點卡"
 shot "ios15-15-map-selected-place"
+fi
+
+if selected gallery; then
+source "$(dirname "${BASH_SOURCE[0]}")/user-camera-screenshots.sh"
+capture_user_camera_edits "ios15-17-user-camera"
 fi
 
 xcrun simctl spawn "${UDID}" log show --last 20m --style compact \

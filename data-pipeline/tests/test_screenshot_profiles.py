@@ -24,6 +24,17 @@ def test_real_screenshot_entry_honors_selected_profile(tmp_path, entry, profile)
     elif profile == "full":
         assert len(images) > 5
         assert not any(path.name.startswith(("35-", "36-", "37-", "38-", "ios15-14-", "ios15-16-")) for path in images)
+        prefix = "ios15-17-user-camera" if entry == "ios15-run.sh" else "47-user-camera"
+        scenarios = ("place", "fixed", "fixed-current", "redLight", "redLight-current", "both",
+                     "official", "added", "modified", "settings", "empty")
+        for scenario in scenarios:
+            for text in ("normal", "large-text"):
+                assert (tmp_path / "screenshots" / f"{prefix}-{scenario}-{text}-375.png").exists()
+        for text in ("normal", "large-text"):
+            for section in ("modified", "hidden"):
+                assert (tmp_path / "screenshots" / f"{prefix}-settings-{section}-{text}-375.png").exists()
+        for scenario in ("fixed", "fixed-current", "redLight", "redLight-current", "both", "modified"):
+            assert (tmp_path / "screenshots" / f"{prefix}-{scenario}-bottom-large-text-375.png").exists()
     else:
         assert not images
 
@@ -36,3 +47,22 @@ def test_profiles_include_internal_styles_only_when_explicit(tmp_path, profile, 
     result = bash("-c", 'source scripts/ci/capture-groups.sh; configure_capture "$1"; selected styles',
                   "profiles", profile, cwd=tmp_path, env=environment)
     assert result.returncode == (0 if styles else 1), result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("failed_size", ["large", "accessibility-large"])
+def test_user_camera_capture_does_not_claim_large_text_if_setting_the_size_fails(tmp_path, failed_size):
+    _, environment = shell_workspace(tmp_path)
+    environment["FAILED_SIZE"] = failed_size
+    result = bash("-c", '''
+set -euo pipefail
+source scripts/ci/user-camera-screenshots.sh
+UDID=test-device
+launch_app() { :; }
+sleep() { :; }
+shot() { printf '%s\\n' "$1"; }
+xcrun() { [[ "${!#}" != "${FAILED_SIZE}" ]]; }
+capture_user_camera_edits probe
+''', cwd=tmp_path, env=environment)
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "無法設定我的照相點截圖的文字大小" in result.stdout
+    assert "-large-text-375" not in result.stdout

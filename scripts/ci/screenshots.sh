@@ -390,6 +390,8 @@ for TYPE in mobile tech noise; do
   sleep 2
   shot "46-reminder-activity-${TYPE}"
 done
+source "$(dirname "${BASH_SOURCE[0]}")/user-camera-screenshots.sh"
+capture_user_camera_edits "47-user-camera"
 fi
 
 # App 的紀錄（確認啟動參數、sheet、地圖範圍、區間貼齊、路線選擇有沒有生效）

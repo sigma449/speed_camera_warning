@@ -87,16 +87,51 @@ CI 的截圖 `auto`：App／Shared／Widget／`scripts/ci`／`project.yml` 改�
 | 情境 | iOS 26 | iOS 15 |
 |---|---|---|
 | `smoke` | 5 張：啟動、設定、375 pt 照相／區間、過期卡片 | 2 張：啟動、設定 |
-| `gallery` | 橫幅、窄版／大字、Live Activity、過期與選點狀態 | 無 Live Activity，完整驗收選用時明列退為 smoke |
+| `gallery` | 橫幅、窄版／大字、Live Activity、過期、選點及我的照相點 | 我的照相點 32 張；不載入 Live Activity |
 | `map` | 展示、地圖、選點、預覽、新舊地圖 | 對應舊地圖功能 |
 | `search` | 語言候選、搜尋壓測 | 候選、搜尋壓測 |
-| `full` | 53 張；gallery＋map＋search | 14 張；不含內部對照 |
+| `full` | 85 張；gallery＋map＋search | 46 張；不含內部對照 |
 | `styles` | 明確選取才拍 24 張內部樣式比較 | 2 張內部比較 |
-| `all` | 原 77 張 | 原 16 張 |
+| `all` | 109 張 | 48 張 |
 | `none` | 只建置，不宣稱畫面驗收 | 同左 |
 
 沒有縮短展示倒數或外部服務等待。UI-ready 缺失仍警告拍圖；**App 存活查不到、程序被換掉或截圖失敗則失敗**。
 PNG 存在不代表 App 存活，也不代表人工看圖、POI／長按手勢、語音或 CarPlay 已驗收。
+
+### H12 我的照相點截圖
+
+兩版入口共用 `scripts\ci\user-camera-screenshots.sh`，`gallery`／`full`／`all` 都拍，不增加 smoke。
+每版 32 張：375 pt 內容寬、一般字級與 accessibility-large；變更字級失敗即失敗，不以假大字照片通過。
+所有情境都加 `-gallery -galleryUserCameras`，只用記憶體假資料，不讀寫 `userCameraEdits.v1.json`；
+iOS 15 也走正式表單／詳情／管理元件，不退為一般啟動畫面。這些是版面示例，不代表已驗證點擊、分享或語音。
+
+檔名如下，其中 `P` 在 iOS 26 為 `47-user-camera`、iOS 15 為 `ios15-17-user-camera`；
+`T` 分別為 `normal`、`large-text`，每個組合各有一張：
+
+| 檔名 | 內容 |
+|---|---|
+| `P-place-T-375.png` | 選點卡原主動作＋次要新增 |
+| `P-fixed-T-375.png` | 新增測速、沒有目前行向 |
+| `P-fixed-current-T-375.png` | 新增測速、目前行向預設 |
+| `P-redLight-T-375.png` | 新增闖紅燈、沒有速限／目前行向 |
+| `P-redLight-current-T-375.png` | 新增闖紅燈、目前行向 |
+| `P-both-T-375.png` | 雙向的四種軸向選擇 |
+| `P-official-T-375.png` | 官方詳情：修改／隱藏 |
+| `P-added-T-375.png` | 自增詳情：標記／修改／刪除 |
+| `P-modified-T-375.png` | 已修改詳情：標記／還原 |
+| `P-settings-T-375.png` | 我的照相點有資料、起始位置 |
+| `P-settings-modified-T-375.png` | 已修改清單與還原 |
+| `P-settings-hidden-T-375.png` | 已隱藏清單與復原／匯出 |
+| `P-empty-T-375.png` | 空清單與新增說明 |
+| `P-fixed-bottom-large-text-375.png` | 測速表單的備註／不阻擋警告 |
+| `P-fixed-current-bottom-large-text-375.png` | 目前行向與警告底部 |
+| `P-redLight-bottom-large-text-375.png` | 闖紅燈表單備註／警告 |
+| `P-redLight-current-bottom-large-text-375.png` | 闖紅燈目前行向與警告底部 |
+| `P-both-bottom-large-text-375.png` | 雙向表單備註／警告 |
+| `P-modified-bottom-large-text-375.png` | 長詳情底部的還原動作 |
+
+需下載真圖逐張確認：選單選項／按鈕不可截斷、≥44 pt、中性動作不似停用，長字可捲動；
+另以 iOS 實際操作核對兩版的新增→修改→隱藏／復原→分享流程。尚未跑該 commit 的遠端建置／看圖，不得宣稱通過。
 
 base64 預設關閉，需時加 `-f print-screenshots=true`。一般用 artifact，將 `RUN_ID` 換成該次執行編號：
 
