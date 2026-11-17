@@ -153,6 +153,9 @@ gh workflow run build-ipa.yml --repo sigma449/speed_camera_warning --ref copilot
 - OSM僅可核from→to，不反轉direction／猜forward或way中心、不覆官方值，保留ID／URL／方法；線形非完整禁行法規。衍生庫／fixture依ODbL署名。
 - 可選源失聯／異常／縮減須警告回已核快照，快照壞僅略該源；非即時，必要源仍擋發布。查漏臺北130111／警方PDF／立院附件，PDF用 `pdftotext -enc UTF-8 -layout`。
 - **三支人工測速（2026-11-16）**：`data-pipeline\manual\cameras_extra.csv` 有銀河往新店240.6°／40（不合348號）、國安局前仰德大道一段下山148.7°／40、至善路一段往仰德大道275.2°／50；皆使用者確認測速非聲音，街景估位約20 m誤差，官方／OSM無對應設備證據，備用桿僅推定。銀河24.9555732,121.5698732／40未重新現場核。導航CSV保留way／URL、缺車道資訊明標依實測；不宣稱已收齊全臺。
+- **聲音照相分向車道（H7，使用者 2026-11-16 同意）**：只對臺北 tp-noise、彰化 173697 放寬（`Geocoder.locate(..., allow_divided=True)`）。同名、同層、同等級、反向單行的兩側車道，局部軸向差 ≤15° 才算分向車道；公告方向能用 OSM 地物位置＋單行方向唯一核對才選車道給 heading，否則取兩側投影中點、給 axis，`conditions` 加「分向車道無法判定，沿路雙向」。不同軸向道路仍拒絕；35 m、完整門牌、「位置依公告地址推定」不變。離線重建：臺北 25／28（1 單向、24 雙向）、彰化 7／9。新北移動公告同原因仍擋 49 列／42 區址，**未放寬，要改先問使用者**。細節見 `data-pipeline\README.md` H7 節。
+- **官方新公告監看（H8，使用者 2026-11-16 同意）**：`data-pipeline\watch_announcements.py` 只產生待人工核對清單，**絕不自動增修照相點**；入口與關鍵字在 `announcement_sources.json`，調查見 `docs\announcement_sources.md`，首份清單 `docs\announcements_pending.md`（12 個月只命中 3 則，都不是三支人工點的證據）。用法：`python -I -X utf8 data-pipeline\watch_announcements.py --cameras <完整 cameras.json> --output-dir build\announcements`，加 `--update-seen` 才更新已見索引。每週 Refresh camera data 在資料驗證後執行，新公告附在同一份資料 PR。
+- **備用桿候選調查（H9，2026-11-16，未進 repo）**：`build\stage-h9\report.md`、`candidates.csv`。公開來源（OSM 現況／歷史、消防栓備註、測速警告牌、KartaView）只找到 6 筆低～中把握度線索，**三支已知人工點 0／3 找得到**；Mapillary 需使用者提供唯讀 token 才能試。結論：未公告桿位目前只能靠使用者現場／街景確認。
 
 ## 容易踩到的坑
 
