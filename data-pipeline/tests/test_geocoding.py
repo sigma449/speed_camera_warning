@@ -1,5 +1,6 @@
 import io
 import json
+import math
 from pathlib import Path
 import re
 import sys
@@ -275,3 +276,196 @@ def test_online_road_evidence_requires_unique_complete_administrative_topology(m
         assert found["boundaryRelation"] == 1 and len(found["ways"]) == 2 and found["insideNodes"] == [1, 2, 3, 4, 5]
     query = urllib.parse.parse_qs(urllib.parse.urlsplit(urls[0]).query)["data"][0]
     assert '"admin_level"~"^(7|8)$"' in query and "(?:" not in query
+
+
+def divided_roads():
+    return region([
+        way(11, [1, 2], [(24.9994, 121.5), (25.0014, 121.5)], oneway="yes"),
+        way(33, [6, 7], [(25.0014, 121.5002), (24.9994, 121.5002)], oneway="yes"),
+    ], inside=[1, 2, 6, 7])
+
+
+def direction_landmark():
+    return dict(city="新北市", name="測試橋", version="2026-11-12T00:00:00Z",
+                sourceURL="https://download.geofabrik.de/asia/taiwan-latest.osm.pbf", pbfMD5="verified",
+                ways=[way(99, [8, 9], [(25.01, 121.5), (25.011, 121.5)], name="測試橋", bridge="yes")])
+
+
+@pytest.mark.parametrize("reverse_nodes", [False, True])
+def test_noise_divider_uses_verified_landmark_and_actual_oneway_not_nearest_lane(reverse_nodes):
+    roads = divided_roads()
+    if reverse_nodes:
+        roads["ways"][0]["nodes"].reverse()
+        roads["ways"][0]["geometry"].reverse()
+        roads["ways"][0]["tags"]["oneway"] = "-1"
+    g = geo.Geocoder([reference(lon=121.50015)], geo.RoadIndex([roads], [direction_landmark()]))
+    result = g.locate("新北市", "新店區", "測試路100號對面(往測試橋方向)", allow_divided=True)
+    assert result.point == pytest.approx((25.0004, 121.5), abs=1e-9, rel=0)
+    assert result.heading == 0 and result.axis is None and result.method == "door"
+    assert result.details["positionChoice"] == "carriageway"
+    assert result.details["directionTarget"]["wayIDs"] == [99]
+    assert result.details["snapDistance"] > min(c["snapDistance"] for c in result.details["dividedCarriageways"])
+    assert "168887" in result.evidence and "單行行向核對" in result.evidence
+
+
+@pytest.mark.parametrize("address", [
+    "測試路100號對面", "測試路100號(往未知橋方向)", "測試路100號(上山方向)",
+])
+def test_noise_divider_without_unique_direction_uses_midpoint_and_road_axis(address):
+    g = geo.Geocoder([reference()], geo.RoadIndex([divided_roads()], [direction_landmark()]))
+    result = g.locate("新北市", "新店區", address, allow_divided=True)
+    assert result.point == pytest.approx((25.0004, 121.5001), abs=1e-9, rel=0)
+    assert result.axis == 0 and result.heading is None and result.method == "door"
+    assert result.details["positionChoice"] == "midpoint"
+    assert result.details["snapDistance"] <= 35
+    assert "分向車道無法判定，沿路雙向" in result.evidence
+
+
+@pytest.mark.parametrize("change", [
+    "duplicate-landmark", "crosswise-landmark", "conditional-oneway", "conditional-opposite",
+])
+def test_noise_divider_does_not_infer_a_single_heading_from_ambiguous_or_conditional_evidence(change):
+    roads, landmarks = divided_roads(), [direction_landmark()]
+    if change == "duplicate-landmark":
+        landmarks.append(direction_landmark())
+    elif change == "crosswise-landmark":
+        landmarks[0]["ways"][0]["geometry"] = [
+            dict(lat=25.0004, lon=121.51), dict(lat=25.0014, lon=121.51),
+        ]
+    else:
+        index = 1 if change == "conditional-opposite" else 0
+        roads["ways"][index]["tags"]["oneway:conditional"] = "-1 @ (Mo-Fr 07:00-09:00)"
+    g = geo.Geocoder([reference()], geo.RoadIndex([roads], landmarks))
+    result = g.locate("新北市", "新店區", "測試路100號(往測試橋方向)", allow_divided=True)
+    assert result.point == pytest.approx((25.0004, 121.5001), abs=1e-9, rel=0)
+    assert result.heading is None and result.axis == 0
+    assert "分向車道無法判定，沿路雙向" in result.evidence
+    assert "不猜方向" in result.evidence
+
+
+@pytest.mark.parametrize("change", [
+    "cross-axis", "shallow-crossing", "elevated", "different-class",
+    "end-to-end", "third-road", "same-flow", "missing-oneway", "roundabout",
+])
+def test_noise_divider_still_rejects_crossings_unverified_lanes_and_nonparallel_branches(change):
+    roads = divided_roads()
+    second = roads["ways"][1]
+    if change == "cross-axis":
+        second["geometry"] = [dict(lat=25.0004, lon=121.499), dict(lat=25.0004, lon=121.501)]
+    elif change == "shallow-crossing":
+        second["geometry"] = [dict(lat=25.0014, lon=121.50022), dict(lat=24.9994, lon=121.49982)]
+    elif change == "elevated":
+        second["tags"].update(bridge="yes", layer="1")
+    elif change == "different-class":
+        second["tags"]["highway"] = "service"
+    elif change == "end-to-end":
+        roads["ways"][0]["geometry"][-1]["lat"] = 25.0003
+        second["geometry"][-1]["lat"] = 25.0005
+    elif change == "third-road":
+        roads["ways"].append(way(44, [10, 12], [(24.9994, 121.5003), (25.0014, 121.5003)], oneway="yes"))
+        roads["insideNodes"] += [10, 12]
+    elif change == "same-flow":
+        second["tags"]["oneway"] = "-1"
+    elif change == "roundabout":
+        second["tags"]["junction"] = "roundabout"
+    else:
+        del second["tags"]["oneway"]
+    g = geo.Geocoder([reference()], geo.RoadIndex([roads]))
+    result = g.locate("新北市", "新店區", "測試路100號", allow_divided=True)
+    assert result.point is None and result.reason_code == "road_ambiguous"
+    assert result.reason == "35 m 內有分離或不同軸向的同名道路投影；不選最近一條"
+
+
+@pytest.mark.parametrize("angle,accepted", [(14.9, True), (15.1, False)])
+def test_noise_divider_local_axis_difference_is_limited_to_fifteen_degrees(angle, accepted):
+    roads = divided_roads()
+    dy = .001 * math.cos(math.radians(angle))
+    dx = .001 * math.sin(math.radians(angle)) / math.cos(math.radians(25.0004))
+    roads["ways"][1]["geometry"] = [
+        dict(lat=25.0004 + dy, lon=121.5002 + dx), dict(lat=25.0004 - dy, lon=121.5002 - dx),
+    ]
+    g = geo.Geocoder([reference()], geo.RoadIndex([roads]))
+    result = g.locate("新北市", "新店區", "測試路100號", allow_divided=True)
+    assert (result.point is not None) is accepted
+    if not accepted:
+        assert result.reason_code == "road_ambiguous"
+
+
+def test_noise_divider_axis_mean_wraps_at_north_and_is_independent_of_way_order():
+    roads = divided_roads()
+    for w, angle, lon in zip(roads["ways"], (179, 1), (121.5, 121.5002)):
+        dy = .001 * math.cos(math.radians(angle))
+        dx = .001 * math.sin(math.radians(angle)) / math.cos(math.radians(25.0004))
+        w["geometry"] = [dict(lat=25.0004 - dy, lon=lon - dx), dict(lat=25.0004 + dy, lon=lon + dx)]
+    g = geo.Geocoder([reference()], geo.RoadIndex([roads]))
+    first = g.locate("新北市", "新店區", "測試路100號", allow_divided=True)
+    roads["ways"].reverse()
+    second = g.locate("新北市", "新店區", "測試路100號", allow_divided=True)
+    assert first.point is not None and first.heading is None and first.axis == 0
+    assert first == second
+
+
+def test_noise_divider_keeps_transitively_connected_osm_fragments_in_the_same_carriageway():
+    roads = divided_roads()
+    roads["ways"] = [
+        way(11, [1, 2], [(25.0001, 121.5), (25.0003, 121.5)], oneway="yes"),
+        way(12, [2, 3], [(25.0003, 121.5), (25.0005, 121.5)], oneway="yes"),
+        way(13, [3, 4], [(25.0005, 121.5), (25.0007, 121.5)], oneway="yes"),
+        roads["ways"][1],
+    ]
+    roads["insideNodes"] += [3, 4]
+    result = geo.Geocoder([reference()], geo.RoadIndex([roads])).locate(
+        "新北市", "新店區", "測試路100號", allow_divided=True)
+    assert result.point == pytest.approx((25.0004, 121.5001), abs=1e-9, rel=0)
+    assert result.details["wayIDs"] == [11, 12, 13, 33]
+
+
+def test_noise_divider_does_not_treat_two_arms_of_one_hairpin_way_as_separate_carriageways():
+    roads = region([
+        way(11, [1, 2, 6, 7], [(24.9994, 121.5), (25.002, 121.5),
+                               (25.002, 121.5002), (24.9994, 121.5002)], oneway="yes"),
+    ], inside=[1, 2, 6, 7])
+    result = geo.Geocoder([reference()], geo.RoadIndex([roads])).locate(
+        "新北市", "新店區", "測試路100號", allow_divided=True)
+    assert result.point is None and result.reason_code == "road_ambiguous"
+
+
+def test_noise_divider_opt_in_does_not_relax_exact_door_reference_or_thirty_five_metre_limit():
+    index = geo.RoadIndex([divided_roads()], [direction_landmark()])
+    g = geo.Geocoder([reference()], index)
+    assert g.locate("新北市", "新店區", "測試路100號").reason_code == "road_ambiguous"
+    assert g.locate("新北市", "新店區", "測試路101號", allow_divided=True).reason_code == "door_not_found"
+    g = geo.Geocoder([reference(), reference(lat=25.001)], index)
+    assert g.locate("新北市", "新店區", "測試路100號", allow_divided=True).reason_code == "door_ambiguous"
+    g = geo.Geocoder([reference(lon=121.501)], index)
+    result = g.locate("新北市", "新店區", "測試路100號(往測試橋方向)", allow_divided=True)
+    assert result.point is None and result.reason_code == "road_too_far"
+
+
+@pytest.mark.parametrize("failure", [None, "source-missing", "origin-mismatch", "geometry-missing", "invalid-coordinate"])
+def test_direction_landmark_snapshot_has_the_same_hash_source_and_geometry_guards(monkeypatch, tmp_path, failure):
+    import gzip
+    import hashlib
+    landmark = direction_landmark()
+    payload = dict(regions=[region()], landmarks=[landmark],
+                   **{k: landmark[k] for k in ("sourceURL", "pbfMD5", "version")})
+    if failure == "source-missing":
+        del landmark["sourceURL"]
+    elif failure == "origin-mismatch":
+        landmark["pbfMD5"] = "different-origin"
+    elif failure == "geometry-missing":
+        landmark["ways"][0]["geometry"].pop()
+    elif failure == "invalid-coordinate":
+        landmark["ways"][0]["geometry"][0]["lat"] = float("nan")
+    raw = gzip.compress(json.dumps(payload).encode())
+    (tmp_path / "roads.json.gz").write_bytes(raw)
+    (tmp_path / "manifest.json").write_text(json.dumps({"roads.json.gz": {"sha256": hashlib.sha256(raw).hexdigest()}}))
+    monkeypatch.setattr(refs, "SNAPSHOTS", tmp_path)
+    if failure:
+        with pytest.raises(ValueError):
+            refs._snapshot("roads.json.gz")
+    else:
+        assert refs._snapshot("roads.json.gz")["landmarks"] == [landmark]
+        (tmp_path / "roads.json.gz").write_bytes(raw + b"changed")
+        with pytest.raises(ValueError, match="雜湊不符"):
+            refs._snapshot("roads.json.gz")

@@ -254,7 +254,7 @@ def adapt_156743(rows: list[dict], report: SourceReport) -> list[Camera]:
 
 
 def _located_camera(source, kind, city, district, address, key, geocoder, report):
-    location = geocoder.locate(city, district, address)
+    location = geocoder.locate(city, district, address, allow_divided=source in ("173697", "tp-noise"))
     report.location(source, f"{district} {address}", method=location.method, point=location.point,
                     evidence=location.evidence, reason=location.reason, code=location.reason_code,
                     details=location.details)
@@ -262,7 +262,7 @@ def _located_camera(source, kind, city, district, address, key, geocoder, report
         return None
     identity = key or hashlib.sha1(f"{district}|{address}".encode()).hexdigest()[:12]
     return Camera(id=f"{source}-{identity}", type=kind, lat=location.point[0], lon=location.point[1],
-                  heading=None, axis=location.axis, speedLimit=None, address=address, city=city,
+                  heading=location.heading, axis=location.axis, speedLimit=None, address=address, city=city,
                   district=district, source=source, sourceID=identity, positionMethod=location.method,
                   enforcementItems="聲音照相" if kind == "noise" else "移動測速公告熱點",
                   conditions="定位依據：" + location.evidence)

@@ -22,7 +22,7 @@ OSM_ENDPOINTS = ("https://overpass-api.de/api/interpreter", "https://overpass.ku
 ATTRIBUTION = (
     "新北市政府門牌位置168887／路燈123962、臺北市政府門牌155472、彰化縣政府門牌170727，"
     "政府資料開放授權條款－第1版（https://data.gov.tw/license）；只用於已公告地點定位，非設備實測座標",
-    "公告地址貼齊與路口拓樸：© OpenStreetMap 貢獻者（ODbL 1.0，https://www.openstreetmap.org/copyright）",
+    "公告地址貼齊、路口拓樸與分向車道判向：© OpenStreetMap 貢獻者（ODbL 1.0，https://www.openstreetmap.org/copyright）",
 )
 
 
@@ -50,6 +50,19 @@ def _snapshot(name: str) -> dict:
             raise ValueError("OSM 行政區清單無效")
         for region in payload["regions"]:
             validate_region(region)
+        landmarks = payload.get("landmarks", [])
+        if not isinstance(landmarks, list):
+            raise ValueError("OSM 方向地物清單無效")
+        for landmark in landmarks:
+            if (not isinstance(landmark, dict)
+                    or not {"city", "name", "version", "ways", "sourceURL", "pbfMD5"} <= landmark.keys()
+                    or not all(isinstance(landmark[k], str) and landmark[k]
+                               for k in ("city", "name", "version", "sourceURL", "pbfMD5"))
+                    or not isinstance(landmark["ways"], list) or not landmark["ways"]):
+                raise ValueError("OSM 方向地物缺名稱、版本或來源")
+            if any(landmark[key] != payload.get(key) for key in ("sourceURL", "pbfMD5", "version")):
+                raise ValueError("OSM 方向地物與道路快照來源／版本不符")
+            _validate_ways(landmark["ways"])
     return payload
 
 
@@ -60,7 +73,11 @@ def validate_region(region: dict) -> None:
             or not all(isinstance(n, str) for n in region["coverage"])
             or any(not isinstance(n, int) for n in region["insideNodes"])):
         raise ValueError("OSM 行政區道路欄位／型別無效")
-    for way in region["ways"]:
+    _validate_ways(region["ways"])
+
+
+def _validate_ways(ways: list[dict]) -> None:
+    for way in ways:
         if (not isinstance(way, dict) or not {"id", "nodes", "geometry", "tags"} <= way.keys()
                 or not isinstance(way["tags"], dict) or not isinstance(way["nodes"], list)
                 or not isinstance(way["geometry"], list) or len(way["nodes"]) != len(way["geometry"])
@@ -266,4 +283,8 @@ def load_geocoder(requests: list[dict], *, offline=False, log=print) -> Geocoder
                 log(f"[警告] 公告道路 {city}{district} 無可用快照，該區未驗證位置不發布")
         if region:
             regions.append(region)
-    return Geocoder(references, RoadIndex(regions), coverage)
+    landmarks = saved_roads.get("landmarks", [])
+    if landmarks:
+        versions = "、".join(sorted({landmark["version"] for landmark in landmarks}))
+        log(f"[警告] 分向車道方向地物使用 repo OSM 快照（{versions}；非即時）")
+    return Geocoder(references, RoadIndex(regions, landmarks), coverage)
