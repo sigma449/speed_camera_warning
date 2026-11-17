@@ -16,7 +16,7 @@ concurrency:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
         with:
@@ -37,16 +37,27 @@ jobs:
           python3 scripts/ci/data-bundle.py verify --commit "${COMMIT}" --manifest-sha "${MANIFEST_SHA}" --release
           python3 scripts/ci/data-pr-body.py --commit "${COMMIT}" --manifest-sha "${MANIFEST_SHA}" \
             --install SpeedCam/Resources/cameras.json
+      - name: 監看官方新公告（只列待核，不新增相機）
+        id: announcements
+        continue-on-error: true
+        timeout-minutes: 10
+        run: |
+          python3 data-pipeline/watch_announcements.py \
+            --cameras build/ci-data/cameras.json \
+            --output-dir build/announcements \
+            --pr-body build/data-pr-body.md --update-seen
       - name: 開 PR
         uses: peter-evans/create-pull-request@v7
         with:
           base: ${{ github.ref_name }}
-          commit-message: 更新多來源測速照相資料
+          commit-message: 更新多來源測速照相資料與公告待核索引
           branch: data/refresh
           delete-branch: true
-          title: 更新多來源測速照相資料
+          title: 更新多來源測速照相資料與公告待核索引
           body-path: build/data-pr-body.md
-          add-paths: SpeedCam/Resources/cameras.json
+          add-paths: |
+            SpeedCam/Resources/cameras.json
+            data-pipeline/announcements_seen.json
       - name: 保留本輪資料與原始建置證據
         if: always()
         uses: actions/upload-artifact@v4
@@ -55,5 +66,6 @@ jobs:
           path: |
             build/ci-data/
             build/data-pr-body.md
+            build/announcements/
           if-no-files-found: warn
           retention-days: 14
