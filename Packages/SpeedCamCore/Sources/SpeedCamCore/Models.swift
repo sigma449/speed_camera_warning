@@ -189,6 +189,10 @@ public struct Camera: Codable, Hashable, Identifiable, Sendable {
     /// 放得下就用原文；太長才拿掉括號裡的補充說明，多段的只留第一段。
     /// 括號可能在中間（例如「員林市(埔心鄉)中山路1段」），所以是拿掉括號，不是切在括號前面。
     public var shortAddress: String {
+        if positionMethod == "user", source == "自行新增",
+           address == String(format: "自行新增（%.5f, %.5f）", lat, lon) {
+            return "所選位置"
+        }
         guard address.count > Self.shortAddressLimit else { return address }
         var result = ""
         var depth = 0

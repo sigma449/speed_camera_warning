@@ -114,6 +114,15 @@ final class UserCameraEditsTests: XCTestCase {
         XCTAssertTrue(selection.resolveAddress(id: id, name: nil, address: nil))
         XCTAssertEqual(selection.place?.userCameraAddress, "自行新增（25.03000, 121.56500）")
         XCTAssertEqual(selection.place?.point, origin)
+        var camera = added(heading: nil)
+        camera.lat = origin.lat
+        camera.lon = origin.lon
+        camera.address = try XCTUnwrap(selection.place?.userCameraAddress)
+        XCTAssertEqual(camera.shortAddress, "所選位置")
+        var edits = UserCameraEdits()
+        try edits.add(camera)
+        XCTAssertTrue(try UserCameraExport(edits: edits, originals: []).csv
+            .contains("\"自行新增（25.03000, 121.56500）\""))
     }
 
     func testSectionsCannotBeHiddenOrModifiedEvenByStoredOverrides() throws {

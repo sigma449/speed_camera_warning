@@ -33,15 +33,12 @@ struct UserCameraEditsView: View {
                             VStack(alignment: .leading, spacing: 8) {
                                 cameraLabel(camera)
                                 HStack(spacing: 20) {
-                                    Button("修改") {
+                                    actionButton("修改") {
                                         editor = UserCameraEditorRequest(camera: camera, isNew: false, canChangeType: true,
                                             currentHeading: model.suggestedCameraHeading(at: camera.point))
                                     }
-                                    .frame(minHeight: 44)
-                                    Button("刪除", role: .destructive) { deleting = camera }
-                                        .frame(minHeight: 44)
+                                    actionButton("刪除", role: .destructive) { deleting = camera }
                                 }
-                                .buttonStyle(.borderless)
                             }
                         }
                         if model.userCameraEdits.added.isEmpty { Text("尚無自行新增的照相點").foregroundStyle(.secondary) }
@@ -55,9 +52,7 @@ struct UserCameraEditsView: View {
                                    let changed = model.userCameraEdits.modified[id]?.apply(to: original) {
                                     Text("目前：\(summary(changed))").font(.footnote)
                                 }
-                                Button("還原成原始資料") { perform { try model.restoreCamera(id) } }
-                                    .frame(minHeight: 44)
-                                    .buttonStyle(.borderless)
+                                actionButton("還原成原始資料") { perform { try model.restoreCamera(id) } }
                             }
                         }
                         if model.userCameraEdits.modified.isEmpty { Text("尚無自行修改的照相點").foregroundStyle(.secondary) }
@@ -67,9 +62,7 @@ struct UserCameraEditsView: View {
                         ForEach(model.userCameraEdits.hidden, id: \.self) { id in
                             VStack(alignment: .leading, spacing: 8) {
                                 originalLabel(id)
-                                Button("復原顯示與提醒") { perform { try model.unhideCamera(id) } }
-                                    .frame(minHeight: 44)
-                                    .buttonStyle(.borderless)
+                                actionButton("復原顯示與提醒") { perform { try model.unhideCamera(id) } }
                             }
                         }
                         if model.userCameraEdits.hidden.isEmpty { Text("尚無隱藏的照相點").foregroundStyle(.secondary) }
@@ -77,8 +70,7 @@ struct UserCameraEditsView: View {
                     .id("hidden")
                 }
                 Section {
-                    Button("匯出") { export() }
-                        .frame(minHeight: 44)
+                    actionButton("匯出") { export() }
                         .disabled(model.userCameraEdits.isEmpty)
                 } footer: {
                     VStack(alignment: .leading, spacing: 8) {
@@ -131,6 +123,16 @@ struct UserCameraEditsView: View {
         } message: {
             Text(errorMessage ?? "")
         }
+    }
+
+    private func actionButton(_ title: String, role: ButtonRole? = nil,
+                              action: @escaping () -> Void) -> some View {
+        Button(role: role, action: action) {
+            Text(title)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
     }
 
     private func summary(_ camera: Camera) -> String {
