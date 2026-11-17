@@ -5,6 +5,7 @@ import Foundation
 public struct SpatialIndex: Sendable {
     public let cellSize: Double
     private let cells: [CellKey: [Camera]]
+    private let camerasByID: [String: Camera]
     public let count: Int
 
     struct CellKey: Hashable, Sendable {
@@ -19,8 +20,11 @@ public struct SpatialIndex: Sendable {
             map[Self.key(lat: cam.lat, lon: cam.lon, cellSize: cellSize), default: []].append(cam)
         }
         self.cells = map
+        self.camerasByID = Dictionary(cameras.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         self.count = cameras.count
     }
+
+    public func camera(id: String) -> Camera? { camerasByID[id] }
 
     static func key(lat: Double, lon: Double, cellSize: Double) -> CellKey {
         CellKey(x: Int(floor(lon / cellSize)), y: Int(floor(lat / cellSize)))

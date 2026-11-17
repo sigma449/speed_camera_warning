@@ -99,6 +99,7 @@ public final class CameraAlertEngine {
     private var cooldown: [String: Cooldown] = [:]
     private var lastCourse: Double?
     private var isOverspeed = false
+    private var overspeedCameraID: String?
     private var lastBeep: Date?
     /// 區間照相機是否已經算在某一段區間裡（結果留著，不用每秒重算）。
     private var coveredBySection: [String: Bool] = [:]
@@ -113,10 +114,22 @@ public final class CameraAlertEngine {
     }
 
     /// 換一份資料庫（例如資料更新後）。
-    public func replaceIndex(_ index: SpatialIndex) {
+    public func replaceIndex(_ index: SpatialIndex, preservingState: Bool = false) {
+        let previous = self.index
         self.index = index
         coveredBySection.removeAll()
-        reset()
+        guard preservingState else {
+            reset()
+            return
+        }
+        tracked = tracked.filter { index.camera(id: $0.key) == $0.value.camera }
+        cooldown = cooldown.filter { index.camera(id: $0.key) == previous.camera(id: $0.key) }
+        if let id = overspeedCameraID, index.camera(id: id) != previous.camera(id: id) {
+            isOverspeed = false
+            overspeedCameraID = nil
+            lastBeep = nil
+        }
+        searchedWithoutFix = nil
     }
 
     public func reset() {
@@ -124,6 +137,7 @@ public final class CameraAlertEngine {
         cooldown.removeAll()
         lastCourse = nil
         isOverspeed = false
+        overspeedCameraID = nil
         lastBeep = nil
         lastFix = nil
         searchedWithoutFix = nil
@@ -161,6 +175,7 @@ public final class CameraAlertEngine {
             target = CameraTarget(camera: t.camera, distance: t.distance, phase: t.phase, isOverspeed: isOverspeed)
         } else if isOverspeed {
             isOverspeed = false
+            overspeedCameraID = nil
             events.append(.overspeedEnded)
         }
 
@@ -214,6 +229,7 @@ public final class CameraAlertEngine {
         // 車速是舊的：不嗶，太久沒有定位就當作結束
         if isOverspeed, elapsed >= noFixOverspeedHold {
             isOverspeed = false
+            overspeedCameraID = nil
             events.append(.overspeedEnded)
         }
 
@@ -373,18 +389,23 @@ public final class CameraAlertEngine {
     /// 區間照相機落在已知的區間路線上：由 `SectionSpeedTracker` 提醒（預告、倒數），
     /// 這裡不再當成一支固定照相提醒，否則隧道中段的那支會在隧道裡才跳出來，也會和倒數重複。
     /// 資料裡沒有對應區間的區間照相機（無法解析的那些）仍然照一般照相提醒。
-    func isCoveredBySection(_ camera: Camera) -> Bool {
+    public func isCoveredBySection(_ camera: Camera) -> Bool {
         guard camera.type == .section else { return false }
         if let known = coveredBySection[camera.id] { return known }
-        let covered = sections.contains { section in
+        let covered = coveringSection(for: camera) != nil
+        coveredBySection[camera.id] = covered
+        return covered
+    }
+
+    /// 只查位置，供編輯表單提示；是否消音仍由 isCoveredBySection 的類型規則決定。
+    public func coveringSection(for camera: Camera) -> SpeedSection? {
+        sections.first { section in
             if camera.sectionGroupID == section.groupID { return true }
             let path = section.displayPath
             return zip(path, path.dropFirst()).contains { a, b in
                 GeoMath.project(camera.point, ontoSegment: a, b).distance <= sectionCameraCoverage
             }
         }
-        coveredBySection[camera.id] = covered
-        return covered
     }
 
     /// 找出起點或終點離照相機 500 m 內、最近的區間群組。
@@ -403,6 +424,7 @@ public final class CameraAlertEngine {
         guard t.phase >= .pre, t.camera.enforcesSpeed, let limit = t.camera.speedLimit else {
             if isOverspeed {
                 isOverspeed = false
+                overspeedCameraID = nil
                 events.append(.overspeedEnded)
             }
             return
@@ -412,6 +434,7 @@ public final class CameraAlertEngine {
             ? settings.sectionEffectiveLimit(limit, sectionID: nearbySectionGroup(for: t.camera))
             : Double(limit) + settings.overspeedToleranceKmh
         let over = fix.speedKmh > threshold
+        overspeedCameraID = over ? t.camera.id : nil
         if over && !isOverspeed {
             isOverspeed = true
             lastBeep = fix.timestamp

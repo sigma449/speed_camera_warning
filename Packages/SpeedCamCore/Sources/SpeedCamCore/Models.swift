@@ -69,7 +69,7 @@ public struct Camera: Codable, Hashable, Identifiable, Sendable {
     public var lon: Double
     /// 取締的行車方向（車輛行進的方位角）。nil 表示資料沒有方向或雙向。
     public var heading: Double?
-    /// 雙向照相的道路軸向：0 = 南北向、90 = 東西向。nil 表示不知道。
+    /// 雙向照相的道路軸向（0..<180）：0 = 南北、45 = 東北–西南、90 = 東西、135 = 西北–東南。
     /// 有 heading 時不使用。
     public var axis: Double?
     /// 速限（km/h）。

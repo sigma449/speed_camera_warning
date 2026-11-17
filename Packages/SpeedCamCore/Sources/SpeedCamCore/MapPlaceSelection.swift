@@ -29,6 +29,16 @@ public struct MapPlaceSelection: Sendable {
         }
 
         public var coordinateText: String { String(format: "%.5f, %.5f", point.lat, point.lon) }
+
+        public var userCameraAddress: String {
+            if addressUnavailable || (address == nil && name == "所選位置") {
+                return "自行新增（\(coordinateText)）"
+            }
+            if let address {
+                return name == "所選位置" || address.contains(name) ? address : "\(name)（\(address)）"
+            }
+            return name
+        }
     }
 
     public private(set) var place: Place?

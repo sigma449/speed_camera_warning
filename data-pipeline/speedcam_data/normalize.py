@@ -346,7 +346,10 @@ def normalize_rows(rows: Iterable[dict], report: Optional[NormalizeReport] = Non
         lat, lon = coords
         address = pick(row, "address") or ""
         direction_text = pick(row, "direction")
-        heading = heading_from_address(address)
+        # App 的明確選擇不能被 POI 名稱裡的「區間／闖紅燈」或過港地址特例改寫。
+        app_added = str(row.get("來源") or "").startswith("使用者於 App 自行新增（")
+        explicit_type = {"測速照相": "fixed", "闖紅燈照相": "redLight"}.get(pick(row, "kind")) if app_added else None
+        heading = None if app_added else heading_from_address(address)
         if heading is None:
             heading = parse_direction(direction_text)
         axis = parse_axis(direction_text) if heading is None else None
@@ -358,7 +361,7 @@ def normalize_rows(rows: Iterable[dict], report: Optional[NormalizeReport] = Non
             report.unknown_direction_texts[raw] = report.unknown_direction_texts.get(raw, 0) + 1
         cam = Camera(
             id=make_id(lat, lon, heading),
-            type=detect_type(pick(row, "kind"), address, direction_text),
+            type=explicit_type or detect_type(pick(row, "kind"), address, direction_text),
             lat=lat,
             lon=lon,
             heading=heading,
