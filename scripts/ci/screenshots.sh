@@ -392,6 +392,8 @@ for TYPE in mobile tech noise; do
 done
 source "$(dirname "${BASH_SOURCE[0]}")/user-camera-screenshots.sh"
 capture_user_camera_edits "47-user-camera"
+source "$(dirname "${BASH_SOURCE[0]}")/beep-settings-screenshots.sh"
+capture_beep_settings "48-beep-interval"
 fi
 
 # App 的紀錄（確認啟動參數、sheet、地圖範圍、區間貼齊、路線選擇有沒有生效）

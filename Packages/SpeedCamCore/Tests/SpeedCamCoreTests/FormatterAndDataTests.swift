@@ -258,9 +258,45 @@ final class AlertAnnouncementPolicyTests: XCTestCase {
         state.reset()
         XCTAssertTrue(state.submit(ObjectIdentifier(navigation), priority: .navigation, urgent: true, isSpeaking: true))
     }
+
+    func testCriticalSpeechKeepsBeepDuckedUntilAllCriticalUtterancesFinishOrStop() {
+        var state = SpeechPlaybackState()
+        let near = Utterance(), overspeed = Utterance(), navigation = Utterance()
+        _ = state.submit(ObjectIdentifier(near), priority: .critical, urgent: true, isSpeaking: false)
+        _ = state.submit(ObjectIdentifier(overspeed), priority: .critical, urgent: false, isSpeaking: true)
+        _ = state.submit(ObjectIdentifier(navigation), priority: .navigation, urgent: false, isSpeaking: true)
+        XCTAssertTrue(state.hasCriticalSpeech)
+        state.finish(ObjectIdentifier(near))
+        XCTAssertTrue(state.hasCriticalSpeech)
+        state.finish(ObjectIdentifier(overspeed))
+        XCTAssertFalse(state.hasCriticalSpeech)
+        _ = state.submit(ObjectIdentifier(near), priority: .critical, urgent: true, isSpeaking: true)
+        XCTAssertTrue(state.hasCriticalSpeech)
+        state.reset()
+        XCTAssertFalse(state.hasCriticalSpeech)
+    }
 }
 
 final class ToneGeneratorTests: XCTestCase {
+    func testActualOverspeedWavIsShorterThanHalfSecondAndLoopsHaveExactSilentGaps() {
+        let tone = ToneGenerator.overspeedBeep()
+        func uint32(_ data: Data, at offset: Int) -> Int {
+            (0..<4).reduce(0) { $0 | (Int(data[offset + $1]) << ($1 * 8)) }
+        }
+        let rate = uint32(tone, at: 24)
+        let frames = uint32(tone, at: 40) / 2
+        let duration = Double(frames) / Double(rate)
+        XCTAssertEqual(duration, 0.18, accuracy: 0.00001)
+        XCTAssertLessThan(duration, AlertSettings.overspeedBeepIntervalRange.lowerBound)
+        for interval in [0.5, 1, 3, 10] {
+            let loop = ToneGenerator.repeatingOverspeedBeep(interval: interval)
+            XCTAssertEqual(Double(uint32(loop, at: 40) / 2) / Double(rate), interval)
+            XCTAssertEqual(uint32(loop, at: 4), loop.count - 8)
+            XCTAssertEqual(loop[44..<tone.count], tone[44...])
+            XCTAssertTrue(loop[tone.count...].allSatisfy { $0 == 0 })
+        }
+    }
+
     func testWavHeaderAndLength() {
         let data = ToneGenerator.wavData(frequency: 1_000, duration: 0.1, sampleRate: 8_000)
         XCTAssertEqual(data.count, 44 + 800 * 2)
@@ -275,6 +311,49 @@ final class ToneGeneratorTests: XCTestCase {
 }
 
 final class DatabaseTests: XCTestCase {
+    func testBeepIntervalClampsAssignmentsAndDecodedValuesWithoutLosingOtherSettings() throws {
+        for (input, expected) in [(0.0, 0.5), (-5, 0.5), (0.49, 0.5), (10.01, 10), (99, 10)] {
+            var settings = AlertSettings()
+            settings.overspeedBeepInterval = input
+            XCTAssertEqual(settings.overspeedBeepInterval, expected)
+            let json = #"{"overspeedBeepInterval":\#(input),"generalPreDistance":350,"sectionOverspeedBeepInterval":15}"#
+            let decoded = try JSONDecoder().decode(AlertSettings.self, from: Data(json.utf8))
+            XCTAssertEqual(decoded.overspeedBeepInterval, expected)
+            XCTAssertEqual(decoded.generalPreDistance, 350)
+            XCTAssertEqual(decoded.sectionOverspeedBeepInterval, 15)
+        }
+        for value in [Double.nan, .infinity, -.infinity] {
+            var settings = AlertSettings()
+            settings.overspeedBeepInterval = value
+            XCTAssertEqual(settings.overspeedBeepInterval, 3)
+            XCTAssertNoThrow(try JSONEncoder().encode(settings))
+        }
+        for raw in ["NaN", "Infinity", "-Infinity"] {
+            let json = #"{"overspeedBeepInterval":"\#(raw)","voiceEnabled":false}"#
+            let decoded = try JSONDecoder().decode(AlertSettings.self, from: Data(json.utf8))
+            XCTAssertEqual(decoded.overspeedBeepInterval, 3)
+            XCTAssertFalse(decoded.voiceEnabled)
+        }
+        XCTAssertThrowsError(try JSONDecoder().decode(AlertSettings.self,
+            from: Data(#"{"overspeedBeepInterval":"three"}"#.utf8)))
+    }
+
+    func testLegacyIntegerAndNewHalfSecondIntervalsRoundTripAndDisplayUnits() throws {
+        for value in [0.5] + (1...10).map(Double.init) {
+            let json = #"{"overspeedBeepInterval":\#(value)}"#
+            let settings = try JSONDecoder().decode(AlertSettings.self, from: Data(json.utf8))
+            XCTAssertEqual(settings.overspeedBeepInterval, value)
+            XCTAssertEqual(try JSONDecoder().decode(AlertSettings.self,
+                from: JSONEncoder().encode(settings)), settings)
+            XCTAssertEqual(settings.overspeedBeepIntervalText, value == 0.5 ? "每 0.5 秒" : "每 \(Int(value)) 秒")
+        }
+        let decoder = JSONDecoder()
+        decoder.nonConformingFloatDecodingStrategy = .convertFromString(
+            positiveInfinity: "Infinity", negativeInfinity: "-Infinity", nan: "NaN")
+        XCTAssertEqual(try decoder.decode(AlertSettings.self,
+            from: Data(#"{"overspeedBeepInterval":"NaN"}"#.utf8)).overspeedBeepInterval, 3)
+    }
+
     func testRetiredHotspotVoiceDistanceIsIgnoredWithoutLosingOtherSettings() throws {
         let json = #"{"mobileHotspotVoiceDistance":750,"mobileHotspotsEnabled":false,"generalPreDistance":420,"sectionToleranceKmh":15}"#
         let settings = try JSONDecoder().decode(AlertSettings.self, from: Data(json.utf8))

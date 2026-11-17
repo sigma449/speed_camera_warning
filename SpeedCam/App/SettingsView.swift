@@ -95,23 +95,13 @@ struct SettingsView: View {
                     Text("照相點速限 \(model.settings.fastRoadSpeedLimit) 以上視為快速道路或高速公路。法規規定警告標誌設在照相點前：一般道路 100～300 公尺、快速道路與高速公路 300～1,000 公尺。")
                 }
 
-                Section {
-                    Stepper(value: $model.settings.overspeedToleranceKmh, in: 0...20, step: 1) {
-                        LabeledValue("超速容許值", value: "+\(Int(model.settings.overspeedToleranceKmh)) km/h")
-                    }
-                    Stepper(value: $model.settings.overspeedBeepInterval, in: 1...10, step: 1) {
-                        LabeledValue("嗶聲間隔", value: "\(Int(model.settings.overspeedBeepInterval)) 秒")
-                    }
-                } header: {
-                    Text("超速警示")
-                } footer: {
-                    Text("接近照相點時，車速超過「速限＋容許值」會每隔設定秒數嗶一聲，直到降速或通過照相點。")
-                }
+                OverspeedWarningSettings(settings: $model.settings)
 
                 Section {
                     Stepper(value: $model.settings.sectionToleranceKmh, in: AlertSettings.sectionToleranceRange, step: 5) {
                         LabeledValue("區間容許值（預設）", value: "+\(Int(model.settings.sectionToleranceKmh)) km/h")
                     }
+
                     NavigationLink {
                         SectionToleranceView()
                     } label: {
@@ -202,5 +192,90 @@ struct SettingsView: View {
         Stepper(value: value, in: range, step: 50) {
             LabeledValue(title, value: "\(Int(value.wrappedValue)) m")
         }
+    }
+}
+
+private struct OverspeedWarningSettings: View {
+    @Binding var settings: AlertSettings
+    @Environment(\.sizeCategory) private var textSize
+
+    var body: some View {
+        Section {
+            Stepper(value: $settings.overspeedToleranceKmh, in: 0...20, step: 1) {
+                LabeledValue("超速容許值", value: "+\(Int(settings.overspeedToleranceKmh)) km/h")
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                Group {
+                    if textSize.isAccessibilityCategory {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("嗶聲間隔")
+                            Text(settings.overspeedBeepIntervalText).monospacedDigit()
+                        }
+                    } else {
+                        HStack(alignment: .firstTextBaseline, spacing: 12) {
+                            Text("嗶聲間隔")
+                            Spacer(minLength: 0)
+                            Text(settings.overspeedBeepIntervalText).monospacedDigit()
+                        }
+                    }
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityHidden(true)
+                Slider(value: $settings.overspeedBeepInterval,
+                    in: AlertSettings.overspeedBeepIntervalRange, step: 0.5) {
+                    Text("嗶聲間隔")
+                }
+                .frame(minHeight: 44)
+                .accessibilityLabel("固定照相超速嗶聲間隔")
+                .accessibilityValue(settings.overspeedBeepIntervalText)
+                HStack {
+                    Text("0.5 秒")
+                    Spacer()
+                    Text("10 秒")
+                }
+                .font(.caption)
+                .accessibilityHidden(true)
+            }
+        } header: {
+            Text("超速警示")
+        } footer: {
+            Text("接近照相點時，車速超過「速限＋容許值」會依此間隔嗶聲，直到降速或通過。可調 0.5～10 秒、每 0.5 秒一格，預設 3 秒；區間超速嗶聲仍為 15 秒。")
+        }
+    }
+}
+
+struct BeepSettingsGalleryView: View {
+    @State private var settings: AlertSettings
+    private let scenario: String
+    private let valid: Bool
+
+    init() {
+        let arguments = ProcessInfo.processInfo.arguments
+        if let i = arguments.firstIndex(of: "-galleryBeepInterval"), i + 1 < arguments.count {
+            scenario = arguments[i + 1]
+        } else {
+            scenario = ""
+        }
+        let value = ["min": 0.5, "default": 3.0, "max": 10.0][scenario]
+        valid = value != nil
+        var sample = AlertSettings()
+        if let value { sample.overspeedBeepInterval = value }
+        _settings = State(initialValue: sample)
+    }
+
+    var body: some View {
+        AdaptiveNavigationStack {
+            Form {
+                if valid {
+                    OverspeedWarningSettings(settings: $settings)
+                } else {
+                    Text("無效的嗶聲設定 gallery 情境：\(scenario)")
+                }
+            }
+            .navigationTitle("設定")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+        .frame(maxWidth: 375)
+        .frame(maxWidth: .infinity)
     }
 }

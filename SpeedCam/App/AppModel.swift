@@ -164,7 +164,7 @@ final class AppModel: ObservableObject {
         _ = MapLanguage.atLaunch   // 記下啟動時的語言設定
         Logger(subsystem: "tw.speedcammap.app", category: "launch")
             .notice("arguments: \(arguments.dropFirst().joined(separator: " "), privacy: .public); languages: \(Locale.preferredLanguages.joined(separator: ","), privacy: .public)")
-        var loaded = Self.loadSettings()
+        var loaded = showGallery ? AlertSettings() : Self.loadSettings()
         if let i = arguments.firstIndex(of: "-vehicleMode"), i + 1 < arguments.count,
            let mode = VehicleMode(rawValue: arguments[i + 1]) {
             loaded.vehicleMode = mode
@@ -641,6 +641,7 @@ final class AppModel: ObservableObject {
         if let target = cameraTarget, index.camera(id: target.camera.id) != target.camera {
             cameraTarget = nil
         }
+        refreshFixedCameraBeep()
         if isCruising && !showGallery { activity.update(activityState(), alert: nil) }
     }
 
@@ -879,17 +880,22 @@ final class AppModel: ObservableObject {
             cameraOverspeedActive: cameraTarget?.isOverspeed == true) {
             announcer.speak(speech.text, urgent: speech.urgent, priority: speech.priority)
         }
+        refreshFixedCameraBeep()
         let cameraEvents = fix == nil ? [] : camera?.events ?? []
         for event in cameraEvents {
             switch event {
             case .passed: announcer.passTone()
-            case .overspeedStarted, .overspeedBeep: announcer.beep()
-            case .preAlert, .nearAlert, .overspeedEnded: break
+            case .preAlert, .nearAlert, .overspeedStarted, .overspeedBeep, .overspeedEnded: break
             }
         }
         for event in section?.events ?? [] {
             if case .overspeedBeep = event, cameraTarget?.isOverspeed != true { announcer.beep() }
         }
+    }
+
+    private func refreshFixedCameraBeep() {
+        announcer.synchronizeFixedCameraBeep(target: isCruising && !showGallery ? cameraTarget : nil,
+            fix: lastFix, interval: settings.overspeedBeepInterval, gpsGapSeconds: alertEngine.gpsGapSeconds)
     }
 
     private func handleRouteEvent(_ event: RouteEvent) {
@@ -1028,6 +1034,7 @@ final class AppModel: ObservableObject {
 
     private func settingsChanged(from old: AlertSettings) {
         guard settings != old else { return }
+        guard !showGallery else { return }
         if let data = try? JSONEncoder().encode(settings) {
             UserDefaults.standard.set(data, forKey: Self.settingsKey)
         }
@@ -1051,6 +1058,7 @@ final class AppModel: ObservableObject {
         if old.liveActivityEnabled != settings.liveActivityEnabled && isCruising {
             settings.liveActivityEnabled ? activity.start(initial: activityState()) : activity.end()
         }
+        refreshFixedCameraBeep()
     }
 
     private func applySettingsToComponents() {

@@ -197,6 +197,8 @@ fi
 if selected gallery; then
 source "$(dirname "${BASH_SOURCE[0]}")/user-camera-screenshots.sh"
 capture_user_camera_edits "ios15-17-user-camera"
+source "$(dirname "${BASH_SOURCE[0]}")/beep-settings-screenshots.sh"
+capture_beep_settings "ios15-18-beep-interval"
 fi
 
 xcrun simctl spawn "${UDID}" log show --last 20m --style compact \

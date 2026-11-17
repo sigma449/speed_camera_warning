@@ -17,8 +17,23 @@ public struct AlertSettings: Codable, Equatable, Sendable {
     // MARK: 超速警示
     /// 超過速限多少 km/h 才算超速（預設 0）。
     public var overspeedToleranceKmh: Double = 0
-    /// 超速時嗶聲的間隔（秒）。
-    public var overspeedBeepInterval: TimeInterval = 3
+    /// 固定照相超速嗶聲間隔；畫面滑桿每 0.5 秒一格。
+    public var overspeedBeepInterval: TimeInterval = AlertSettings.defaultOverspeedBeepInterval {
+        didSet { overspeedBeepInterval = Self.clampedOverspeedBeepInterval(overspeedBeepInterval) }
+    }
+    public static let defaultOverspeedBeepInterval: TimeInterval = 3
+    public static let overspeedBeepIntervalRange: ClosedRange<TimeInterval> = 0.5...10
+
+    public static func clampedOverspeedBeepInterval(_ value: TimeInterval) -> TimeInterval {
+        guard value.isFinite else { return defaultOverspeedBeepInterval }
+        return min(overspeedBeepIntervalRange.upperBound, max(overspeedBeepIntervalRange.lowerBound, value))
+    }
+
+    public var overspeedBeepIntervalText: String {
+        let format = overspeedBeepInterval.rounded() == overspeedBeepInterval ? "%.0f" : "%.1f"
+        let value = String(format: format, locale: Locale(identifier: "zh_TW"), overspeedBeepInterval)
+        return "每 \(value) 秒"
+    }
 
     // MARK: 方向判斷
     /// 行進方向與照相取締方向的容許夾角。
@@ -114,7 +129,17 @@ public struct AlertSettings: Codable, Equatable, Sendable {
         fastNearDistance = try c.decodeIfPresent(Double.self, forKey: .fastNearDistance) ?? d.fastNearDistance
         fastRoadSpeedLimit = try c.decodeIfPresent(Int.self, forKey: .fastRoadSpeedLimit) ?? d.fastRoadSpeedLimit
         overspeedToleranceKmh = try c.decodeIfPresent(Double.self, forKey: .overspeedToleranceKmh) ?? d.overspeedToleranceKmh
-        overspeedBeepInterval = try c.decodeIfPresent(TimeInterval.self, forKey: .overspeedBeepInterval) ?? d.overspeedBeepInterval
+        do {
+            overspeedBeepInterval = Self.clampedOverspeedBeepInterval(
+                try c.decodeIfPresent(TimeInterval.self, forKey: .overspeedBeepInterval) ?? d.overspeedBeepInterval)
+        } catch DecodingError.typeMismatch {
+            let raw = try c.decode(String.self, forKey: .overspeedBeepInterval)
+            guard ["NaN", "Infinity", "-Infinity"].contains(raw) else {
+                throw DecodingError.dataCorruptedError(forKey: .overspeedBeepInterval, in: c,
+                    debugDescription: "嗶聲間隔須為秒數")
+            }
+            overspeedBeepInterval = d.overspeedBeepInterval
+        }
         directionTolerance = try c.decodeIfPresent(Double.self, forKey: .directionTolerance) ?? d.directionTolerance
         aheadToleranceWithHeading = try c.decodeIfPresent(Double.self, forKey: .aheadToleranceWithHeading) ?? d.aheadToleranceWithHeading
         aheadToleranceWithoutHeading = try c.decodeIfPresent(Double.self, forKey: .aheadToleranceWithoutHeading) ?? d.aheadToleranceWithoutHeading

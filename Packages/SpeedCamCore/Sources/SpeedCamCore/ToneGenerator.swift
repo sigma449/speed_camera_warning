@@ -2,6 +2,21 @@ import Foundation
 
 /// 產生提示音的 WAV 資料（16-bit PCM 單聲道），不必在專案裡放二進位音檔。
 public enum ToneGenerator {
+    public static let overspeedBeepDuration: TimeInterval = 0.18
+
+    public static func overspeedBeep() -> Data {
+        wavData(frequency: 1_400, duration: overspeedBeepDuration, volume: 0.9)
+    }
+
+    /// 每個循環是一聲原嗶聲加靜音，由音訊取樣時鐘維持間隔，不靠定位頻率。
+    public static func repeatingOverspeedBeep(interval: TimeInterval) -> Data {
+        let sampleRate = 44_100
+        let period = AlertSettings.clampedOverspeedBeepInterval(interval)
+        let samples = pcmSamples(frequency: 1_400, duration: overspeedBeepDuration,
+                                 sampleRate: sampleRate, volume: 0.9)
+        let silence = Int((period * Double(sampleRate)).rounded()) - samples.count
+        return wav(samples: samples, sampleRate: sampleRate, trailingSilenceSamples: silence)
+    }
 
     /// 產生一段正弦波嗶聲，前後各加淡入淡出避免爆音。
     public static func wavData(frequency: Double = 1_200, duration: Double = 0.15,
@@ -26,8 +41,9 @@ public enum ToneGenerator {
         return wav(samples: one + gap + one, sampleRate: sampleRate)
     }
 
-    static func pcmSamples(frequency: Double, duration: Double, sampleRate: Int) -> [Int16] {
-        let data = wavData(frequency: frequency, duration: duration, sampleRate: sampleRate)
+    static func pcmSamples(frequency: Double, duration: Double, sampleRate: Int,
+                           volume: Double = 0.8) -> [Int16] {
+        let data = wavData(frequency: frequency, duration: duration, volume: volume, sampleRate: sampleRate)
         let body = data.subdata(in: 44..<data.count)
         var out = [Int16](repeating: 0, count: body.count / 2)
         for i in 0..<out.count {
@@ -38,10 +54,10 @@ public enum ToneGenerator {
         return out
     }
 
-    static func wav(samples: [Int16], sampleRate: Int) -> Data {
+    static func wav(samples: [Int16], sampleRate: Int, trailingSilenceSamples: Int = 0) -> Data {
         var data = Data()
         let byteRate = sampleRate * 2
-        let dataSize = samples.count * 2
+        let dataSize = (samples.count + trailingSilenceSamples) * 2
         func append32(_ v: UInt32) { var le = v.littleEndian; withUnsafeBytes(of: &le) { data.append(contentsOf: $0) } }
         func append16(_ v: UInt16) { var le = v.littleEndian; withUnsafeBytes(of: &le) { data.append(contentsOf: $0) } }
         data.append(contentsOf: Array("RIFF".utf8))
@@ -58,6 +74,7 @@ public enum ToneGenerator {
         data.append(contentsOf: Array("data".utf8))
         append32(UInt32(dataSize))
         for s in samples { append16(UInt16(bitPattern: s)) }
+        data.append(Data(repeating: 0, count: trailingSilenceSamples * 2))
         return data
     }
 }

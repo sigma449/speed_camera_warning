@@ -12,6 +12,8 @@ public struct SpeechPlaybackState: Sendable {
 
     public init() {}
 
+    public var hasCriticalSpeech: Bool { priorities.values.contains(.critical) }
+
     /// 回傳是否應中斷原語音；同優先度保留原本「正在念才插播」的行為。
     public mutating func submit(_ id: ObjectIdentifier, priority: SpeechPriority,
                                 urgent: Bool, isSpeaking: Bool) -> Bool {

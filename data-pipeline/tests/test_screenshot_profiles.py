@@ -37,6 +37,10 @@ def test_real_screenshot_entry_honors_selected_profile(tmp_path, entry, profile)
                 assert (tmp_path / "screenshots" / f"{prefix}-settings-{section}-{text}-375.png").exists()
         for scenario in ("fixed", "fixed-current", "redLight", "redLight-current", "both", "modified", "unset-edit"):
             assert (tmp_path / "screenshots" / f"{prefix}-{scenario}-bottom-large-text-375.png").exists()
+        beep_prefix = "ios15-18-beep-interval" if entry == "ios15-run.sh" else "48-beep-interval"
+        for scenario in ("min", "default", "max"):
+            for text in ("normal", "large-text"):
+                assert (tmp_path / "screenshots" / f"{beep_prefix}-{scenario}-{text}-375.png").exists()
     else:
         assert not images
 
@@ -67,4 +71,23 @@ capture_user_camera_edits probe
 ''', cwd=tmp_path, env=environment)
     assert result.returncode != 0, result.stdout + result.stderr
     assert "無法設定我的照相點截圖的文字大小" in result.stdout
+    assert "-large-text-375" not in result.stdout
+
+
+@pytest.mark.parametrize("failed_size", ["large", "accessibility-large"])
+def test_beep_capture_does_not_claim_large_text_if_setting_the_size_fails(tmp_path, failed_size):
+    _, environment = shell_workspace(tmp_path)
+    environment["FAILED_SIZE"] = failed_size
+    result = bash("-c", '''
+set -euo pipefail
+source scripts/ci/beep-settings-screenshots.sh
+UDID=test-device
+launch_app() { :; }
+sleep() { :; }
+shot() { printf '%s\\n' "$1"; }
+xcrun() { [[ "${!#}" != "${FAILED_SIZE}" ]]; }
+capture_beep_settings probe
+''', cwd=tmp_path, env=environment)
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "無法設定嗶聲滑桿截圖的文字大小" in result.stdout
     assert "-large-text-375" not in result.stdout

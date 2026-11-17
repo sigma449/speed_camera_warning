@@ -87,12 +87,12 @@ CI 的截圖 `auto`：App／Shared／Widget／`scripts/ci`／`project.yml` 改�
 | 情境 | iOS 26 | iOS 15 |
 |---|---|---|
 | `smoke` | 5 張：啟動、設定、375 pt 照相／區間、過期卡片 | 2 張：啟動、設定 |
-| `gallery` | 橫幅、窄版／大字、Live Activity、過期、選點及我的照相點 | 我的照相點 47 張；不載入 Live Activity |
+| `gallery` | 橫幅、窄版／大字、Live Activity、過期、選點、我的照相點與嗶聲滑桿 | 我的照相點47張＋嗶聲滑桿6張；不載入Live Activity |
 | `map` | 展示、地圖、選點、預覽、新舊地圖 | 對應舊地圖功能 |
 | `search` | 語言候選、搜尋壓測 | 候選、搜尋壓測 |
-| `full` | 100 張；gallery＋map＋search | 61 張；不含內部對照 |
+| `full` | 106 張；gallery＋map＋search | 67 張；不含內部對照 |
 | `styles` | 明確選取才拍 24 張內部樣式比較 | 2 張內部比較 |
-| `all` | 124 張 | 63 張 |
+| `all` | 130 張 | 69 張 |
 | `none` | 只建置，不宣稱畫面驗收 | 同左 |
 
 沒有縮短展示倒數或外部服務等待。UI-ready 缺失仍警告拍圖；**App 存活查不到、程序被換掉或截圖失敗則失敗**。
@@ -141,6 +141,22 @@ iOS 15 也走正式表單／詳情／管理元件，不退為一般啟動畫面�
 需下載真圖逐張確認：選單選項／按鈕不可截斷、≥44 pt、中性動作不似停用，長字可捲動；
 另以 iOS 實際操作核對兩版的新增→修改→隱藏／復原→分享流程。尚未跑該 commit 的遠端建置／看圖，不得宣稱通過。
 快速新增 gallery 不啟動真定位／背景反查／8 秒倒數，只示範相同按鈕、確認卡與橫幅元件；不讀寫個人檔案。
+
+### 嗶聲滑桿截圖
+
+兩版共用 `scripts\ci\beep-settings-screenshots.sh`，納入 `gallery`／`full`／`all`，不增加 smoke。
+`-gallery -galleryBeepInterval min|default|max` 使用正式設定區塊與純記憶體偏好，不啟動巡航、不讀寫個人設定。
+每版 6 張，375 pt、一般字級與 accessibility-large；文字大小設定失敗即失敗：
+
+| iOS 26 檔名；`T` 為 `normal`／`large-text` | iOS 15 對應檔名 |
+|---|---|
+| `48-beep-interval-min-T-375.png` | `ios15-18-beep-interval-min-T-375.png` |
+| `48-beep-interval-default-T-375.png` | `ios15-18-beep-interval-default-T-375.png` |
+| `48-beep-interval-max-T-375.png` | `ios15-18-beep-interval-max-T-375.png` |
+
+需下載真圖確認滑桿位置、即時「每0.5／3／10秒」文字、放大字無截斷，並實測 VoiceOver 數值與單位。
+截圖不證明音訊節拍；0.18 秒 WAV、10 秒內各間隔的時間點／聲數與取消／改值由 Core 測試，
+背景／CarPlay、語音讓路、音訊中斷／恢復及降速等停止延遲仍須實機聽驗。未執行該 commit 的遠端建置／看圖，不得宣稱通過。
 
 base64 預設關閉，需時加 `-f print-screenshots=true`。一般用 artifact，將 `RUN_ID` 換成該次執行編號：
 
