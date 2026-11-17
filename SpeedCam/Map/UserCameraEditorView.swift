@@ -177,7 +177,17 @@ struct UserCameraEditorView: View {
                             }
                         }
                         .fixedSize(horizontal: false, vertical: true)
-                        .id("camera-notes")
+                    }
+                    if initialScrollTarget != nil {
+                        // iOS 15 的 Form 由 UITableView 實作，scrollTo 到 footer 的 id 會找不到列而閃退；
+                        // 只在截圖要捲到底時放一列透明錨點，正式表單不受影響。
+                        Section {
+                            Color.clear
+                                .frame(height: 1)
+                                .listRowBackground(Color.clear)
+                                .accessibilityHidden(true)
+                                .id("camera-notes")
+                        }
                     }
                 }
                 .task {

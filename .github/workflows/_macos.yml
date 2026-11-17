@@ -37,7 +37,7 @@ permissions:
 jobs:
   run:
     runs-on: macos-26
-    timeout-minutes: ${{ inputs.task == 'ios15' && 60 || 45 }}
+    timeout-minutes: 60
     env:
       CI_TASK: ${{ inputs.task }}
       CI_LABEL: ${{ inputs.label }}
@@ -73,7 +73,8 @@ jobs:
           set -o pipefail
           bash scripts/ci/select-xcode.sh 2>&1 | tee "build/evidence/${CI_LABEL}/xcode-selection.log"
       - name: 建置與執行指定工作
-        timeout-minutes: ${{ inputs.task == 'ios15' && 50 || 35 }}
+        # 完整截圖含我的照相點與嗶聲滑桿後，iOS 26 約需 36 分鐘；兩版都留 50 分鐘。
+        timeout-minutes: 50
         run: |
           set -o pipefail
           bash scripts/ci/macos-job.sh 2>&1 | tee "build/evidence/${CI_LABEL}/run.log"
