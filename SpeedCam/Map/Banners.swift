@@ -249,6 +249,11 @@ struct CameraDetailCard: View {
                     if isUserAdded || isUserModified {
                         Text(isUserAdded ? "自行新增" : "已自行修改").font(.subheadline.weight(.semibold))
                     }
+                    if camera.enforcesSpeed && camera.speedLimit == nil {
+                        Text(UserCameraEdits.unsetSpeedLimitDescription)
+                            .font(.subheadline.weight(.semibold))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                     Text(camera.address).font(.subheadline)
                     if ["milestone", "door", "lamp", "intersection", "official-milepost",
                         "existing-official-junction"].contains(camera.positionMethod ?? "") {
@@ -398,6 +403,10 @@ struct BottomBar: View {
 }
 
 enum Symbols {
+    static var addCamera: String {
+        UIImage(systemName: "camera.badge.plus") != nil ? "camera.badge.plus" : "camera.fill"
+    }
+
     /// 機車圖示；舊系統沒有 motorcycle 符號時改用 scooter。
     static var motorcycle: String {
         UIImage(systemName: "motorcycle") != nil ? "motorcycle" : "scooter"

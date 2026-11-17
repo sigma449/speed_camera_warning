@@ -26,14 +26,16 @@ def test_real_screenshot_entry_honors_selected_profile(tmp_path, entry, profile)
         assert not any(path.name.startswith(("35-", "36-", "37-", "38-", "ios15-14-", "ios15-16-")) for path in images)
         prefix = "ios15-17-user-camera" if entry == "ios15-run.sh" else "47-user-camera"
         scenarios = ("place", "fixed", "fixed-current", "redLight", "redLight-current", "both",
-                     "official", "added", "modified", "settings", "empty")
+                     "official", "added", "modified", "settings", "empty",
+                     "quick-button", "quick-confirmation", "quick-navigation", "quick-camera",
+                     "quick-section", "unset", "unset-edit")
         for scenario in scenarios:
             for text in ("normal", "large-text"):
                 assert (tmp_path / "screenshots" / f"{prefix}-{scenario}-{text}-375.png").exists()
         for text in ("normal", "large-text"):
             for section in ("modified", "hidden"):
                 assert (tmp_path / "screenshots" / f"{prefix}-settings-{section}-{text}-375.png").exists()
-        for scenario in ("fixed", "fixed-current", "redLight", "redLight-current", "both", "modified"):
+        for scenario in ("fixed", "fixed-current", "redLight", "redLight-current", "both", "modified", "unset-edit"):
             assert (tmp_path / "screenshots" / f"{prefix}-{scenario}-bottom-large-text-375.png").exists()
     else:
         assert not images

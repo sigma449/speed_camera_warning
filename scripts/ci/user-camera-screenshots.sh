@@ -9,7 +9,8 @@ capture_user_camera_edits() {
       echo "::error::無法設定我的照相點截圖的文字大小：${size}"
       return 1
     fi
-    for scenario in place fixed fixed-current redLight redLight-current both official added modified settings empty; do
+    for scenario in place fixed fixed-current redLight redLight-current both official added modified settings empty \
+      quick-button quick-confirmation quick-navigation quick-camera quick-section unset unset-edit; do
       launch_app -autoStartCruise NO -gallery -galleryUserCameras "${scenario}"
       sleep 2
       shot "${prefix}-${scenario}-${text}-375"
@@ -22,7 +23,7 @@ capture_user_camera_edits() {
         shot "${prefix}-settings-hidden-${text}-375"
       elif [[ "${text}" == large-text ]]; then
         case "${scenario}" in
-          fixed|fixed-current|redLight|redLight-current|both|modified)
+          fixed|fixed-current|redLight|redLight-current|both|modified|unset-edit)
             launch_app -autoStartCruise NO -gallery -galleryUserCameras "${scenario}" -galleryBottom
             sleep 2
             shot "${prefix}-${scenario}-bottom-${text}-375"

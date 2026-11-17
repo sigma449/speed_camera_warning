@@ -87,21 +87,21 @@ CI 的截圖 `auto`：App／Shared／Widget／`scripts/ci`／`project.yml` 改�
 | 情境 | iOS 26 | iOS 15 |
 |---|---|---|
 | `smoke` | 5 張：啟動、設定、375 pt 照相／區間、過期卡片 | 2 張：啟動、設定 |
-| `gallery` | 橫幅、窄版／大字、Live Activity、過期、選點及我的照相點 | 我的照相點 32 張；不載入 Live Activity |
+| `gallery` | 橫幅、窄版／大字、Live Activity、過期、選點及我的照相點 | 我的照相點 47 張；不載入 Live Activity |
 | `map` | 展示、地圖、選點、預覽、新舊地圖 | 對應舊地圖功能 |
 | `search` | 語言候選、搜尋壓測 | 候選、搜尋壓測 |
-| `full` | 85 張；gallery＋map＋search | 46 張；不含內部對照 |
+| `full` | 100 張；gallery＋map＋search | 61 張；不含內部對照 |
 | `styles` | 明確選取才拍 24 張內部樣式比較 | 2 張內部比較 |
-| `all` | 109 張 | 48 張 |
+| `all` | 124 張 | 63 張 |
 | `none` | 只建置，不宣稱畫面驗收 | 同左 |
 
 沒有縮短展示倒數或外部服務等待。UI-ready 缺失仍警告拍圖；**App 存活查不到、程序被換掉或截圖失敗則失敗**。
 PNG 存在不代表 App 存活，也不代表人工看圖、POI／長按手勢、語音或 CarPlay 已驗收。
 
-### H12 我的照相點截圖
+### H12／H13 我的照相點截圖
 
 兩版入口共用 `scripts\ci\user-camera-screenshots.sh`，`gallery`／`full`／`all` 都拍，不增加 smoke。
-每版 32 張：375 pt 內容寬、一般字級與 accessibility-large；變更字級失敗即失敗，不以假大字照片通過。
+每版 47 張：375 pt 內容寬、一般字級與 accessibility-large；變更字級失敗即失敗，不以假大字照片通過。
 所有情境都加 `-gallery -galleryUserCameras`，只用記憶體假資料，不讀寫 `userCameraEdits.v1.json`；
 iOS 15 也走正式表單／詳情／管理元件，不退為一般啟動畫面。這些是版面示例，不代表已驗證點擊、分享或語音。
 
@@ -123,15 +123,24 @@ iOS 15 也走正式表單／詳情／管理元件，不退為一般啟動畫面�
 | `P-settings-modified-T-375.png` | 已修改清單與還原 |
 | `P-settings-hidden-T-375.png` | 已隱藏清單與復原／匯出 |
 | `P-empty-T-375.png` | 空清單與新增說明 |
+| `P-quick-button-T-375.png` | 行車中快速新增按鈕，位於回中心正上方 |
+| `P-quick-confirmation-T-375.png` | 非阻擋確認卡、速限快選與復原 |
+| `P-quick-navigation-T-375.png` | 確認卡＋導航橫幅同屏 |
+| `P-quick-camera-T-375.png` | 確認卡＋照相橫幅同屏 |
+| `P-quick-section-T-375.png` | 確認卡＋區間橫幅同屏 |
+| `P-unset-T-375.png` | 速限未設詳情與修改入口 |
+| `P-unset-edit-T-375.png` | 速限未設修改表單，不預填猜測速限 |
 | `P-fixed-bottom-large-text-375.png` | 測速表單的備註／不阻擋警告 |
 | `P-fixed-current-bottom-large-text-375.png` | 目前行向與警告底部 |
 | `P-redLight-bottom-large-text-375.png` | 闖紅燈表單備註／警告 |
 | `P-redLight-current-bottom-large-text-375.png` | 闖紅燈目前行向與警告底部 |
 | `P-both-bottom-large-text-375.png` | 雙向表單備註／警告 |
 | `P-modified-bottom-large-text-375.png` | 長詳情底部的還原動作 |
+| `P-unset-edit-bottom-large-text-375.png` | 速限未設表單的備註底部 |
 
 需下載真圖逐張確認：選單選項／按鈕不可截斷、≥44 pt、中性動作不似停用，長字可捲動；
 另以 iOS 實際操作核對兩版的新增→修改→隱藏／復原→分享流程。尚未跑該 commit 的遠端建置／看圖，不得宣稱通過。
+快速新增 gallery 不啟動真定位／背景反查／8 秒倒數，只示範相同按鈕、確認卡與橫幅元件；不讀寫個人檔案。
 
 base64 預設關閉，需時加 `-f print-screenshots=true`。一般用 artifact，將 `RUN_ID` 換成該次執行編號：
 

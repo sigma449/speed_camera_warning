@@ -47,6 +47,22 @@ struct RootView: View {
                                               onStart: { startPreviewedNavigation() },
                                               onCancel: { cancelPreview() })
                     } else {
+                        if let camera = model.quickCameraConfirmation, model.selectedMapPlace == nil,
+                           selectedCamera == nil, cameraEditor == nil {
+                            MapCardScrollView(maximumHeight: viewport.size.height * 0.4) {
+                                QuickCameraConfirmationCard(
+                                    onSpeedLimit: { limit in
+                                        cameraAction { try model.setQuickCameraSpeedLimit(limit, id: camera.id) }
+                                    },
+                                    onEdit: {
+                                        model.dismissQuickCameraConfirmation()
+                                        cameraEditor = UserCameraEditorRequest(camera: camera, isNew: false,
+                                            canChangeType: true,
+                                            currentHeading: model.suggestedCameraHeading(at: camera.point))
+                                    },
+                                    onUndo: { cameraAction { try model.undoQuickCamera(id: camera.id) } })
+                            }
+                        }
                         if let place = model.selectedMapPlace {
                             MapCardScrollView(maximumHeight: viewport.size.height * 0.65) {
                                 MapPlaceCard(place: place, onStart: { model.previewSelectedMapPlace() },
@@ -244,18 +260,25 @@ struct RootView: View {
                     .background(.regularMaterial, in: Capsule())
                     .transition(.opacity)
             }
-            Button {
-                follow.buttonTapped()
-            } label: {
-                Image(systemName: follow.buttonSymbol)
-                    .font(.system(size: 20, weight: .semibold))
-                    .frame(width: 48, height: 48)
-                    .background(.regularMaterial, in: Circle())
-                    .foregroundStyle(follow.isFollowing ? Color.blue : Color.primary)
-                    .shadow(radius: 2)
+            VStack(spacing: 8) {
+                if model.canQuickCaptureCamera, selectedCamera == nil, cameraEditor == nil {
+                    QuickCameraButton(isEnabled: model.quickCameraCapture.canCapture(at: Date())) {
+                        cameraAction { try model.captureCurrentCamera() }
+                    }
+                }
+                Button {
+                    follow.buttonTapped()
+                } label: {
+                    Image(systemName: follow.buttonSymbol)
+                        .font(.system(size: 20, weight: .semibold))
+                        .frame(width: 48, height: 48)
+                        .background(.regularMaterial, in: Circle())
+                        .foregroundStyle(follow.isFollowing ? Color.blue : Color.primary)
+                        .shadow(radius: 2)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(follow.buttonAccessibilityLabel)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(follow.buttonAccessibilityLabel)
         }
     }
 

@@ -113,8 +113,8 @@ struct UserCameraEditorView: View {
                     if canEditSpeed {
                         Section("速限") {
                             Picker("速限", selection: $speedLimit) {
-                                if !request.canChangeType && request.camera.speedLimit == nil {
-                                    Text("未提供（只提醒）").tag(Int?.none)
+                                if request.canChangeType || request.camera.speedLimit == nil {
+                                    Text(UserCameraEdits.unsetSpeedLimitDescription).tag(Int?.none)
                                 }
                                 if let original = request.camera.speedLimit,
                                    !UserCameraEdits.speedLimits.contains(original) {

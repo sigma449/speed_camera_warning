@@ -12,7 +12,7 @@ final class UserCameraEditsTests: XCTestCase {
     }
 
     private func added(_ number: Int = 1, type: CameraType = .fixed,
-                       heading: Double? = 0, axis: Double? = nil, limit: Int = 50) -> Camera {
+                       heading: Double? = 0, axis: Double? = nil, limit: Int? = 50) -> Camera {
         var camera = official()
         camera.id = String(format: "user-00000000-0000-0000-0000-%012d", number)
         camera.type = type
@@ -372,7 +372,12 @@ final class UserCameraEditsTests: XCTestCase {
         let active = try XCTUnwrap(before)
         var edits = UserCameraEdits()
         try edits.hide(camera)
+        var capture = QuickCameraCapture()
+        let currentFix = try XCTUnwrap(fixes.last)
+        let captured = try capture.capture(fix: currentFix, lastHeadingFix: currentFix,
+            edits: &edits, at: currentFix.timestamp)
         engine.replaceIndex(SpatialIndex(cameras: edits.apply(to: [camera])), preservingState: true)
+        engine.markPassed(captured.camera, at: currentFix.timestamp)
         let next = straightTrack(from: origin, bearing: 0, speedKmh: 70, seconds: 19).last!
         let after = tracker.process(next)
         XCTAssertEqual(after.status?.startTime, active.startTime)
@@ -401,11 +406,12 @@ final class UserCameraEditsTests: XCTestCase {
     }
 
     private func fixtureEdits() throws -> UserCameraEdits {
-        let values: [(CameraType, Double?, Double?, Int)] = [
+        let values: [(CameraType, Double?, Double?, Int?)] = [
             (.fixed, 240.6, nil, 50), (.fixed, 0, nil, 80),
             (.redLight, nil, 90, 0), (.fixed, nil, 0, 30),
             (.fixed, nil, 45, 50), (.redLight, nil, 135, 0),
             (.fixed, nil, nil, 110), (.redLight, 315, nil, 0),
+            (.fixed, 240.61066, nil, nil),
         ]
         var edits = UserCameraEdits()
         for (index, value) in values.enumerated() {
@@ -419,6 +425,192 @@ final class UserCameraEditsTests: XCTestCase {
         return edits
     }
 
+    func testQuickCaptureUsesCurrentFixExactHeadingUnknownLimitAndExistingStorage() throws {
+        let moving = VehicleFix(point: origin, speedMps: 8 / 3.6, course: 240.61066, timestamp: t0)
+        var stopped = moving
+        stopped.speedMps = 0
+        stopped.course = nil
+        var capture = QuickCameraCapture()
+        var edits = UserCameraEdits()
+        let result = try capture.capture(fix: stopped, lastHeadingFix: moving, edits: &edits, at: t0)
+        let camera = result.camera
+        XCTAssertTrue(result.isNew)
+        XCTAssertEqual(camera.point, stopped.point)
+        XCTAssertEqual(camera.type, .fixed)
+        XCTAssertEqual(camera.heading, 240.61066)
+        XCTAssertNil(camera.axis)
+        XCTAssertNil(camera.speedLimit)
+        XCTAssertEqual(camera.address, "自行新增（25.03000, 121.56500）")
+        XCTAssertEqual(camera.source, "自行新增")
+        XCTAssertEqual(camera.positionMethod, "user")
+        XCTAssertTrue(camera.id.hasPrefix("user-"))
+        try inTemporaryDirectory { directory in
+            let file = UserCameraEditsFile(url: directory.appendingPathComponent("userCameraEdits.v1.json"))
+            try file.save(edits)
+            XCTAssertEqual(try file.load().edits.apply(to: []), [camera])
+        }
+        for headingFix in [nil, VehicleFix(point: origin, speedMps: 7.9 / 3.6, course: 0, timestamp: t0)] {
+            var unknownCapture = QuickCameraCapture()
+            var unknownEdits = UserCameraEdits()
+            let unknown = try unknownCapture.capture(fix: stopped, lastHeadingFix: headingFix,
+                edits: &unknownEdits, at: t0)
+            XCTAssertNil(unknown.camera.heading)
+            XCTAssertNil(unknown.camera.axis)
+        }
+    }
+
+    func testQuickCaptureRejectsUnreliableAndStaleFixesWithoutSaving() throws {
+        let good = VehicleFix(point: origin, speedMps: 20, course: 0, timestamp: t0)
+        for bad in [
+            VehicleFix(point: origin, speedMps: -1, course: 0, timestamp: t0),
+            VehicleFix(point: origin, speedMps: 20, course: 0, horizontalAccuracy: 101, timestamp: t0),
+            VehicleFix(point: origin, speedMps: .infinity, course: 0, timestamp: t0),
+            VehicleFix(point: origin, speedMps: 20, course: 0, timestamp: t0.addingTimeInterval(-2.5)),
+        ] {
+            var capture = QuickCameraCapture()
+            var edits = UserCameraEdits()
+            XCTAssertThrowsError(try capture.capture(fix: bad, lastHeadingFix: good, edits: &edits, at: t0))
+            XCTAssertTrue(edits.isEmpty)
+            XCTAssertNil(capture.confirmationID)
+        }
+        XCTAssertTrue(QuickCameraCapture.hasCurrentFix(good, at: t0.addingTimeInterval(2.49)))
+        XCTAssertFalse(QuickCameraCapture.hasCurrentFix(nil, at: t0))
+    }
+
+    func testQuickCaptureLocksUntilCardDisappearsOrThreeSecondsWhicheverIsLonger() throws {
+        var capture = QuickCameraCapture()
+        var edits = UserCameraEdits()
+        let fix = VehicleFix(point: origin, speedMps: 20, course: 0, timestamp: t0)
+        _ = try capture.capture(fix: fix, lastHeadingFix: fix, edits: &edits, at: t0)
+        XCTAssertThrowsError(try capture.capture(fix: fix, lastHeadingFix: fix, edits: &edits, at: t0))
+        capture.expireConfirmation(at: t0.addingTimeInterval(7.99))
+        XCTAssertNotNil(capture.confirmationID)
+        XCTAssertFalse(capture.canCapture(at: t0.addingTimeInterval(7.99)))
+        capture.expireConfirmation(at: t0.addingTimeInterval(8))
+        XCTAssertNil(capture.confirmationID)
+        XCTAssertTrue(capture.canCapture(at: t0.addingTimeInterval(8)))
+
+        var next = fix
+        next.timestamp = t0.addingTimeInterval(8)
+        _ = try capture.capture(fix: next, lastHeadingFix: fix, edits: &edits, at: next.timestamp)
+        capture.dismissConfirmation()
+        XCTAssertFalse(capture.canCapture(at: t0.addingTimeInterval(10.99)))
+        XCTAssertTrue(capture.canCapture(at: t0.addingTimeInterval(11)))
+        XCTAssertEqual(edits.added.count, 1)
+    }
+
+    func testQuickCaptureReusesNearbyCapturedPointButNotOneOutsideFiftyMetersAndUndoAllowsNew() throws {
+        var capture = QuickCameraCapture()
+        var edits = UserCameraEdits()
+        func fix(_ distance: Double, _ seconds: Double) -> VehicleFix {
+            VehicleFix(point: GeoMath.destination(from: origin, bearing: 0, distance: distance),
+                speedMps: 20, course: 0, timestamp: t0.addingTimeInterval(seconds))
+        }
+        let first = try capture.capture(fix: fix(0, 0), lastHeadingFix: fix(0, 0), edits: &edits, at: t0)
+        var changed = first.camera
+        changed.speedLimit = 60
+        try edits.updateAdded(changed)
+        capture.expireConfirmation(at: t0.addingTimeInterval(8))
+        let reused = try capture.capture(fix: fix(49.99, 8), lastHeadingFix: fix(49.99, 8),
+            edits: &edits, at: t0.addingTimeInterval(8))
+        XCTAssertFalse(reused.isNew)
+        XCTAssertEqual(reused.camera, changed)
+        XCTAssertEqual(capture.confirmationID, first.camera.id)
+        XCTAssertEqual(edits.added.count, 1)
+        capture.expireConfirmation(at: t0.addingTimeInterval(16))
+        let second = try capture.capture(fix: fix(50.01, 16), lastHeadingFix: nil,
+            edits: &edits, at: t0.addingTimeInterval(16))
+        XCTAssertTrue(second.isNew)
+        XCTAssertNotEqual(second.camera.id, first.camera.id)
+        XCTAssertEqual(edits.added.count, 2)
+        edits.deleteAdded(id: second.camera.id)
+        capture.forget(id: second.camera.id)
+        XCTAssertNil(capture.confirmationID)
+        XCTAssertFalse(edits.apply(to: []).contains { $0.id == second.camera.id })
+        let third = try capture.capture(fix: fix(50.01, 19), lastHeadingFix: nil,
+            edits: &edits, at: t0.addingTimeInterval(19))
+        XCTAssertTrue(third.isNew)
+        XCTAssertNotEqual(third.camera.id, second.camera.id)
+    }
+
+    func testQuickCapturePassedCooldownSurvivesSpeedAndAddressUpdatesWithoutResettingOtherTarget() throws {
+        let other = official()
+        let engine = CameraAlertEngine(index: SpatialIndex(cameras: [other]))
+        let initial = VehicleFix(point: origin, speedMps: 20, course: 0, timestamp: t0)
+        XCTAssertTrue(engine.process(initial).events.contains(where: \.isPre))
+        var capture = QuickCameraCapture()
+        var edits = UserCameraEdits()
+        let result = try capture.capture(fix: initial, lastHeadingFix: initial, edits: &edits, at: t0)
+        engine.replaceIndex(SpatialIndex(cameras: edits.apply(to: [other])), preservingState: true)
+        engine.markPassed(result.camera, at: t0)
+        var camera = result.camera
+        camera.speedLimit = 40
+        try edits.updateAdded(camera)
+        XCTAssertTrue(try edits.resolveAddedAddress(id: camera.id, point: camera.point, address: "測試路1號"))
+        engine.replaceIndex(SpatialIndex(cameras: edits.apply(to: [other])), preservingState: true)
+        for second in 1...3 {
+            var next = initial
+            next.timestamp = t0.addingTimeInterval(Double(second))
+            let output = engine.process(next)
+            XCTAssertEqual(output.target?.camera.id, other.id)
+            XCTAssertEqual(output.target?.phase, .pre)
+            XCTAssertEqual(output.events, second == 3 ? [.overspeedBeep] : [])
+        }
+        XCTAssertEqual(engine.lastFix?.timestamp, t0.addingTimeInterval(3))
+        XCTAssertEqual(engine.tick(now: t0.addingTimeInterval(6))?.target?.camera.id, other.id)
+        let far = GeoMath.destination(from: origin, bearing: 0, distance: 1_100)
+        _ = engine.process(VehicleFix(point: far, speedMps: 20, course: 0, timestamp: t0.addingTimeInterval(60)))
+        let approach = GeoMath.destination(from: origin, bearing: 180, distance: 280)
+        let again = engine.process(VehicleFix(point: approach, speedMps: 20, course: 0,
+            timestamp: t0.addingTimeInterval(90)))
+        XCTAssertEqual(again.target?.camera.id, camera.id)
+        XCTAssertTrue(again.events.contains(where: \.isPre))
+        XCTAssertTrue(again.events.contains(where: \.isOverspeedStarted))
+    }
+
+    func testUnsetFixedCameraAlertsTwiceWithoutBeepsThenUsesFilledLimitAndUndoRemovesIt() throws {
+        let camera = added(limit: nil)
+        var edits = UserCameraEdits()
+        try edits.add(camera)
+        let engine = CameraAlertEngine(index: SpatialIndex(cameras: edits.apply(to: [])))
+        let events = runAlerts(engine, straightTrack(from: origin, bearing: 0, speedKmh: 70, seconds: 13))
+        XCTAssertEqual(events.filter { $0.event.isPre }.count, 1)
+        XCTAssertEqual(events.filter { $0.event.isNear }.count, 1)
+        XCTAssertFalse(events.contains { $0.event.isOverspeedStarted || $0.event.isBeep })
+        var filled = camera
+        filled.speedLimit = 40
+        try edits.updateAdded(filled)
+        engine.replaceIndex(SpatialIndex(cameras: edits.apply(to: [])), preservingState: true)
+        let fix = try XCTUnwrap(straightTrack(from: origin, bearing: 0, speedKmh: 70, seconds: 14).last)
+        XCTAssertTrue(engine.process(fix).events.contains(where: \.isOverspeedStarted))
+        edits.deleteAdded(id: camera.id)
+        engine.replaceIndex(SpatialIndex(cameras: edits.apply(to: [])), preservingState: true)
+        XCTAssertNil(engine.index.camera(id: camera.id))
+        XCTAssertNil(engine.tick(now: fix.timestamp.addingTimeInterval(3))?.target)
+        XCTAssertTrue(engine.process(fix).events.isEmpty)
+        XCTAssertTrue(edits.isEmpty)
+    }
+
+    func testQuickCaptureLateAddressKeepsLatestFieldsAndCannotUpdateAnotherOrDeletedPoint() throws {
+        let camera = UserCameraEdits.newCamera(at: origin, speedLimit: nil, heading: 90)
+        var edits = UserCameraEdits()
+        try edits.add(camera)
+        var updated = camera
+        updated.speedLimit = 70
+        try edits.updateAdded(updated)
+        XCTAssertFalse(try edits.resolveAddedAddress(id: "another-id", point: origin, address: "錯誤路名"))
+        XCTAssertFalse(try edits.resolveAddedAddress(id: camera.id,
+            point: GeoMath.destination(from: origin, bearing: 0, distance: 10), address: "錯誤路名"))
+        XCTAssertTrue(try edits.resolveAddedAddress(id: camera.id, point: origin, address: " 正確路名 "))
+        XCTAssertEqual(edits.added.first?.speedLimit, 70)
+        XCTAssertEqual(edits.added.first?.heading, 90)
+        XCTAssertEqual(edits.added.first?.address, "正確路名")
+        XCTAssertFalse(try edits.resolveAddedAddress(id: camera.id, point: origin, address: "舊結果"))
+        edits.deleteAdded(id: camera.id)
+        XCTAssertFalse(try edits.resolveAddedAddress(id: camera.id, point: origin, address: "已刪除"))
+        XCTAssertTrue(edits.isEmpty)
+    }
+
     func testCSVExportMatchesCrossLanguageFixtureIncludingEscapingAndLossyAxes() throws {
         let edits = try fixtureEdits()
         let exported = try UserCameraExport(edits: edits, originals: [])
@@ -430,6 +622,9 @@ final class UserCameraEditsTests: XCTestCase {
         XCTAssertEqual(review.added[4].axis, 45)
         XCTAssertEqual(review.added[5].axis, 135)
         XCTAssertEqual(review.added[0].heading, 240.6)
+        XCTAssertNil(review.added[8].speedLimit)
+        XCTAssertEqual(review.speedLimitUnsetIDs, [edits.added[8].id])
+        XCTAssertTrue(review.notes.contains(UserCameraExport.unsetSpeedLimitNote))
         XCTAssertFalse(review.notes.isEmpty)
     }
 

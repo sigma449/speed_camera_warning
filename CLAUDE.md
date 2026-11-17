@@ -34,7 +34,7 @@ CarPlay 畫地圖須逐向導航、一App一類。iOS26 Live Activity免 entitle
   - 「移動式熱點」「科技執法（非測速）」「聲音照相」各預設開啟（`mobileHotspotsEnabled`、`nonSpeedTechEnabled`、`noiseCamerasEnabled`）；含測速科技不受非測速開關影響。關閉移除該類地圖／核心目標，不重設其他測速／區間。
   - 三類接近用黃、望遠鏡／錄影／喇叭，無可靠測速門檻不畫速限牌。手機列完整項目；Live Activity 放不下先縮第一項「取締：闖紅燈等」，再只留類型；超速／近距導航優先不變。
 - **方向判斷**：只報自己行車方向；雙向相機有南北／東西軸向，沿路兩向提醒，橫向不報。
-- **自行新增／修改／隱藏照相點（2026-11-17）**：選點卡次要新增固定測速／闖紅燈；八方位／四軸雙向／未知正前方30°，近點可靠行向可存實角。詳情修改／隱藏／復原，自增可改類型／確認刪除，section不可動。`userCameraEdits.v1.json`本機原子存檔、壞檔改名警告；Core增量套用，不重設其他相機／區間狀態。設定管理與分享CSV＋核對JSON，不上傳／匯入；CSV斜向退未知軸，精確值留JSON，完整規格／操作見SETUP。
+- **自行新增／修改／隱藏照相點（2026-11-17）**：選點卡次要新增固定測速／闖紅燈；八方位／四軸雙向／未知正前方30°，近點可靠行向可存實角。H13巡航／導航可靠定位時，回中心上方相機加號一鍵記目前固定點、最後≥8km/h可靠行向、速限nil；背景補路名。8秒確認卡可選40／50／60／70／其他或復原，不停跟隨、不蓋橫幅；卡消失及至少3秒才能再按，本次開啟快速新增點50m內重顯、不重複存。立即套通過冷卻，補速限／地址不清冷卻；未知速限兩段但不嗶，詳情／管理顯「速限未設・只提醒不嗶」。預覽／卡片／表單不顯按鈕，原導航禁選點不變。詳情修改／隱藏／復原，自增可改類型／確認刪除，section不可動。`userCameraEdits.v1.json`本機原子存檔、壞檔改名警告；Core增量套用，不重設其他相機／區間狀態。設定管理與分享CSV＋核對JSON，不上傳／匯入；CSV斜向退未知軸、空速限仍未知，精確值留JSON，完整規格／操作見SETUP。
 - **區間預告**：接近起點一次；速限 ≥80 用 600 m，其他 300 m。語音「前方300公尺，進入區間測速，速限70」；橫幅／Live Activity 用 `SectionApproach.asCameraTarget`。須從起點後方順向接近（`isHeadingToStart`），反向／橫向不報；分不出平行平面道路。
 - **進入區間的判定**：`SectionSpeedTracker` 通過起點 60 m 範圍開始；GPS 跳過或匝道併入可在區間前 300 m late-entry，以車速回推時間，超過起點 300 m 才上路不算。arming 後仍須順向沿路跨起點；起點前迴轉、橫離、停等漂移不算。
 - **區間中迴轉**：須精度≤30 m、連續可靠定位、行向逆局部道路且持續後退5秒／60 m；或退起點前>60 m持續3秒。發 `.aborted`、清超速、不套五分鐘完成冷卻；須實過起點重入、禁段內late-entry。無可靠路形只判退起點，不憑跳點／失聯／髮夾彎方位差中止。
@@ -116,6 +116,7 @@ CarPlay 畫地圖須逐向導航、一App一類。iOS26 Live Activity免 entitle
 - `-galleryBanners -galleryBannerPair camera|section|zero|rerouting -galleryWidth 375|390`：導航＋相機／區間／歸零或重規劃同屏。
 - `-galleryTypes mobile|tech|noise`：三類CarPlay三尺寸／鎖屏／動態島，加 `-galleryBanners -galleryWidth 375` 看手機詳情；`-galleryLock` 鎖屏／動態島（外框示意）；`-galleryStale` 過期三尺寸，可加Lock；`-galleryPlaces` 375 pt長名稱／地址及反查中／失敗，可加Bottom。
 - `-galleryUserCameras place|fixed|fixed-current|redLight|redLight-current|both|official|added|modified|settings|empty`：375pt選點／表單／詳情／管理，15也可用；純記憶體假資料，不碰個人編輯檔。`-galleryBottom`看表單備註／詳情底部／隱藏清單，settings加`-galleryMiddle`看修改清單；完整截圖含兩種字級。
+- `-galleryUserCameras quick-button|quick-confirmation|quick-navigation|quick-camera|quick-section|unset|unset-edit`：行車按鈕／確認卡（含導航、照相、區間同屏）／速限未設詳情與修改表單；375pt、一般／放大字、iOS15也拍。確認卡示例固定顯示、不啟動定位／反查或倒數，不代表手勢／實播驗收。
 - `-search 文字`／`-typeSearch 文字`：搜尋／約45秒輸刪；`-settings` 設定；`-vehicleMode car|motorcycleRedYellow|motorcycleWhite` 車種覆寫不儲存。
 - `-mapCenter 緯度,經度 -mapSpan 度數` 範圍；`-previewTo 緯度,經度,名稱` 預覽；`-selectPlace 緯度,經度,名稱` 正式選點反查、不預覽，與previewTo並用則預覽優先。
 - `-routeLineStyle current|whiteCasing|darkCasing -mapEmphasis current|muted` 內部樣式不存。

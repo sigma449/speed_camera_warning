@@ -25,7 +25,7 @@ struct UserCameraEditsView: View {
                 }
                 if model.userCameraEdits.isEmpty {
                     Section {
-                        Text("在地圖長按位置，或點選地點，再按「新增照相點」。資料只存在這支手機，不會上傳。")
+                        Text("巡航或導航中，按地圖右側的相機加號可記下目前位置；也可長按地圖，再按「新增照相點」。資料只存在這支手機，不會上傳。")
                     }
                 } else {
                     Section("自行新增（\(model.userCameraEdits.added.count)）") {
@@ -136,7 +136,9 @@ struct UserCameraEditsView: View {
     }
 
     private func summary(_ camera: Camera) -> String {
-        let limit = camera.enforcesSpeed ? camera.speedLimit.map { "速限 \($0)・" } ?? "" : ""
+        let limit = camera.enforcesSpeed
+            ? camera.speedLimit.map { "速限 \($0)・" } ?? "\(UserCameraEdits.unsetSpeedLimitDescription)・"
+            : ""
         return "\(limit)\(UserCameraDirection(camera: camera).description)"
     }
 

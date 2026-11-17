@@ -17,24 +17,28 @@ def test_swift_user_camera_csv_is_readable_by_the_existing_manual_pipeline():
     rows = read_local_rows([str(FIXTURE)])
     assert list(rows[0]) == ["設置地點", "座標緯度", "座標經度", "拍攝方向", "速限",
                              "取締項目", "縣市", "行政區", "來源"]
-    assert len(rows) == 8
+    assert len(rows) == 9
     cameras = sorted(normalize_rows(rows), key=lambda camera: camera.lat)
-    assert len(cameras) == 8
+    assert len(cameras) == 9
     expected = [
         ("fixed", 50, 240.6, None), ("fixed", 80, 0, None),
         ("redLight", None, None, 90), ("fixed", 30, None, 0),
         ("fixed", 50, None, None), ("redLight", None, None, None),
         ("fixed", 110, None, None), ("redLight", None, 315, None),
+        ("fixed", None, 240.61066, None),
     ]
     for index, (camera, values) in enumerate(zip(cameras, expected)):
         assert (camera.type, camera.speedLimit, camera.heading, camera.axis) == values
         assert camera.lat == pytest.approx(25.03 + index * 0.001)
         assert camera.lon == 121.565
         assert (camera.city, camera.district) == ("臺北市", "信義區")
-        assert rows[index]["來源"] == "使用者於 App 自行新增（2026-11-17）"
+        assert rows[index]["來源"] == ("使用者於 App 自行新增（2026-11-17）"
+                                      + ("・速限未設" if index == 8 else ""))
     assert cameras[0].address == '測試路口,東側"桿"'
     assert "軸向45°" in rows[4]["拍攝方向"]
     assert "軸向135°" in rows[5]["拍攝方向"]
+    assert rows[8]["速限"] == ""
+    assert "speedLimit" not in cameras[8].to_json()
 
 
 @pytest.mark.parametrize("kind,expected", [("測速照相", "fixed"), ("闖紅燈照相", "redLight")])

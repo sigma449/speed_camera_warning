@@ -15,6 +15,8 @@ enum UserCameraGalleryData {
     static let added = Camera(id: "user-00000000-0000-0000-0000-000000000001", type: .fixed,
         lat: point.lat, lon: point.lon, speedLimit: 40, address: "自行補充的長地址照相點（純版面示例）",
         axis: 45, source: "自行新增", positionMethod: "user")
+    static let unset = UserCameraEdits.newCamera(at: point, speedLimit: nil, heading: 240.61066,
+        id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!)
 
     static var database: CameraDatabase {
         let red = Camera(id: "gallery-red", type: .redLight, lat: point.lat, lon: point.lon,
@@ -30,6 +32,7 @@ enum UserCameraGalleryData {
     static func edits() throws -> UserCameraEdits {
         var edits = UserCameraEdits()
         try edits.add(added)
+        try edits.add(unset)
         edits.addedOn[added.id] = "2026-11-17"
         try edits.modify(changed, speedLimit: 40, direction: UserCameraDirection(heading: 270))
         try edits.hide(hidden)
@@ -54,9 +57,9 @@ struct UserCameraGalleryView: View {
     var body: some View {
         Group {
             switch scenario {
-            case "fixed", "fixed-current", "redLight", "redLight-current", "both":
+            case "fixed", "fixed-current", "redLight", "redLight-current", "both", "unset-edit":
                 let camera = formCamera
-                let request = UserCameraEditorRequest(camera: camera, isNew: scenario != "both",
+                let request = UserCameraEditorRequest(camera: camera, isNew: !["both", "unset-edit"].contains(scenario),
                     canChangeType: true, currentHeading: scenario.hasSuffix("-current") ? 240.61066 : nil)
                 UserCameraEditorView(request: request,
                     cameras: model.database.cameras,
@@ -68,8 +71,10 @@ struct UserCameraGalleryView: View {
                 AdaptiveNavigationStack {
                     UserCameraEditsView(initialSection: bottom ? "hidden" : middle ? "modified" : nil)
                 }
-            case "place", "official", "added", "modified":
+            case "place", "official", "added", "modified", "unset":
                 cardPage
+            case "quick-button", "quick-confirmation", "quick-navigation", "quick-camera", "quick-section":
+                quickCapturePage
             default:
                 Text("無效的我的照相點 gallery 情境：\(scenario)")
             }
@@ -94,6 +99,7 @@ struct UserCameraGalleryView: View {
 
     private var formCamera: Camera {
         if scenario == "both" { return UserCameraGalleryData.added }
+        if scenario == "unset-edit" { return UserCameraGalleryData.unset }
         var camera = model.newUserCamera(at: UserCameraGalleryData.place)
         camera.id = "user-00000000-0000-0000-0000-000000000002"
         if scenario.hasPrefix("redLight") {
@@ -138,9 +144,69 @@ struct UserCameraGalleryView: View {
     }
 
     private var detailCamera: Camera? {
-        let id = scenario == "added" ? UserCameraGalleryData.added.id
+        let id = scenario == "unset" ? UserCameraGalleryData.unset.id
+            : scenario == "added" ? UserCameraGalleryData.added.id
             : scenario == "modified" ? UserCameraGalleryData.changed.id : UserCameraGalleryData.official.id
         return model.database.cameras.first { $0.id == id }
+    }
+
+    private var quickCapturePage: some View {
+        GeometryReader { viewport in
+            VStack(spacing: 8) {
+                if scenario == "quick-navigation" {
+                    NavigationBanner(progress: RouteProgress(nextStepIndex: 1,
+                        nextInstruction: "靠右行駛上水源快速道路，朝景美前進",
+                        distanceToNextManeuver: 200, distanceRemaining: 7_300, distanceFromRoute: 0),
+                        destination: "坪林")
+                } else if scenario == "quick-camera" {
+                    CameraBanner(target: CameraTarget(camera: UserCameraGalleryData.official,
+                        distance: 100, phase: .near, isOverspeed: false))
+                } else if scenario == "quick-section", let section = model.database.sections.first {
+                    SectionBanner(status: SectionStatus(section: section, startTime: Date(),
+                        elapsed: 60, minimumSeconds: 100, remainingSeconds: 40,
+                        earliestExit: Date().addingTimeInterval(40), traveledMeters: 500,
+                        remainingMeters: 500, averageKmh: 30, suggestedMaxKmh: 40,
+                        effectiveLimitKmh: 60), currentSpeed: 40)
+                }
+                Spacer(minLength: 8)
+                if let camera = model.quickCameraConfirmation {
+                    MapCardScrollView(maximumHeight: viewport.size.height * 0.4) {
+                        QuickCameraConfirmationCard(
+                            onSpeedLimit: { limit in
+                                perform { try model.setQuickCameraSpeedLimit(limit, id: camera.id) }
+                            },
+                            onEdit: {
+                                model.dismissQuickCameraConfirmation()
+                                editor = UserCameraEditorRequest(camera: camera, isNew: false,
+                                    canChangeType: true, currentHeading: nil)
+                            },
+                            onUndo: { perform { try model.undoQuickCamera(id: camera.id) } })
+                    }
+                }
+                HStack {
+                    Spacer()
+                    VStack(spacing: 8) {
+                        QuickCameraButton(isEnabled: model.quickCameraCapture.canCapture(at: Date())) {
+                            perform { try model.captureCurrentCamera() }
+                        }
+                        Button {} label: {
+                            Image(systemName: "location.fill")
+                                .font(.system(size: 20, weight: .semibold))
+                                .frame(width: 48, height: 48)
+                                .background(.regularMaterial, in: Circle())
+                                .foregroundStyle(.blue)
+                        }
+                        .accessibilityLabel("回到目前位置")
+                    }
+                }
+                BottomBar(showSearch: .constant(false), showSettings: .constant(false))
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
+            .background {
+                Color(white: 0.2).overlay(Text("記憶體地圖示意・非實車畫面").font(.footnote))
+            }
+        }
     }
 
     private func perform(_ action: () throws -> Void) {

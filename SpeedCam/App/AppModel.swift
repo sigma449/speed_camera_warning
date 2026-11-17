@@ -46,7 +46,18 @@ final class AppModel: ObservableObject {
     @Published private var mapPlaceSelection = MapPlaceSelection()
     @Published private(set) var userCameraEdits = UserCameraEdits()
     @Published private(set) var userCameraEditsWarning: String?
+    @Published private(set) var quickCameraCapture = QuickCameraCapture()
     private(set) var originalCameras: [Camera] = []
+
+    var canQuickCaptureCamera: Bool {
+        (isCruising || route != nil) && preview == nil && selectedMapPlace == nil
+            && mapAppearance.comparison == nil && QuickCameraCapture.hasCurrentFix(lastFix, at: Date())
+    }
+
+    var quickCameraConfirmation: Camera? {
+        guard let id = quickCameraCapture.confirmationID else { return nil }
+        return userCameraEdits.added.first { $0.id == id }
+    }
 
     var selectedMapPlace: MapPlaceSelection.Place? { mapPlaceSelection.place }
     var canSelectMapPlace: Bool { mapAppearance.comparison == nil && mapPlaceMode == .browsing }
@@ -108,6 +119,8 @@ final class AppModel: ObservableObject {
     private let navigation = NavigationController()
     private let placeGeocoder = CLGeocoder()
     private var placeLookupTask: Task<Void, Never>?
+    private let quickCameraGeocoder = CLGeocoder()
+    private var quickCameraLookupTask: Task<Void, Never>?
     private let pathSnapper = SectionPathSnapper()
     private var alertEngine: CameraAlertEngine
     private var sectionTracker: SectionSpeedTracker
@@ -203,9 +216,26 @@ final class AppModel: ObservableObject {
             }
         }
         applyDatabase(db)
+        if showGallery, let i = arguments.firstIndex(of: "-galleryUserCameras"),
+           i + 1 < arguments.count, arguments[i + 1].hasPrefix("quick-") {
+            isCruising = true
+            let fix = VehicleFix(point: UserCameraGalleryData.point, speedMps: 40 / 3.6,
+                course: 240.61066, timestamp: Date())
+            lastFix = fix
+            lastHeadingFix = fix
+            if arguments[i + 1] != "quick-button" {
+                do {
+                    try captureCurrentCamera()
+                } catch {
+                    statusMessage = "快速新增示例無效：\(error.localizedDescription)"
+                    Logger(subsystem: "tw.speedcammap.app", category: "userCameras")
+                        .error("快速新增示例無效：\(error.localizedDescription, privacy: .public)")
+                }
+            }
+        }
 
         location.onFix = { [weak self] fix in
-            guard let self, !self.demoMode else { return }
+            guard let self, !self.demoMode, !self.showGallery else { return }
             self.handle(fix)
         }
         location.onAuthorizationChange = { [weak self] status in
@@ -271,6 +301,7 @@ final class AppModel: ObservableObject {
     }
 
     func sceneBecameActive() {
+        guard !showGallery else { return }
         if isCruising && !demoMode { location.restartIfNeeded() }
         restartLiveActivityIfNeeded()
     }
@@ -287,6 +318,7 @@ final class AppModel: ObservableObject {
 
     /// 接上 CarPlay 時主動更新一次：Live Activity 可能是連上之前開始的，內容也可能已經過期。
     private func audioRouteChanged() {
+        guard !showGallery else { return }
         let inCar = AVAudioSession.sharedInstance().currentRoute.outputs.contains { $0.portType == .carAudio }
         defer { isInCar = inCar }
         guard inCar, !isInCar, isCruising, settings.liveActivityEnabled else { return }
@@ -310,6 +342,7 @@ final class AppModel: ObservableObject {
         restartLiveActivityIfNeeded()
         // 隧道裡沒有定位：照相提醒、區間倒數和語音都依時間繼續
         let now = Date()
+        quickCameraCapture.expireConfirmation(at: now)
         let sec = sectionTracker.tick(now: now)
         let cam = alertEngine.tick(now: now)
         guard cam != nil || sec != nil else { return }
@@ -349,6 +382,7 @@ final class AppModel: ObservableObject {
         UIApplication.shared.isIdleTimerDisabled = true
         alertEngine.reset()
         lastHeadingFix = nil
+        quickCameraCapture.dismissConfirmation()
         sectionTracker.reset()
         location.start()
         if settings.liveActivityEnabled {
@@ -374,6 +408,7 @@ final class AppModel: ObservableObject {
         announcer.stopAll()
         alertEngine.reset()
         lastHeadingFix = nil
+        quickCameraCapture.dismissConfirmation()
         sectionTracker.reset()
         cameraTarget = nil
         sectionStatus = nil
@@ -467,9 +502,72 @@ final class AppModel: ObservableObject {
     }
 
     func newUserCamera(at place: MapPlaceSelection.Place) -> Camera {
-        return Camera(id: "user-\(UUID().uuidString)", type: .fixed,
-            lat: place.point.lat, lon: place.point.lon, speedLimit: 50, address: place.userCameraAddress,
-            source: "自行新增", positionMethod: "user")
+        UserCameraEdits.newCamera(at: place.point, address: place.userCameraAddress)
+    }
+
+    func captureCurrentCamera() throws {
+        guard canQuickCaptureCamera, let fix = lastFix else {
+            throw UserCameraEdits.EditError.invalid("目前無法在此記點，請確認巡航與定位狀態")
+        }
+        var capture = quickCameraCapture
+        var edits = userCameraEdits
+        let now = Date()
+        let result = try capture.capture(fix: fix, lastHeadingFix: lastHeadingFix, edits: &edits, at: now)
+        if result.isNew {
+            try commitUserCameraEdits(edits)
+            alertEngine.markPassed(result.camera, at: now)
+        }
+        quickCameraCapture = capture
+        if result.isNew && !showGallery && !demoMode { resolveQuickCameraAddress(result.camera) }
+    }
+
+    func setQuickCameraSpeedLimit(_ limit: Int, id: String) throws {
+        guard quickCameraCapture.confirmationID == id,
+              var camera = userCameraEdits.added.first(where: { $0.id == id }) else {
+            throw UserCameraEdits.EditError.invalid("這張測速點確認卡已失效")
+        }
+        camera.speedLimit = limit
+        try saveUserCamera(camera, isNew: false)
+        quickCameraCapture.dismissConfirmation()
+    }
+
+    func undoQuickCamera(id: String) throws {
+        guard quickCameraCapture.confirmationID == id else {
+            throw UserCameraEdits.EditError.invalid("這張測速點確認卡已失效")
+        }
+        try deleteUserCamera(id)
+    }
+
+    func dismissQuickCameraConfirmation() {
+        quickCameraCapture.dismissConfirmation()
+    }
+
+    private func resolveQuickCameraAddress(_ camera: Camera) {
+        quickCameraLookupTask?.cancel()
+        quickCameraGeocoder.cancelGeocode()
+        quickCameraLookupTask = Task { [weak self] in
+            guard let self, !Task.isCancelled else { return }
+            do {
+                let placemarks = try await self.quickCameraGeocoder.reverseGeocodeLocation(
+                    CLLocation(latitude: camera.lat, longitude: camera.lon))
+                guard !Task.isCancelled else { return }
+                guard let placemark = placemarks.first,
+                      let road = placemark.thoroughfare, !road.isEmpty else {
+                    Logger(subsystem: "tw.speedcammap.app", category: "userCameras")
+                        .notice("快速記點反查沒有路名，保留座標文字")
+                    return
+                }
+                var edits = self.userCameraEdits
+                if try edits.resolveAddedAddress(id: camera.id, point: camera.point,
+                    address: MKPlacemark(placemark: placemark).title ?? road) {
+                    try self.commitUserCameraEdits(edits)
+                }
+            } catch {
+                guard !Task.isCancelled else { return }
+                Logger(subsystem: "tw.speedcammap.app", category: "userCameras")
+                    .warning("快速記點補路名失敗，保留原值：\(error.localizedDescription, privacy: .public)")
+            }
+        }
     }
 
     func saveUserCamera(_ camera: Camera, isNew: Bool) throws {
@@ -517,6 +615,7 @@ final class AppModel: ObservableObject {
         var edits = userCameraEdits
         edits.deleteAdded(id: id)
         try commitUserCameraEdits(edits)
+        quickCameraCapture.forget(id: id)
     }
 
     private func commitUserCameraEdits(_ edits: UserCameraEdits) throws {
@@ -542,7 +641,7 @@ final class AppModel: ObservableObject {
         if let target = cameraTarget, index.camera(id: target.camera.id) != target.camera {
             cameraTarget = nil
         }
-        if isCruising { activity.update(activityState(), alert: nil) }
+        if isCruising && !showGallery { activity.update(activityState(), alert: nil) }
     }
 
     // MARK: 導航預覽
@@ -1050,6 +1149,7 @@ final class AppModel: ObservableObject {
     }
 
     private func authorizationChanged(_ status: CLAuthorizationStatus) {
+        guard !showGallery else { return }
         switch status {
         case .denied, .restricted:
             authorizationDenied = true

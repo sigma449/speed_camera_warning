@@ -123,13 +123,24 @@ public final class CameraAlertEngine {
             return
         }
         tracked = tracked.filter { index.camera(id: $0.key) == $0.value.camera }
-        cooldown = cooldown.filter { index.camera(id: $0.key) == previous.camera(id: $0.key) }
+        cooldown = cooldown.filter { index.camera(id: $0.key)?.point == $0.value.point }
         if let id = overspeedCameraID, index.camera(id: id) != previous.camera(id: id) {
             isOverspeed = false
             overspeedCameraID = nil
             lastBeep = nil
         }
         searchedWithoutFix = nil
+    }
+
+    /// 在車上直接記下剛通過的點，不發通過音，也不動其他目標的提醒狀態。
+    public func markPassed(_ camera: Camera, at time: Date) {
+        tracked[camera.id] = nil
+        cooldown[camera.id] = Cooldown(point: camera.point, time: time)
+        if overspeedCameraID == camera.id {
+            isOverspeed = false
+            overspeedCameraID = nil
+            lastBeep = nil
+        }
     }
 
     public func reset() {

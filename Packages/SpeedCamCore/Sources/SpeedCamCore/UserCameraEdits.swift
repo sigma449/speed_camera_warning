@@ -126,6 +126,17 @@ public struct UserCameraEdits: Codable, Equatable, Sendable {
         added[index] = camera
     }
 
+    @discardableResult
+    public mutating func resolveAddedAddress(id: String, point: GeoPoint, address: String) throws -> Bool {
+        guard var camera = added.first(where: { $0.id == id && $0.point == point }),
+              camera.address == Self.coordinateAddress(point) else { return false }
+        let address = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !address.isEmpty else { return false }
+        camera.address = address
+        try updateAdded(camera)
+        return true
+    }
+
     public mutating func modify(_ original: Camera, speedLimit: Int?,
                                 direction: UserCameraDirection) throws {
         guard original.type != .section else { throw EditError.invalid("區間照相點不可修改") }
@@ -176,6 +187,18 @@ public struct UserCameraEdits: Codable, Equatable, Sendable {
 
     public static let speedLimits = Array(stride(from: 30, through: 110, by: 10))
     public static let unknownDirectionExplanation = "未知方向依正前方 30° 判斷，已追蹤且距離小於 30 公尺時放寬。"
+    public static let unsetSpeedLimitDescription = "速限未設・只提醒不嗶"
+
+    public static func coordinateAddress(_ point: GeoPoint) -> String {
+        String(format: "自行新增（%.5f, %.5f）", point.lat, point.lon)
+    }
+
+    public static func newCamera(at point: GeoPoint, address: String? = nil, speedLimit: Int? = 50,
+                                 heading: Double? = nil, id: UUID = UUID()) -> Camera {
+        Camera(id: "user-\(id.uuidString)", type: .fixed, lat: point.lat, lon: point.lon,
+               heading: heading, speedLimit: speedLimit, address: address ?? coordinateAddress(point),
+               source: "自行新增", positionMethod: "user")
+    }
 
     public static func suggestedHeading(at point: GeoPoint, isCruising: Bool,
                                         lastFix: VehicleFix?, lastHeadingFix: VehicleFix?) -> Double? {
@@ -214,7 +237,7 @@ public struct UserCameraEdits: Codable, Equatable, Sendable {
               camera.source == "自行新增", camera.positionMethod == "user",
               !camera.address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               camera.enforcementItems == nil,
-              (camera.type == .fixed ? speedLimits.contains(camera.speedLimit ?? 0) : camera.speedLimit == nil)
+              (camera.type == .fixed ? camera.speedLimit.map(speedLimits.contains) ?? true : camera.speedLimit == nil)
         else { throw EditError.invalid("自行新增的照相點格式無效") }
         try validatePoint(camera.point)
         try validateDirection(UserCameraDirection(heading: camera.heading, axis: camera.axis))

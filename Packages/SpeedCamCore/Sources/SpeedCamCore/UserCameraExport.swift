@@ -34,6 +34,7 @@ public struct UserCameraExport {
     public struct Review: Codable {
         public let added: [Camera]
         public let addedOn: [String: String]
+        public let speedLimitUnsetIDs: [String]
         public let hidden: [ReviewRecord]
         public let modified: [ReviewRecord]
         public let notes: [String]
@@ -41,6 +42,7 @@ public struct UserCameraExport {
 
     public static let csvHeader = "設置地點,座標緯度,座標經度,拍攝方向,速限,取締項目,縣市,行政區,來源"
     public static let diagonalAxisNote = "CSV 管線僅支援南北／東西雙向；其他軸向匯出為雙向、未指定軸向，精確值保留於 camera_edits.json，正式併入前須人工核對。"
+    public static let unsetSpeedLimitNote = "固定測速的空白速限表示速限未設，只提醒不嗶；不可推定為 0 或其他速限。"
 
     public init(edits: UserCameraEdits, originals: [Camera]) throws {
         try edits.validate()
@@ -50,7 +52,8 @@ public struct UserCameraExport {
                 camera.address, UserCameraDirection.decimal(camera.lat), UserCameraDirection.decimal(camera.lon),
                 Self.csvDirection(camera), camera.speedLimit.map(String.init) ?? "",
                 camera.type.displayName, camera.city ?? "", camera.district ?? "",
-                "使用者於 App 自行新增（\(edits.addedOn[camera.id] ?? "日期未記錄")）",
+                "使用者於 App 自行新增（\(edits.addedOn[camera.id] ?? "日期未記錄")）"
+                    + (camera.enforcesSpeed && camera.speedLimit == nil ? "・速限未設" : ""),
             ]
             rows.append(fields.map(Self.escape).joined(separator: ","))
         }
@@ -66,9 +69,10 @@ public struct UserCameraExport {
                 override: override, missingFromDatabase: current[id] == nil)
         }
         let review = Review(added: edits.added, addedOn: edits.addedOn,
+            speedLimitUnsetIDs: edits.added.filter { $0.enforcesSpeed && $0.speedLimit == nil }.map(\.id),
             hidden: edits.hidden.sorted().map { record($0, hidden: true) },
             modified: edits.modified.keys.sorted().map { record($0, hidden: false) },
-            notes: [Self.diagonalAxisNote])
+            notes: [Self.diagonalAxisNote, Self.unsetSpeedLimitNote])
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         json = try encoder.encode(review)
