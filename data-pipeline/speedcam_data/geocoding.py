@@ -302,10 +302,13 @@ class RoadIndex:
         across = x * math.cos(math.radians(axis)) - y * math.sin(math.radians(axis))
         if abs(across) <= 1 or abs(along) > max(3, abs(across) * math.tan(math.radians(DIVIDED_AXIS_TOLERANCE))):
             return None
+        midpoint = tuple((p + q) / 2 for p, q in zip(a.point, b.point))
+        midpoint_axis = round(axis, 1) % 180
         details = dict(wayIDs=sorted({c.way["id"] for group in groups for c in group}),
                        dividedCarriageways=[dict(wayID=c.way["id"], lat=c.point[0], lon=c.point[1],
                                                  axis=round(c.axis, 1) % 180, heading=round(c.heading, 1) % 360,
                                                  snapDistance=round(c.distance, 2)) for c in nearest],
+                       dividedMidpoint=dict(lat=midpoint[0], lon=midpoint[1], axis=midpoint_axis),
                        axisDifference=round(_angle(a.axis, b.axis), 2))
         evidence = (f"OSM ways {','.join(map(str, details['wayIDs']))}（{region['version']}）；"
                     f"同名同層反向單行車道，局部軸向差 {details['axisDifference']:g}°")
@@ -319,8 +322,8 @@ class RoadIndex:
             evidence += (f"；公告往{proof['name']}，以該地物 OSM ways {','.join(map(str, proof['wayIDs']))}"
                          f"（{proof['version']}）最近投影與單行行向核對，選 way/{selected.way['id']}，heading={heading:g}°")
         else:
-            result_point = tuple((p + q) / 2 for p, q in zip(a.point, b.point))
-            heading, axis = None, round(axis, 1) % 180
+            result_point = midpoint
+            heading, axis = None, midpoint_axis
             details["positionChoice"] = "midpoint"
             evidence += "；取兩車道最近投影的中點；分向車道無法判定，沿路雙向"
             if "往" in address or "方向" in address:

@@ -13,8 +13,8 @@ import unicodedata
 
 from . import sources
 from .normalize import Camera, detect_type, parse_axis, parse_direction, parse_float, parse_level, parse_limit
-from .sections import bearing
-from .source_merge import SourceReport
+from .sections import bearing, haversine
+from .source_merge import SourceReport, angle_difference
 from . import geocoding_sources
 
 SNAPSHOTS = Path(__file__).resolve().parents[1] / "snapshots"
@@ -694,6 +694,7 @@ class MobileDirectionIndex:
 def adapt_mobile(rows: list[dict], source: str, report: SourceReport, resolve=None,
                  junctions: list[Camera] = (), geocoder=None) -> list[Camera]:
     result = []
+    divided_result = []
     mileage_parser = _douliu_mileage if source == "douliu-mobile" else _single_mileage
     directions = MobileDirectionIndex(rows, junctions, mileage_parser)
     city = {"169075": "高雄市", "douliu-mobile": "雲林縣"}.get(source, "新北市")
@@ -729,7 +730,7 @@ def adapt_mobile(rows: list[dict], source: str, report: SourceReport, resolve=No
                 matched_junctions = matches
                 method = "intersection"
         if not coords and not mileage and geocoder:
-            location = geocoder.locate(city, district, address)
+            location = geocoder.locate(city, district, address, allow_divided=source == "ntpc-mobile")
             coords, method = location.point, location.method
         if not coords:
             report.location(source, f"{district} {address}", code=location.reason_code if location else
@@ -772,6 +773,32 @@ def adapt_mobile(rows: list[dict], source: str, report: SourceReport, resolve=No
             heading = parse_direction(direction)
         if both:
             heading = None
+        divided = location is not None and "dividedCarriageways" in location.details
+        if divided:
+            if not both and location.heading is not None:
+                if heading is not None and angle_difference(heading, location.heading) > 45:
+                    conflict = (f"{evidence}（heading={heading:g}°）與 OSM 地物／單行行向"
+                                f"（heading={location.heading:g}°）衝突；不發布單向，沿路雙向")
+                    report.conflicts.append(f"{source}｜{district} {address}｜{conflict}")
+                    location.details["directionConflict"] = dict(officialHeading=heading,
+                                                                 osmHeading=location.heading, evidence=conflict)
+                    heading, evidence = None, conflict
+                else:
+                    heading = location.heading
+                    evidence = "公告方向以 OSM 地物位置及單行行向唯一核對"
+            else:
+                heading = None
+                if not both:
+                    evidence = "公告方向缺少可唯一核對的地物／單行行向證據，不猜方向"
+            if heading is None:
+                midpoint = location.details["dividedMidpoint"]
+                coords, axis = (midpoint["lat"], midpoint["lon"]), midpoint["axis"]
+                if location.heading is not None:
+                    location.evidence += f"；{evidence}；改取兩車道投影中點；分向車道無法判定，沿路雙向"
+                    location.details["positionChoice"] = "midpoint"
+                    reference = location.details["reference"]
+                    location.details["snapDistance"] = round(haversine(reference["lat"], reference["lon"], *coords), 2)
+                location.point, location.heading, location.axis = coords, None, axis
         status = "directional" if heading is not None else "bidirectional" if both and axis is not None else "unresolved"
         report.count(source, status)
         report.mobile_directions.append(dict(source=source, address=display_address, district=district,
@@ -794,13 +821,15 @@ def adapt_mobile(rows: list[dict], source: str, report: SourceReport, resolve=No
                       + "公告候選地點，非即時執法；原公告有效期間未載明")
         if display_address != address:
             conditions = "原公告：" + address + "；" + conditions
-        result.append(Camera(id=f"{source}-{identity}", type="mobile", lat=coords[0], lon=coords[1],
-                             heading=heading, axis=axis if heading is None else None, speedLimit=None,
-                             address=display_address, city=city,
-                             district=district, source=source, sourceID=identity, positionMethod=method,
-                             enforcementItems="移動測速公告熱點",
-                             conditions=conditions))
-    return result
+        camera = Camera(id=f"{source}-{identity}", type="mobile", lat=coords[0], lon=coords[1],
+                        heading=heading, axis=axis if heading is None else None, speedLimit=None,
+                        address=display_address, city=city,
+                        district=district, source=source, sourceID=identity, positionMethod=method,
+                        enforcementItems="移動測速公告熱點",
+                        conditions=conditions)
+        (divided_result if divided else result).append(camera)
+    # 原可定位點先參與去重，新增分向候選不能取代既有熱點的 ID／位置。
+    return result + divided_result
 
 
 @dataclass(frozen=True)

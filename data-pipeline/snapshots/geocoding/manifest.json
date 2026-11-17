@@ -4,9 +4,9 @@
   "downloadedAt": "2026-11-13"
  },
  "roads.json.gz": {
-  "sha256": "19c9fbd3926739b74505301e171d73b43c40d4d252a5e3a0eac3a913a22bf39c",
+  "sha256": "c5c38e2788a1b28f5a7d2f0c819c3d10a77cad70f01efdf3a528c593a7a65ddc",
   "downloadedAt": "2026-11-13",
-  "augmentedAt": "2026-11-16",
-  "augmentation": "H7從同MD5原PBF補回聲音候選單行標記及大直橋方向地物；原道路幾何／行政界／門牌不變，未重新下載"
+  "augmentedAt": "2026-11-17",
+  "augmentation": "H7從同MD5原PBF補回聲音候選單行標記及大直橋方向地物；H10再核對72個新北移動候選way並補回單行標記，加入新市二路2／3段與樹林交流道完整同名方向地物；原道路幾何／行政界／門牌不變，未重新下載"
  }
 }

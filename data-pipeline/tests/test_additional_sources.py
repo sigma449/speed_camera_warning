@@ -598,10 +598,17 @@ def test_sound_location_uses_same_verified_geocoder_and_retains_noise_only_rules
     assert target["details"]["positionChoice"] == "carriageway"
 
 
-def test_mobile_announcements_keep_strict_divider_rejections_when_sound_adapters_opt_in():
-    from speedcam_data.geocoding import normalize_address
+def test_ntpc_divider_opt_in_preserves_strict_baseline_existing_points_and_other_sources(monkeypatch):
+    from speedcam_data.geocoding import Geocoder, normalize_address
+    locate = Geocoder.locate
+
+    def strict_mobile(self, city, district, address, *, allow_divided=False):
+        return locate(self, city, district, address, allow_divided=allow_divided and city != "新北市")
+
     report = SourceReport()
-    cameras, _ = extra.load_mobile(report, offline=True, log=lambda _: None)
+    with monkeypatch.context() as strict:
+        strict.setattr(Geocoder, "locate", strict_mobile)
+        cameras, _ = extra.load_mobile(report, offline=True, log=lambda _: None)
     blocked = [r for r in report.locations if r["source"] == "ntpc-mobile" and r.get("reasonCode") == "road_ambiguous"]
     assert len(blocked) == 49 and len({normalize_address(r["row"]) for r in blocked}) == 42
     assert all(r["reason"] == "35 m 內有分離或不同軸向的同名道路投影；不選最近一條" for r in blocked)
@@ -612,6 +619,34 @@ def test_mobile_announcements_keep_strict_divider_rejections_when_sound_adapters
     noise = [c for c in cameras if c.type == "noise"]
     assert len(noise) == 32
     assert len(merge_sources([], noise, SourceReport())) == 32
+    updated = SourceReport()
+    current, _ = extra.load_mobile(updated, offline=True, log=lambda _: None)
+    published = {c.id: c.to_json() for c in current}
+    assert {c.id: published[c.id] for c in cameras} == {c.id: c.to_json() for c in cameras}
+    assert updated.counts["ntpc-mobile"]["usable"] == 136
+    assert updated.counts["ntpc-mobile"]["locationSuccess"] == 136
+    assert updated.counts["ntpc-mobile"]["directional"] == 4
+    assert updated.counts["ntpc-mobile"]["unresolved"] == 132
+    remaining = [r for r in updated.locations
+                 if r["source"] == "ntpc-mobile" and r.get("reasonCode") == "road_ambiguous"]
+    assert [r["row"] for r in remaining] == ["石碇區 石碇區靜安路1段352號(往平溪)"] * 2
+    additions = [c for c in current if c.id not in {old.id for old in cameras}]
+    assert len(additions) == 47 and all(c.source == "ntpc-mobile" for c in additions)
+    directed = {c.id: (c.to_json()["lat"], c.to_json()["lon"], c.heading, c.axis)
+                for c in additions if c.heading is not None}
+    assert directed == {
+        "ntpc-mobile-584626c2a388": (25.193330, 121.437004, 277.7, None),
+        "ntpc-mobile-16c4dc59b379": (25.194256, 121.430823, 112.1, None),
+    }
+    assert all(c.type == "mobile" and c.speedLimit is None and not c.enforces_speed
+               and c.positionMethod in ("door", "lamp") for c in additions)
+    assert all("分向車道無法判定，沿路雙向" in c.conditions for c in additions if c.heading is None)
+    before_other = {c.id: c.to_json() for c in cameras if c.source != "ntpc-mobile"}
+    assert {c.id: c.to_json() for c in current if c.source != "ntpc-mobile"} == before_other
+    for source in ("douliu-mobile", "169075", "173697", "tp-noise"):
+        assert updated.counts[source] == report.counts[source]
+        assert [r for r in updated.locations if r["source"] == source] == [
+            r for r in report.locations if r["source"] == source]
 
 
 def test_corrupt_schema_snapshot_and_failed_download_skip_only_that_optional_source(monkeypatch, tmp_path):

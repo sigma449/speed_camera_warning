@@ -469,3 +469,120 @@ def test_direction_landmark_snapshot_has_the_same_hash_source_and_geometry_guard
         (tmp_path / "roads.json.gz").write_bytes(raw + b"changed")
         with pytest.raises(ValueError, match="雜湊不符"):
             refs._snapshot("roads.json.gz")
+
+
+@pytest.mark.parametrize("kind", ["door", "lamp"])
+def test_ntpc_mobile_divider_uses_the_same_landmark_oneway_and_exact_reference_rules(kind):
+    from speedcam_data import additional_sources as extra
+    r = reference(lon=121.50015)
+    address = "測試路100號對面(往測試橋方向)"
+    if kind == "lamp":
+        r.update(kind="lamp", key="00123", dataset="123962")
+        address = "測試路00123號燈桿(往測試橋方向)"
+    g = geo.Geocoder([r], geo.RoadIndex([divided_roads()], [direction_landmark()]))
+    report = SourceReport()
+    cameras = extra.adapt_mobile([dict(district="新店區", address=address)], "ntpc-mobile", report, geocoder=g)
+    assert len(cameras) == 1
+    camera = cameras[0]
+    assert (camera.lat, camera.lon) == pytest.approx((25.0004, 121.5), abs=1e-9, rel=0)
+    assert camera.heading == 0 and camera.axis is None and camera.positionMethod == kind
+    assert not camera.enforces_speed and camera.speedLimit is None and camera.type == "mobile"
+    assert "公告候選地點，非即時執法" in camera.conditions and "單行行向核對" in camera.conditions
+    assert report.mobile_directions[0]["status"] == "directional"
+    assert report.locations[0]["details"]["reference"]["key"] == r["key"]
+    if kind == "lamp":
+        missing = SourceReport()
+        assert extra.adapt_mobile([dict(district="新店區", address=address.replace("00123", "123"))],
+                                  "ntpc-mobile", missing, geocoder=g) == []
+        assert missing.location_failures["ntpc-mobile"] == {"lamp_not_found": 1}
+
+
+@pytest.mark.parametrize("suffix", ["", "(往未知橋方向)", "(往北)", "(往測試橋方向，雙向)"])
+def test_ntpc_mobile_divider_without_unique_or_exclusively_single_direction_uses_h7_midpoint(suffix):
+    from speedcam_data import additional_sources as extra
+    g = geo.Geocoder([reference(lon=121.50015)], geo.RoadIndex([divided_roads()], [direction_landmark()]))
+    report = SourceReport()
+    camera, = extra.adapt_mobile([dict(district="新店區", address="測試路100號" + suffix)],
+                                "ntpc-mobile", report, geocoder=g)
+    assert (camera.lat, camera.lon) == pytest.approx((25.0004, 121.5001), abs=1e-9, rel=0)
+    assert camera.heading is None and camera.axis == 0
+    assert "分向車道無法判定，沿路雙向" in camera.conditions
+    assert report.locations[0]["details"]["positionChoice"] == "midpoint"
+    assert report.locations[0]["lat"] == camera.lat and report.locations[0]["lon"] == camera.lon
+
+
+def test_ntpc_mobile_conflicting_official_and_osm_directions_publish_only_the_midpoint_and_report_conflict():
+    from speedcam_data import additional_sources as extra
+    landmark = direction_landmark()
+    landmark["name"] = "北"
+    landmark["ways"][0]["tags"]["name"] = "北"
+    landmark["ways"][0]["geometry"] = [dict(lat=24.99, lon=121.5), dict(lat=24.989, lon=121.5)]
+    g = geo.Geocoder([reference(lon=121.50015)], geo.RoadIndex([divided_roads()], [landmark]))
+    report = SourceReport()
+    camera, = extra.adapt_mobile([dict(district="新店區", address="測試路100號(往北)")],
+                                "ntpc-mobile", report, geocoder=g)
+    assert (camera.lat, camera.lon) == pytest.approx((25.0004, 121.5001), abs=1e-9, rel=0)
+    assert camera.heading is None and camera.axis == 0
+    assert "不發布單向" in camera.conditions and "分向車道無法判定，沿路雙向" in camera.conditions
+    assert len(report.conflicts) == 1 and "衝突" in report.conflicts[0]
+    conflict = report.locations[0]["details"]["directionConflict"]
+    assert conflict["officialHeading"] == 0 and conflict["osmHeading"] == 180
+    assert report.mobile_directions[0]["status"] == "unresolved"
+
+
+@pytest.mark.parametrize("change", ["cross-axis", "third-road", "missing-oneway"])
+def test_ntpc_mobile_opt_in_still_rejects_non_h7_carriageways(change):
+    from speedcam_data import additional_sources as extra
+    roads = divided_roads()
+    if change == "cross-axis":
+        roads["ways"][1]["geometry"] = [dict(lat=25.0004, lon=121.499), dict(lat=25.0004, lon=121.501)]
+    elif change == "third-road":
+        roads["ways"].append(way(44, [10, 12], [(24.9994, 121.5003), (25.0014, 121.5003)], oneway="yes"))
+        roads["insideNodes"] += [10, 12]
+    else:
+        del roads["ways"][1]["tags"]["oneway"]
+    g = geo.Geocoder([reference()], geo.RoadIndex([roads]))
+    report = SourceReport()
+    assert extra.adapt_mobile([dict(district="新店區", address="測試路100號")],
+                              "ntpc-mobile", report, geocoder=g) == []
+    assert report.location_failures["ntpc-mobile"] == {"road_ambiguous": 1}
+
+
+def test_new_divider_candidates_follow_old_points_so_150_metre_dedupe_keeps_existing_id_and_position():
+    from speedcam_data import additional_sources as extra
+    from speedcam_data.source_merge import merge_sources
+    roads = divided_roads()
+    roads["ways"].append(way(55, [13, 14], [(24.9994, 121.5007), (25.0014, 121.5007)], name="既有路"))
+    roads["insideNodes"] += [13, 14]
+    roads["coverage"].append("既有路")
+    g = geo.Geocoder([reference(), reference(key="既有路200號", lon=121.5007)], geo.RoadIndex([roads]))
+    old_row = dict(district="新店區", address="既有路200號")
+    original, = extra.adapt_mobile([old_row], "ntpc-mobile", SourceReport(), geocoder=g)
+    candidates = extra.adapt_mobile([dict(district="新店區", address="測試路100號"), old_row],
+                                    "ntpc-mobile", SourceReport(), geocoder=g)
+    assert len(candidates) == 2 and candidates[0].to_json() == original.to_json()
+    report = SourceReport()
+    camera, = merge_sources([], candidates, report)
+    assert (camera.id, camera.lat, camera.lon, camera.heading, camera.axis) == (
+        original.id, original.lat, original.lon, original.heading, original.axis)
+    assert report.counts["ntpc-mobile"]["added"] == report.counts["ntpc-mobile"]["merged"] == 1
+
+
+@pytest.mark.parametrize("distance,heading,directed,absorbed", [
+    (149, 0, True, True), (151, 0, True, False), (149, 180, True, False),
+    (149, None, False, True),
+])
+def test_divider_hotspots_keep_the_existing_fixed_priority_radius_and_direction_rules(distance, heading, directed, absorbed):
+    from speedcam_data import additional_sources as extra
+    from speedcam_data.normalize import Camera
+    from speedcam_data.source_merge import merge_sources
+    g = geo.Geocoder([reference()], geo.RoadIndex([divided_roads()], [direction_landmark()]))
+    suffix = "(往測試橋方向)" if directed else ""
+    hotspot, = extra.adapt_mobile([dict(district="新店區", address="測試路100號" + suffix)],
+                                  "ntpc-mobile", SourceReport(), geocoder=g)
+    fixed = Camera(id="fixed", type="fixed", lat=hotspot.lat + distance / 111195,
+                   lon=hotspot.lon, heading=heading, speedLimit=50, address="既有測速")
+    report = SourceReport()
+    result = merge_sources([fixed], [hotspot], report)
+    assert {c.id for c in result} == ({"fixed"} if absorbed else {"fixed", hotspot.id})
+    assert any("固定優先" in issue for issue in report.issues) is absorbed
