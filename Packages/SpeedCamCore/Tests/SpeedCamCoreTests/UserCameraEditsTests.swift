@@ -307,14 +307,14 @@ final class UserCameraEditsTests: XCTestCase {
         XCTAssertTrue(same.events.isEmpty)
         XCTAssertEqual(same.target?.phase, .pre)
         XCTAssertEqual(same.target?.isOverspeed, true)
-        let beep = engine.process(VehicleFix(point: origin, speedMps: 20, course: 0, timestamp: t0.addingTimeInterval(3)))
+        let beep = engine.process(VehicleFix(point: origin, speedMps: 20, course: 0, timestamp: t0.addingTimeInterval(5)))
         XCTAssertEqual(beep.events, [.overspeedBeep])
         let nearPoint = GeoMath.destination(from: camera.point, bearing: 180, distance: 90)
         let near = engine.process(VehicleFix(point: nearPoint, speedMps: 20, course: 0,
-                                            timestamp: t0.addingTimeInterval(4)))
+                                            timestamp: t0.addingTimeInterval(6)))
         XCTAssertTrue(near.events.contains(where: \.isNear))
         engine.replaceIndex(SpatialIndex(cameras: [camera]), preservingState: true)
-        let tunnel = try XCTUnwrap(engine.tick(now: t0.addingTimeInterval(7)))
+        let tunnel = try XCTUnwrap(engine.tick(now: t0.addingTimeInterval(9)))
         XCTAssertEqual(tunnel.target?.phase, .near)
         XCTAssertTrue(tunnel.events.isEmpty)
     }
@@ -548,16 +548,16 @@ final class UserCameraEditsTests: XCTestCase {
         try edits.updateAdded(camera)
         XCTAssertTrue(try edits.resolveAddedAddress(id: camera.id, point: camera.point, address: "測試路1號"))
         engine.replaceIndex(SpatialIndex(cameras: edits.apply(to: [other])), preservingState: true)
-        for second in 1...3 {
+        for second in 1...5 {
             var next = initial
             next.timestamp = t0.addingTimeInterval(Double(second))
             let output = engine.process(next)
             XCTAssertEqual(output.target?.camera.id, other.id)
             XCTAssertEqual(output.target?.phase, .pre)
-            XCTAssertEqual(output.events, second == 3 ? [.overspeedBeep] : [])
+            XCTAssertEqual(output.events, second == 5 ? [.overspeedBeep] : [])
         }
-        XCTAssertEqual(engine.lastFix?.timestamp, t0.addingTimeInterval(3))
-        XCTAssertEqual(engine.tick(now: t0.addingTimeInterval(6))?.target?.camera.id, other.id)
+        XCTAssertEqual(engine.lastFix?.timestamp, t0.addingTimeInterval(5))
+        XCTAssertEqual(engine.tick(now: t0.addingTimeInterval(8))?.target?.camera.id, other.id)
         let far = GeoMath.destination(from: origin, bearing: 0, distance: 1_100)
         _ = engine.process(VehicleFix(point: far, speedMps: 20, course: 0, timestamp: t0.addingTimeInterval(60)))
         let approach = GeoMath.destination(from: origin, bearing: 180, distance: 280)

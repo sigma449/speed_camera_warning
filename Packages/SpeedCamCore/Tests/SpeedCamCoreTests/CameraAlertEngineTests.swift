@@ -725,22 +725,23 @@ final class CameraAlertEngineTests: XCTestCase {
         XCTAssertEqual(events.filter { $0.event.isPre }.count, 1)
     }
 
-    func testOverspeedBeepsEveryThreeSecondsUntilPassed() {
+    func testOverspeedBeepsEveryFiveSecondsUntilPassed() {
         let cam = camera(north: 1_000, limit: 50)
         let events = runAlerts(engine([cam]), straightTrack(from: origin, bearing: 0, speedKmh: 70, seconds: 80))
         let started = events.filter { $0.event.isOverspeedStarted }
         let beeps = events.filter { $0.event.isBeep }
         XCTAssertEqual(started.count, 1)
-        // 從 300 m 到通過約 15.4 秒 → 3、6、9、12、15 秒各一聲
-        XCTAssertTrue((4...5).contains(beeps.count), "beeps=\(beeps.count)")
+        // 從 300 m 到通過約 15.4 秒；每秒取樣可能略過邊界最後一聲。
+        XCTAssertTrue((2...3).contains(beeps.count), "beeps=\(beeps.count)")
         var last = started[0].time
         for b in beeps {
-            XCTAssertEqual(b.time - last, 3, accuracy: 0.01)
+            XCTAssertEqual(b.time - last, 5, accuracy: 0.01)
             last = b.time
         }
         XCTAssertEqual(events.filter { $0.event.isOverspeedEnded }.count, 1)
         let ended = events.first { $0.event.isOverspeedEnded }!
         let passed = events.first { $0.event.isPassed }!
+        XCTAssertEqual(beeps.map(\.time), Array(stride(from: started[0].time + 5, to: ended.time, by: 5)))
         XCTAssertLessThanOrEqual(ended.time, passed.time)
     }
 

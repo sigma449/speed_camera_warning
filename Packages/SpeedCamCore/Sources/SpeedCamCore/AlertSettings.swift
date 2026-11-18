@@ -3,7 +3,7 @@ import Foundation
 /// 提醒相關的所有可調整設定。預設值依照與使用者確認的規格：
 /// - 一般道路：預告 300 m、近距 100 m
 /// - 速限 ≥ 80 的道路（快速道路、高速公路）：預告 600 m、近距 200 m
-/// - 固定照相超速每 3 秒、區間超速每 15 秒嗶一聲
+/// - 固定照相超速每 5 秒、區間超速每 15 秒嗶一聲
 /// - 區間測速：每分鐘、最後 30 秒、最後 10 秒、歸零各提醒一次
 public struct AlertSettings: Codable, Equatable, Sendable {
     // MARK: 測速提醒距離
@@ -21,7 +21,8 @@ public struct AlertSettings: Codable, Equatable, Sendable {
     public var overspeedBeepInterval: TimeInterval = AlertSettings.defaultOverspeedBeepInterval {
         didSet { overspeedBeepInterval = Self.clampedOverspeedBeepInterval(overspeedBeepInterval) }
     }
-    public static let defaultOverspeedBeepInterval: TimeInterval = 3
+    private let overspeedBeepIntervalRevision = 2
+    public static let defaultOverspeedBeepInterval: TimeInterval = 5
     public static let overspeedBeepIntervalRange: ClosedRange<TimeInterval> = 0.5...10
 
     public static func clampedOverspeedBeepInterval(_ value: TimeInterval) -> TimeInterval {
@@ -138,6 +139,10 @@ public struct AlertSettings: Codable, Equatable, Sendable {
                 throw DecodingError.dataCorruptedError(forKey: .overspeedBeepInterval, in: c,
                     debugDescription: "嗶聲間隔須為秒數")
             }
+            overspeedBeepInterval = d.overspeedBeepInterval
+        }
+        // 舊版連未調整的預設值也會存成 3；新版靠修訂欄位保留明確選擇的 3 秒。
+        if !c.contains(.overspeedBeepIntervalRevision), overspeedBeepInterval == 3 {
             overspeedBeepInterval = d.overspeedBeepInterval
         }
         directionTolerance = try c.decodeIfPresent(Double.self, forKey: .directionTolerance) ?? d.directionTolerance

@@ -239,7 +239,7 @@ private struct OverspeedWarningSettings: View {
         } header: {
             Text("超速警示")
         } footer: {
-            Text("接近照相點時，車速超過「速限＋容許值」會依此間隔嗶聲，直到降速或通過。可調 0.5～10 秒、每 0.5 秒一格，預設 3 秒；區間超速嗶聲仍為 15 秒。")
+            Text("接近照相點時，車速超過「速限＋容許值」會依此間隔嗶聲，直到降速或通過。可調 0.5～10 秒、每 0.5 秒一格，預設 5 秒；區間超速嗶聲仍為 15 秒。間隔 1.5 秒以上只在嗶聲時壓低音樂；更短時超速期間會持續壓低。")
         }
     }
 }
@@ -256,7 +256,7 @@ struct BeepSettingsGalleryView: View {
         } else {
             scenario = ""
         }
-        let value = ["min": 0.5, "default": 3.0, "max": 10.0][scenario]
+        let value = ["min": 0.5, "default": AlertSettings.defaultOverspeedBeepInterval, "max": 10.0][scenario]
         valid = value != nil
         var sample = AlertSettings()
         if let value { sample.overspeedBeepInterval = value }

@@ -288,7 +288,7 @@ final class ToneGeneratorTests: XCTestCase {
         let duration = Double(frames) / Double(rate)
         XCTAssertEqual(duration, 0.18, accuracy: 0.00001)
         XCTAssertLessThan(duration, AlertSettings.overspeedBeepIntervalRange.lowerBound)
-        for interval in [0.5, 1, 3, 10] {
+        for interval in [0.5, 1, 1.5, 3, 5, 10] {
             let loop = ToneGenerator.repeatingOverspeedBeep(interval: interval)
             XCTAssertEqual(Double(uint32(loop, at: 40) / 2) / Double(rate), interval)
             XCTAssertEqual(uint32(loop, at: 4), loop.count - 8)
@@ -325,22 +325,22 @@ final class DatabaseTests: XCTestCase {
         for value in [Double.nan, .infinity, -.infinity] {
             var settings = AlertSettings()
             settings.overspeedBeepInterval = value
-            XCTAssertEqual(settings.overspeedBeepInterval, 3)
+            XCTAssertEqual(settings.overspeedBeepInterval, 5)
             XCTAssertNoThrow(try JSONEncoder().encode(settings))
         }
         for raw in ["NaN", "Infinity", "-Infinity"] {
             let json = #"{"overspeedBeepInterval":"\#(raw)","voiceEnabled":false}"#
             let decoded = try JSONDecoder().decode(AlertSettings.self, from: Data(json.utf8))
-            XCTAssertEqual(decoded.overspeedBeepInterval, 3)
+            XCTAssertEqual(decoded.overspeedBeepInterval, 5)
             XCTAssertFalse(decoded.voiceEnabled)
         }
         XCTAssertThrowsError(try JSONDecoder().decode(AlertSettings.self,
             from: Data(#"{"overspeedBeepInterval":"three"}"#.utf8)))
     }
 
-    func testLegacyIntegerAndNewHalfSecondIntervalsRoundTripAndDisplayUnits() throws {
+    func testRevisedIntegerAndHalfSecondIntervalsRoundTripAndDisplayUnits() throws {
         for value in [0.5] + (1...10).map(Double.init) {
-            let json = #"{"overspeedBeepInterval":\#(value)}"#
+            let json = #"{"overspeedBeepInterval":\#(value),"overspeedBeepIntervalRevision":2}"#
             let settings = try JSONDecoder().decode(AlertSettings.self, from: Data(json.utf8))
             XCTAssertEqual(settings.overspeedBeepInterval, value)
             XCTAssertEqual(try JSONDecoder().decode(AlertSettings.self,
@@ -351,7 +351,35 @@ final class DatabaseTests: XCTestCase {
         decoder.nonConformingFloatDecodingStrategy = .convertFromString(
             positiveInfinity: "Infinity", negativeInfinity: "-Infinity", nan: "NaN")
         XCTAssertEqual(try decoder.decode(AlertSettings.self,
-            from: Data(#"{"overspeedBeepInterval":"NaN"}"#.utf8)).overspeedBeepInterval, 3)
+            from: Data(#"{"overspeedBeepInterval":"NaN"}"#.utf8)).overspeedBeepInterval, 5)
+    }
+
+    func testLegacyBeepIntervalMigratesOnlyThreeSecondsAndEncodesCurrentRevision() throws {
+        for (value, expected) in [(3.0, 5.0), (4.0, 4.0), (0.5, 0.5), (10.0, 10.0), (0.2, 0.5)] {
+            let json = #"{"overspeedBeepInterval":\#(value),"voiceEnabled":false,"sectionToleranceKmh":15}"#
+            let settings = try JSONDecoder().decode(AlertSettings.self, from: Data(json.utf8))
+            XCTAssertEqual(settings.overspeedBeepInterval, expected)
+            XCTAssertFalse(settings.voiceEnabled)
+            XCTAssertEqual(settings.sectionToleranceKmh, 15)
+            let encoded = try JSONEncoder().encode(settings)
+            let fields = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+            XCTAssertEqual(fields["overspeedBeepIntervalRevision"] as? Int, 2)
+            XCTAssertEqual(try JSONDecoder().decode(AlertSettings.self, from: encoded), settings)
+        }
+        XCTAssertEqual(try JSONDecoder().decode(AlertSettings.self, from: Data("{}".utf8)).overspeedBeepInterval, 5)
+    }
+
+    func testAnyStoredBeepRevisionPreservesExplicitThreeSecondsOnRoundTrip() throws {
+        for revision in [1, 2, 99] {
+            let json = #"{"overspeedBeepInterval":3,"overspeedBeepIntervalRevision":\#(revision)}"#
+            let settings = try JSONDecoder().decode(AlertSettings.self, from: Data(json.utf8))
+            XCTAssertEqual(settings.overspeedBeepInterval, 3)
+            XCTAssertEqual(settings.overspeedBeepIntervalText, "每 3 秒")
+            let encoded = try JSONEncoder().encode(settings)
+            let fields = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+            XCTAssertEqual(fields["overspeedBeepIntervalRevision"] as? Int, 2)
+            XCTAssertEqual(try JSONDecoder().decode(AlertSettings.self, from: encoded), settings)
+        }
     }
 
     func testRetiredHotspotVoiceDistanceIsIgnoredWithoutLosingOtherSettings() throws {
@@ -435,7 +463,7 @@ final class DatabaseTests: XCTestCase {
         XCTAssertEqual(s.generalPreDistance, 350)
         XCTAssertEqual(s.vehicleMode, .motorcycleWhite)
         XCTAssertEqual(s.fastPreDistance, 600)
-        XCTAssertEqual(s.overspeedBeepInterval, 3)
+        XCTAssertEqual(s.overspeedBeepInterval, 5)
         XCTAssertEqual(s.sectionOverspeedBeepInterval, 15)
         XCTAssertEqual(s.sectionOverspeedVoiceInterval, 30)
         XCTAssertEqual(s.sectionToleranceKmh, 10)

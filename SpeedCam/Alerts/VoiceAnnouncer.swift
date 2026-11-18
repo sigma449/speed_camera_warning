@@ -17,6 +17,9 @@ final class VoiceAnnouncer: NSObject, AVSpeechSynthesizerDelegate {
     private var playbackState = SpeechPlaybackState()
     private var fixedBeepSchedule = FixedCameraBeepSchedule()
     private var fixedBeepPlayer: AVAudioPlayer?
+    private var fixedBeepPulsePlayer: AVAudioPlayer?
+    private var fixedBeepTask: Task<Void, Never>?
+    private var fixedBeepGeneration = UUID()
     private var fixedBeepExpiryTask: Task<Void, Never>?
     private var interruptionSubscription: AnyCancellable?
     private var audioInterrupted = false
@@ -77,28 +80,37 @@ final class VoiceAnnouncer: NSObject, AVSpeechSynthesizerDelegate {
             stopFixedCameraBeep()
             return
         case let .start(playback):
-            fixedBeepPlayer?.stop()
-            fixedBeepPlayer = nil
+            cancelFixedBeepPlayback()
             do {
-                let player = try AVAudioPlayer(data: ToneGenerator.repeatingOverspeedBeep(interval: playback.interval))
-                player.numberOfLoops = -1
-                player.volume = playbackState.hasCriticalSpeech ? 0 : 1
-                player.prepareToPlay()
-                guard activateSession() else {
-                    stopFixedCameraBeep()
-                    return
+                let continuous = FixedCameraBeepSchedule.keepsAudioDuckedBetweenBeeps(interval: playback.interval)
+                let data = continuous ? ToneGenerator.repeatingOverspeedBeep(interval: playback.interval)
+                    : ToneGenerator.overspeedBeep()
+                let player = try AVAudioPlayer(data: data)
+                if continuous {
+                    player.numberOfLoops = -1
+                    player.volume = playbackState.hasCriticalSpeech ? 0 : 1
+                    player.prepareToPlay()
+                    guard activateSession() else {
+                        stopFixedCameraBeep()
+                        return
+                    }
+                    let delay = max(0, playback.firstBeepAt.timeIntervalSinceNow)
+                    guard player.play(atTime: player.deviceCurrentTime + delay) else {
+                        Logger(subsystem: "tw.speedcammap.app", category: "audio")
+                            .error("固定照相嗶聲循環無法開始播放")
+                        stopFixedCameraBeep()
+                        return
+                    }
+                    fixedBeepPlayer = player
+                } else {
+                    fixedBeepPulsePlayer = player
+                    // 從循環切換時先放開舊 session；首聲若已到期，啟用會取消這份停用工作。
+                    scheduleDeactivate(after: 0.25)
+                    scheduleFixedBeepPulses(playback)
                 }
-                let delay = max(0, playback.firstBeepAt.timeIntervalSinceNow)
-                guard player.play(atTime: player.deviceCurrentTime + delay) else {
-                    Logger(subsystem: "tw.speedcammap.app", category: "audio")
-                        .error("固定照相嗶聲循環無法開始播放")
-                    stopFixedCameraBeep()
-                    return
-                }
-                fixedBeepPlayer = player
             } catch {
                 Logger(subsystem: "tw.speedcammap.app", category: "audio")
-                    .error("固定照相嗶聲循環建立失敗：\(error.localizedDescription, privacy: .public)")
+                    .error("固定照相嗶聲建立失敗：\(error.localizedDescription, privacy: .public)")
                 stopFixedCameraBeep()
                 return
             }
@@ -106,10 +118,53 @@ final class VoiceAnnouncer: NSObject, AVSpeechSynthesizerDelegate {
         if fixedBeepSchedule.expiresAt != previousExpiry { scheduleFixedBeepExpiry() }
     }
 
+    private func scheduleFixedBeepPulses(_ playback: FixedCameraBeepSchedule.Playback) {
+        let generation = fixedBeepGeneration
+        let leadTime: TimeInterval = 0.05
+        fixedBeepTask = Task { @MainActor [weak self] in
+            var nextBeepAt = playback.firstBeepAt
+            while !Task.isCancelled {
+                let wait = nextBeepAt.timeIntervalSinceNow - leadTime
+                if wait > 0 {
+                    try? await Task.sleep(nanoseconds: UInt64(ceil(wait * 1_000_000_000)))
+                }
+                guard !Task.isCancelled, let self,
+                      self.fixedBeepGeneration == generation, self.fixedBeepSchedule.playback == playback,
+                      let player = self.fixedBeepPulsePlayer else { return }
+                let now = Date()
+                if self.fixedBeepSchedule.expire(at: now) == .stop {
+                    self.stopFixedCameraBeep()
+                    return
+                }
+                // 語音略過的節拍不補播；下一聲仍對齊原網格。
+                if let expiry = self.fixedBeepSchedule.expiresAt, nextBeepAt < expiry,
+                   !self.playbackState.hasCriticalSpeech {
+                    guard self.activateSession() else {
+                        self.stopFixedCameraBeep()
+                        return
+                    }
+                    player.currentTime = 0
+                    player.prepareToPlay()
+                    let delay = max(0, nextBeepAt.timeIntervalSinceNow)
+                    guard player.play(atTime: player.deviceCurrentTime + delay) else {
+                        Logger(subsystem: "tw.speedcammap.app", category: "audio")
+                            .error("固定照相逐聲嗶聲無法開始播放")
+                        self.stopFixedCameraBeep()
+                        return
+                    }
+                    self.scheduleDeactivate(after: delay + player.duration + 0.25)
+                }
+                // 從兩聲間查下一聲，避免小數間隔累加誤差跳過網格邊界。
+                nextBeepAt = playback.nextBeep(atOrAfter:
+                    max(Date(), nextBeepAt.addingTimeInterval(playback.interval / 2)))
+            }
+        }
+    }
+
     private func scheduleFixedBeepExpiry() {
         fixedBeepExpiryTask?.cancel()
         guard let expiry = fixedBeepSchedule.expiresAt else { return }
-        // 這是定位失聯的截止鬧鐘，不是第二套嗶聲計時；實際節拍由 WAV／音訊時鐘處理。
+        // 定位失聯有獨立截止鬧鐘，不必等下一聲才停止。
         fixedBeepExpiryTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
                 let remaining = expiry.timeIntervalSinceNow
@@ -122,18 +177,28 @@ final class VoiceAnnouncer: NSObject, AVSpeechSynthesizerDelegate {
     }
 
     private func stopFixedCameraBeep() {
-        let hadPlayback = fixedBeepSchedule.playback != nil || fixedBeepPlayer != nil
+        let hadPlayback = fixedBeepSchedule.playback != nil || fixedBeepPlayer != nil || fixedBeepPulsePlayer != nil
         fixedBeepSchedule.stop()
         fixedBeepExpiryTask?.cancel()
         fixedBeepExpiryTask = nil
+        cancelFixedBeepPlayback()
+        if hadPlayback { scheduleDeactivate(after: 0.4) }
+    }
+
+    private func cancelFixedBeepPlayback() {
+        fixedBeepGeneration = UUID()
+        fixedBeepTask?.cancel()
+        fixedBeepTask = nil
         fixedBeepPlayer?.stop()
         fixedBeepPlayer = nil
-        if hadPlayback { scheduleDeactivate(after: 0.4) }
+        fixedBeepPulsePlayer?.stop()
+        fixedBeepPulsePlayer = nil
     }
 
     private func updateFixedBeepVolume() {
         // 近距／超速語音優先；略過的嗶聲不補播，也不移動下一聲節拍。
         fixedBeepPlayer?.volume = playbackState.hasCriticalSpeech ? 0 : 1
+        if playbackState.hasCriticalSpeech { fixedBeepPulsePlayer?.stop() }
     }
 
     /// 超速嗶聲。
@@ -191,13 +256,22 @@ final class VoiceAnnouncer: NSObject, AVSpeechSynthesizerDelegate {
     }
 
     private func deactivateIfIdle() {
-        guard fixedBeepSchedule.playback == nil else { return }
+        if let playback = fixedBeepSchedule.playback,
+           FixedCameraBeepSchedule.keepsAudioDuckedBetweenBeeps(interval: playback.interval),
+           fixedBeepPlayer != nil { return }
         let busy = synthesizer.isSpeaking || (beepPlayer?.isPlaying ?? false) || (passPlayer?.isPlaying ?? false)
+            || (fixedBeepPulsePlayer?.isPlaying ?? false)
         guard !busy else {
             scheduleDeactivate(after: 0.5)
             return
         }
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        do {
+            try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        } catch {
+            Logger(subsystem: "tw.speedcammap.app", category: "audio")
+                .error("音訊工作階段停用失敗：\(error.localizedDescription, privacy: .public)")
+            scheduleDeactivate(after: 0.5)
+        }
     }
 
     nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {

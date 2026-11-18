@@ -154,9 +154,9 @@ iOS 15 也走正式表單／詳情／管理元件，不退為一般啟動畫面�
 | `48-beep-interval-default-T-375.png` | `ios15-18-beep-interval-default-T-375.png` |
 | `48-beep-interval-max-T-375.png` | `ios15-18-beep-interval-max-T-375.png` |
 
-需下載真圖確認滑桿位置、即時「每0.5／3／10秒」文字、放大字無截斷，並實測 VoiceOver 數值與單位。
+需重拍上述兩版共 12 張，下載真圖確認滑桿位置、即時「每0.5／5／10秒」與逐聲壓低音樂說明、放大字無截斷，並實測 VoiceOver 數值與單位。
 截圖不證明音訊節拍；0.18 秒 WAV、10 秒內各間隔的時間點／聲數與取消／改值由 Core 測試，
-背景／CarPlay、語音讓路、音訊中斷／恢復及降速等停止延遲仍須實機聽驗。未執行該 commit 的遠端建置／看圖，不得宣稱通過。
+背景／CarPlay、≥1.5 秒逐聲恢復音量／更短間隔持續壓低、語音讓路、音訊中斷／恢復及降速等停止延遲仍須實機聽驗。未執行該 commit 的遠端建置／看圖，不得宣稱通過。
 
 base64 預設關閉，需時加 `-f print-screenshots=true`。一般用 artifact，將 `RUN_ID` 換成該次執行編號：
 

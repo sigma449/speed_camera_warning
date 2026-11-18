@@ -14,8 +14,8 @@ final class FixedCameraBeepScheduleTests: XCTestCase {
             horizontalAccuracy: accuracy, timestamp: t0.addingTimeInterval(seconds))
     }
 
-    func testTenSecondsUsesExactHalfOneThreeAndTenSecondAudioCadencesWithOneHzFixes() {
-        for interval in [0.5, 1, 3, 10] {
+    func testTenSecondsUsesExactAudioCadencesWithOneHzFixes() {
+        for (interval, count) in [(0.5, 20), (1.0, 10), (1.5, 7), (3.0, 4), (5.0, 2), (10.0, 1)] {
             var schedule = FixedCameraBeepSchedule()
             var beeps: [Double] = []
             var starts = 0
@@ -31,13 +31,49 @@ final class FixedCameraBeepScheduleTests: XCTestCase {
                 }
             }
             XCTAssertEqual(beeps, stride(from: 0.0, to: 10, by: interval).map { $0 })
-            XCTAssertEqual(beeps.count, interval == 0.5 ? 20 : interval == 1 ? 10 : interval == 3 ? 4 : 1)
+            XCTAssertEqual(beeps.count, count)
             XCTAssertEqual(starts, 1, "每秒定位只延長有效期，不可重啟音訊節拍")
             XCTAssertEqual(schedule.update(target: target(overspeed: false), fix: fix(10),
                 interval: interval, now: t0.addingTimeInterval(10)), .stop)
             for second in stride(from: 10.0, through: 12, by: 0.25) {
                 XCTAssertNil(schedule.lastBeep(at: t0.addingTimeInterval(second)))
             }
+        }
+    }
+
+    func testNextBeepKeepsGridBeforeAtAndBetweenBeepsWithoutCatchingUp() {
+        for interval in [0.5, 1, 1.5, 1.7, 3, 5, 10] {
+            let playback = FixedCameraBeepSchedule.Playback(firstBeepAt: t0, interval: interval)
+            XCTAssertEqual(playback.nextBeep(atOrAfter: t0.addingTimeInterval(-1)), t0)
+            for index in [0, 1, 3, 20] {
+                let beep = t0.addingTimeInterval(Double(index) * interval)
+                XCTAssertEqual(playback.nextBeep(atOrAfter: beep.addingTimeInterval(-0.001)), beep)
+                XCTAssertEqual(playback.nextBeep(atOrAfter: beep), beep)
+                XCTAssertEqual(playback.nextBeep(atOrAfter: beep.addingTimeInterval(0.001)),
+                    t0.addingTimeInterval(Double(index + 1) * interval))
+            }
+        }
+    }
+
+    func testNextBeepUsesChangedPlaybackGridAcrossDuckingModes() throws {
+        var schedule = FixedCameraBeepSchedule()
+        _ = schedule.update(target: target(), fix: fix(0), interval: 0.5, now: t0)
+        _ = schedule.update(target: target(), fix: fix(0.75), interval: 5, now: t0.addingTimeInterval(0.75))
+        let slower = try XCTUnwrap(schedule.playback)
+        XCTAssertEqual(slower.firstBeepAt, t0.addingTimeInterval(5.5))
+        XCTAssertEqual(slower.nextBeep(atOrAfter: t0.addingTimeInterval(1)), t0.addingTimeInterval(5.5))
+        XCTAssertEqual(slower.nextBeep(atOrAfter: t0.addingTimeInterval(5.5)), t0.addingTimeInterval(5.5))
+        XCTAssertEqual(slower.nextBeep(atOrAfter: t0.addingTimeInterval(5.6)), t0.addingTimeInterval(10.5))
+        _ = schedule.update(target: target(), fix: fix(1), interval: 1, now: t0.addingTimeInterval(1))
+        let faster = try XCTUnwrap(schedule.playback)
+        XCTAssertEqual(faster.firstBeepAt, t0.addingTimeInterval(1.5))
+        XCTAssertEqual(faster.nextBeep(atOrAfter: t0.addingTimeInterval(1)), t0.addingTimeInterval(1.5))
+        XCTAssertEqual(faster.nextBeep(atOrAfter: t0.addingTimeInterval(2)), t0.addingTimeInterval(2.5))
+    }
+
+    func testDuckingModeSwitchesAtOneAndAHalfSeconds() {
+        for (interval, continuous) in [(0.5, true), (1.0, true), (1.5, false), (5.0, false), (10.0, false)] {
+            XCTAssertEqual(FixedCameraBeepSchedule.keepsAudioDuckedBetweenBeeps(interval: interval), continuous)
         }
     }
 

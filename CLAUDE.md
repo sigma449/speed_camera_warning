@@ -18,10 +18,10 @@ CarPlay 畫地圖須逐向導航、一App一類。iOS26 Live Activity免 entitle
 
 - **兩段提醒**：每段一次；一般預告 300 m／近距 100 m，照相點速限 ≥80 時為 600 m／200 m。依法規設置距離，不用使用者認為太遠的 1,000 m。
 - **近距語音**：已預告且同目標當下超速念「100公尺，超速」，未超速只念「100公尺」；高速用實際設定的「200公尺」，太近念實距。讀目前狀態，不依賴同秒開始事件；合句不另播超速。首次已在近距內仍保留完整句與既有超速語音，此分支待使用者決定。
-- **超速警示**：接近照相點時預設每 3 秒嗶一次，設定滑桿可調 0.5～10 秒、每 0.5 秒一格，標題即時顯示「每 N 秒」。App 單一音訊循環（原音 0.18 秒）維持半秒節拍，不再另播相機 Core 的嗶聲事件；降速／通過／隱藏修改／停巡航立即停，可靠定位失聯 2.5 秒停止循環、不靠隧道舊車速嗶。近距／超速語音優先、不補嗶；區間15／30秒、失聯10秒超速顯示及Live Activity不變。舊值夾0.5～10、非有限值回3；一般照相超速容許值預設0。背景音訊／CarPlay與持續duck仍待實機。
+- **超速警示**：接近照相點預設每5秒嗶一次；滑桿0.5～10秒、每0.5一格，標題即時「每 N 秒」。App間隔≥1.5秒以0.18秒逐聲對準音訊時鐘，只在嗶時duck；<1.5秒用單一WAV循環持續duck，不另播相機Core嗶聲。降速／通過／隱藏修改／停巡航立即停，可靠定位失聯2.5秒停、不用隧道舊車速嗶；近距／超速語音優先、不補嗶。舊存值缺修訂欄位且為3→5，其餘夾0.5～10、非有限值回5；一般容許值預設0。區間15／30秒、失聯10秒超速顯示及Live Activity不變；背景音訊／CarPlay與逐聲duck實際聽感仍待實機。
 - **多來源與新提醒類型（第二階段 D，第 13 項已核准）**：接受官方與 OSM，不碰商業私庫；使用者回報先不做。
   - `mobile`＝「常見移動測速」，橫幅補「公告熱點・非即時執法」；`noise`＝「聲音照相」；`tech`＝「路口科技執法」，保留取締項目與適用條件。
-  - 熱點、聲音與其他非測速只預告一次，沒有近距／超速嗶聲。科技明列「超速／測速」走兩段；僅可靠一般速限可嗶，未知／條件速限只提醒；原測速距離、預設3秒嗶聲及區間規格不變。
+  - 熱點、聲音與其他非測速只預告一次，沒有近距／超速嗶聲。科技明列「超速／測速」走兩段；僅可靠一般速限可嗶，未知／條件速限只提醒；原測速距離、預設5秒嗶聲及區間規格不變。
   - **闖紅燈近距（2026-11-16）**：`redLight`／項目明列闖紅燈的 `tech` 共用原兩段距離／語音／合句／隧道 `tick`；未知速限依當下車速選門檻。已預告只念距離，首次近距完整念類型／項目；手機、Live Activity及300 m內 `navHint` 優先不變。
     共用 `enforcementItemList`，切分後含完整「闖紅燈」即算，含「闖紅燈及路口淨空」／括號內；不推定紅燈右轉／越線／泛稱號誌，不看地址／條件。純停車不報，混合闖紅燈兩段；`mobile`／`noise`不隨文字升級。
     兩段非測速；超速判斷／語音／嗶聲仍只由 `enforcesSpeed` 控制，語意不變；純闖紅燈不新增超速，`redLightSpeed`／測速科技不變。
@@ -49,7 +49,7 @@ CarPlay 畫地圖須逐向導航、一App一類。iOS26 Live Activity免 entitle
 - **區間測速倒數**：顯示到終點尚需秒數；每分鐘語音、最後 30／10 秒各一次、歸零提醒；最短時間另加 3% 安全餘裕。
 - **區間容許值**：預設 +10（北宜 40→50），0～+20、每 5 一格；「個別區間設定」可多選，同段雙向共用 `SpeedSection.groupID`（去 `-f`／`-r`）。倒數、區間超速及區間相機前嗶聲同門檻。
   **A06 重算**：途中改容許值／安全餘裕，立即依原起始時間重算；下次核心輸出的倒數、建議時速、門檻、歸零狀態一致，不重設超速冷卻。最短時間變長可恢復倒數並再歸零一次；提高容許值只縮短時間，不反轉公式。
-- **區間超速節流**：`sectionOverspeedBeepInterval` 預設 15 秒、`sectionOverspeedVoiceInterval` 預設 30 秒，49／51 km/h 抖動不重設冷卻。歸零清區間超速、不再發區間語音／嗶聲；App／Live Activity 共用 `SectionStatus.isOverspeed`。固定相機預設3秒、可調0.5～10秒，不受歸零影響；容許值／3% 不變，歸零非准許超過道路速限。不新增區間設定頁控制項。
+- **區間超速節流**：`sectionOverspeedBeepInterval` 預設 15 秒、`sectionOverspeedVoiceInterval` 預設 30 秒，49／51 km/h 抖動不重設冷卻。歸零清區間超速、不再發區間語音／嗶聲；App／Live Activity 共用 `SectionStatus.isOverspeed`。固定相機預設5秒、可調0.5～10秒，不受歸零影響；容許值／3% 不變，歸零非准許超過道路速限。不新增區間設定頁控制項。
 - **區間建議時速**：剩餘距離÷剩餘最短秒數（速限＋容許值、含安全餘裕），上限速限＋容許值、無條件捨去。手機橫幅大字、超過變橘，每分鐘倒數一起念；Live Activity「建議≤N・均速 M」，170 pt 放不下用「≤N・均 M」。
 - **北宜公路（台9線）**：4 段雙向、表定 40；19–23.1K、26.2–32.2K、33.3–37.2K、56.6–68.6K。前三段用 126156 方向別官方門架／公告長度，保留 `beiyi-N-f/r`／`groupID`／容許值；第 4 段不在該來源，留里程牌端點並列缺口。接路形前裁掉門架外點，不可往回接線造成反向。
 - **車種**：汽車／紅黃牌／白牌（`VehicleMode`），舊 `motorcycle` 對應白牌不變，規則在 `RouteRules`。
@@ -117,7 +117,7 @@ CarPlay 畫地圖須逐向導航、一App一類。iOS26 Live Activity免 entitle
 - `-galleryTypes mobile|tech|noise`：三類CarPlay三尺寸／鎖屏／動態島，加 `-galleryBanners -galleryWidth 375` 看手機詳情；`-galleryLock` 鎖屏／動態島（外框示意）；`-galleryStale` 過期三尺寸，可加Lock；`-galleryPlaces` 375 pt長名稱／地址及反查中／失敗，可加Bottom。
 - `-galleryUserCameras place|fixed|fixed-current|redLight|redLight-current|both|official|added|modified|settings|empty`：375pt選點／表單／詳情／管理，15也可用；純記憶體假資料，不碰個人編輯檔。`-galleryBottom`看表單備註／詳情底部／隱藏清單，settings加`-galleryMiddle`看修改清單；完整截圖含兩種字級。
 - `-galleryUserCameras quick-button|quick-confirmation|quick-navigation|quick-camera|quick-section|unset|unset-edit`：行車按鈕／確認卡（含導航、照相、區間同屏）／速限未設詳情與修改表單；375pt、一般／放大字、iOS15也拍。確認卡示例固定顯示、不啟動定位／反查或倒數，不代表手勢／實播驗收。
-- `-galleryBeepInterval min|default|max`：正式嗶聲滑桿的0.5／3／10秒純記憶體設定示例，375pt一般／放大字，iOS15也拍，不讀寫個人偏好。
+- `-galleryBeepInterval min|default|max`：正式嗶聲滑桿的0.5／5／10秒純記憶體設定示例，375pt一般／放大字，iOS15也拍，不讀寫個人偏好。
 - `-search 文字`／`-typeSearch 文字`：搜尋／約45秒輸刪；`-settings` 設定；`-vehicleMode car|motorcycleRedYellow|motorcycleWhite` 車種覆寫不儲存。
 - `-mapCenter 緯度,經度 -mapSpan 度數` 範圍；`-previewTo 緯度,經度,名稱` 預覽；`-selectPlace 緯度,經度,名稱` 正式選點反查、不預覽，與previewTo並用則預覽優先。
 - `-routeLineStyle current|whiteCasing|darkCasing -mapEmphasis current|muted` 內部樣式不存。

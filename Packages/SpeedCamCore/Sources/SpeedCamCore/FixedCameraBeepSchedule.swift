@@ -1,10 +1,25 @@
 import Foundation
 
-/// App 的音訊循環只依這份節拍排程；Core 的定位事件仍保留供語音、Live Activity 與 replay 使用。
+/// App 的嗶聲只依這份節拍排程；Core 的定位事件仍保留供語音、Live Activity 與 replay 使用。
 public struct FixedCameraBeepSchedule: Sendable {
+    // 空檔太短時 iOS 來不及恢復音量，逐聲切換會讓音樂忽大忽小。
+    private static let minimumIntervalForPerBeepDucking: TimeInterval = 1.5
+
+    public static func keepsAudioDuckedBetweenBeeps(interval: TimeInterval) -> Bool {
+        interval < minimumIntervalForPerBeepDucking
+    }
+
     public struct Playback: Equatable, Sendable {
         public let firstBeepAt: Date
         public let interval: TimeInterval
+
+        public func nextBeep(atOrAfter now: Date) -> Date {
+            let elapsed = now.timeIntervalSince(firstBeepAt)
+            guard elapsed > 0 else { return firstBeepAt }
+            let index = floor(elapsed / interval)
+            let candidate = firstBeepAt.addingTimeInterval(index * interval)
+            return candidate >= now ? candidate : firstBeepAt.addingTimeInterval((index + 1) * interval)
+        }
 
         public func lastBeep(at now: Date) -> Date? {
             let elapsed = now.timeIntervalSince(firstBeepAt)
