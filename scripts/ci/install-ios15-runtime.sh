@@ -34,9 +34,12 @@ sudo installer -pkg "${WORK}/fixed.pkg" -target /
 hdiutil detach "${MOUNT}" -quiet || true
 
 # CoreSimulator 要一點時間才會發現新的版本
+# pipefail 下不用「| grep -q」：grep 提早結束會讓 simctl 收到 SIGPIPE 而誤判失敗，先存再比
 for _ in $(seq 1 30); do
-  if xcrun simctl list runtimes | grep -q "iOS 15.5"; then break; fi
+  runtimes=$(xcrun simctl list runtimes || true)   # CoreSimulator 還在載入時可能暫時失敗，繼續等
+  if [[ "${runtimes}" == *"iOS 15.5"* ]]; then break; fi
   sleep 5
 done
-xcrun simctl list runtimes
-xcrun simctl list runtimes | grep -q "iOS 15.5" || { echo "::error::安裝後找不到 iOS 15.5 模擬器"; exit 1; }
+runtimes=$(xcrun simctl list runtimes)
+echo "${runtimes}"
+[[ "${runtimes}" == *"iOS 15.5"* ]] || { echo "::error::安裝後找不到 iOS 15.5 模擬器"; exit 1; }

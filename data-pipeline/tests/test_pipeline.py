@@ -2,6 +2,7 @@ import datetime as dt
 import json
 import os
 import sys
+import urllib.parse
 
 import pytest
 
@@ -40,6 +41,10 @@ def fixture(name):
     ("北", 0),
     ("雙向", None), ("往返", None), ("東向西、西向東", None),
     ("", None), (None, None), ("往市區", None),
+    # 道路軸向（雙向）不能拆成單一行向：舊版「東西向」→270、「南北向」→0，反方向漏報
+    ("南北向", None), ("東西向", None), ("北南向", None), ("西東向", None), ("往南北", None),
+    # 斜向的單一行向不受影響
+    ("西北向東南", 135), ("往西北", 315), ("東南向", 135),
 ])
 def test_parse_direction(text, expected):
     assert parse_direction(text) == expected
@@ -48,6 +53,7 @@ def test_parse_direction(text, expected):
 @pytest.mark.parametrize("text,expected", [
     ("南北雙向", 0), ("南北雙向(區間測速)", 0), ("南北", 0), ("北南雙向", 0),
     ("東西雙向", 90), ("東西雙向（區間測速）", 90),
+    ("南北向", 0), ("北南向", 0), ("東西向", 90), ("西東向", 90),
     ("雙向", None), ("往大溪方向", None), ("", None), (None, None),
 ])
 def test_parse_axis(text, expected):
@@ -100,12 +106,26 @@ def test_coordinates_swap_and_reject():
     ("科技執法(不停讓行人)", "", "tech"),
     ("", "國道5號雪山隧道區間測速", "section"),
     (None, "信義路", "fixed"),
+    # 高雄固定桿表的「違左」是違規左轉，不是測速照相
+    ("違左", "高雄市三民區建國路", "tech"), ("超速、違左", "", "tech"), ("違規右轉", "", "tech"),
+    # 地址寫「左轉」不能把測速照相改成科技執法
+    ("超速", "建國路左轉民族路口", "fixed"), (None, "往左轉道", "fixed"),
 ])
 def test_detect_type(kind, address, expected):
     assert detect_type(kind, address) == expected
 
 
 # ---------------------------------------------------------------- 整體流程
+def test_axis_text_rows_alert_both_directions_and_keep_one_way_text_directional():
+    def camera(direct):
+        row = {"Address": "中山路", "Latitude": "22.63", "Longitude": "120.30", "direct": direct, "limit": "50"}
+        return normalize_rows([row])[0]
+
+    assert (camera("東西向").heading, camera("東西向").axis) == (None, 90)
+    assert (camera("南北向").heading, camera("南北向").axis) == (None, 0)
+    assert (camera("東向西").heading, camera("東向西").axis) == (270, None)
+
+
 def test_national_csv_normalization():
     rows = sources.read_local_rows([fixture("national_sample.csv")])
     cams = normalize_rows(rows)
@@ -363,11 +383,33 @@ def test_ssl_context_keeps_verification_but_not_strict_mode():
         assert not (ctx.verify_flags & strict)
 
 
+def test_download_urls_with_chinese_names_are_percent_encoded_before_request():
+    import http.client
+    from speedcam_data import additional_sources
+
+    raw = ("https://www.tgos.tw/tgos/VirtualDir/Product/c2dd3a68-cafc-48fc-8a4a-7215ddc24cd3/"
+           "1150720-國道公路固定式測速照相地點.zip")
+    encoded = sources.ascii_url(raw)
+    assert encoded.isascii() and encoded.endswith(
+        "1150720-%E5%9C%8B%E9%81%93%E5%85%AC%E8%B7%AF%E5%9B%BA%E5%AE%9A%E5%BC%8F%E6%B8%AC%E9%80%9F%E7%85%A7%E7%9B%B8%E5%9C%B0%E9%BB%9E.zip")
+    # 舊版直接送出中文網址，http.client 在連線前就會丟 UnicodeEncodeError，只能退回舊快照
+    with pytest.raises(UnicodeEncodeError):
+        http.client.HTTPSConnection("www.tgos.tw").putrequest("GET", "/x/國道.zip")
+    path = urllib.parse.urlsplit(sources.ascii_url("https://www.tgos.tw/x/國道.zip")).path
+    http.client.HTTPSConnection("www.tgos.tw").putrequest("GET", path)
+    assert sources.ascii_url("https://example.gov.tw/search?q=測速 照相&page=2") == \
+        "https://example.gov.tw/search?q=%E6%B8%AC%E9%80%9F%20%E7%85%A7%E7%9B%B8&page=2"
+    # 已編碼或純 ASCII 的網址原樣保留（不重複編碼 %2b、%3d）
+    for url in [additional_sources.TP_NOISE_URL, additional_sources.DOULIU_URL, additional_sources.NTPC_MOBILE_URL,
+                sources.NTPC_SECTION_URL, *sources.FALLBACK_URLS,
+                *(source.url for source in additional_sources.OFFICIAL_SOURCES)]:
+        assert sources.ascii_url(url) == url
+        assert sources.ascii_url(sources.ascii_url(raw)) == encoded
+
+
 # ---------------------------------------------------------------- 里程牌與區間
 from speedcam_data import mileposts  # noqa: E402
 from speedcam_data.sections import load_sections, needs_mileposts  # noqa: E402
-
-MILEPOST_HEADER = "公路編號,起點樁號,牌面內容,TWD97X,TWD97Y,WGS84X,WGS84Y"
 
 
 def _milepost_rows(start_km=0.0, end_km=80.0, step=0.1, road="台9"):

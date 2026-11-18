@@ -32,13 +32,20 @@ struct CameraBanner: View {
             CameraIndicator(limit: target.camera.enforcesSpeed ? target.camera.speedLimit : nil,
                             symbol: target.camera.symbolName, size: BannerLayout.iconSize)
             VStack(alignment: .leading, spacing: 2) {
-                Text(AnnouncementFormatter.displayDistance(target.distance))
-                    .font(BannerLayout.primaryFont)
-                    .monospacedDigit()
-                    .foregroundStyle(target.isOverspeed ? Color.white : Color.yellow)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                    .frame(minHeight: BannerLayout.primaryLineHeight, alignment: .leading)
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(AnnouncementFormatter.displayDistance(target.distance))
+                        .font(BannerLayout.primaryFont)
+                        .monospacedDigit()
+                        .foregroundStyle(target.isOverspeed ? Color.white : Color.yellow)
+                    if target.isOverspeed {
+                        // 超速不能只靠紅底：色弱、強光或瞄一眼時也要看得懂
+                        Text("超速！")
+                            .font(.system(size: 30, weight: .heavy, design: .rounded))
+                    }
+                }
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .frame(minHeight: BannerLayout.primaryLineHeight, alignment: .leading)
                 HStack(spacing: 6) {
                     Label(target.camera.type.displayName, systemImage: target.camera.symbolName)
                         .font(.headline)
@@ -202,7 +209,12 @@ struct MessageBanner: View {
         HStack {
             Text(text).font(.subheadline)
             Spacer()
-            Button(action: onClose) { Image(systemName: "xmark.circle.fill") }
+            Button(action: onClose) {
+                Image(systemName: "xmark.circle.fill")
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
+            }
+            .accessibilityLabel("關閉訊息")
         }
         .padding(12)
         .background(BannerStyle.caution, in: RoundedRectangle(cornerRadius: 14))

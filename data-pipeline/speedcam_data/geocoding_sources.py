@@ -149,7 +149,7 @@ def collect_reference_rows(rows, spec: dict, wanted: dict, areas: dict) -> tuple
 
 
 def _fetch_references(spec, wanted, areas):
-    request = urllib.request.Request(spec["url"], headers={"User-Agent": sources.USER_AGENT})
+    request = urllib.request.Request(sources.ascii_url(spec["url"]), headers={"User-Agent": sources.USER_AGENT})
     with urllib.request.urlopen(request, timeout=30, context=sources.ssl_context()) as response:
         digest = hashlib.sha256()
 

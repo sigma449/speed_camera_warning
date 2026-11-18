@@ -2,8 +2,13 @@ import Foundation
 
 public struct UserCameraEditsFile {
     public let url: URL
+    private let read: (URL) throws -> Data
 
-    public init(url: URL) { self.url = url }
+    /// read 只給測試模擬「檔案在但讀不到」（例如重開機後尚未解鎖、資料保護中）。
+    public init(url: URL, read: @escaping (URL) throws -> Data = { try Data(contentsOf: $0) }) {
+        self.url = url
+        self.read = read
+    }
 
     public struct LoadResult {
         public let edits: UserCameraEdits
@@ -12,12 +17,18 @@ public struct UserCameraEditsFile {
     }
 
     public func load() throws -> LoadResult {
+        let data: Data
         do {
-            let edits = try JSONDecoder().decode(UserCameraEdits.self, from: Data(contentsOf: url))
-            try edits.validate()
-            return LoadResult(edits: edits, warning: nil, preservedURL: nil)
+            data = try read(url)
         } catch let error as CocoaError where error.code == .fileReadNoSuchFile {
             return LoadResult(edits: UserCameraEdits(), warning: nil, preservedURL: nil)
+        }
+        // 讀不到（權限、資料保護、暫時性 I/O）不是壞檔：上面直接丟出，App 會暫停編輯，
+        // 不改名也不覆蓋；只有讀到內容卻無法解碼或驗證時，才把原檔改名保留。
+        do {
+            let edits = try JSONDecoder().decode(UserCameraEdits.self, from: data)
+            try edits.validate()
+            return LoadResult(edits: edits, warning: nil, preservedURL: nil)
         } catch {
             let preserved = url.deletingLastPathComponent()
                 .appendingPathComponent("userCameraEdits.v1.corrupt-\(UUID().uuidString).json")

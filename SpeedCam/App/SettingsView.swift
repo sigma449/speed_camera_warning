@@ -7,6 +7,7 @@ struct SettingsView: View {
     @AppStorage(AppPreferences.autoStartCruiseKey) private var autoStartCruise = true
     @State private var mapLanguage = MapLanguage.selected
     @State private var showRestartNotice = false
+    @State private var confirmReset = false
 
     /// 改了語言但還沒重新開啟 App。
     private var languagePending: Bool { mapLanguage != MapLanguage.atLaunch }
@@ -160,7 +161,7 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Button("恢復預設值", role: .destructive) { model.resetSettings() }
+                    Button("恢復預設值", role: .destructive) { confirmReset = true }
                 }
             }
             .navigationTitle("設定")
@@ -168,6 +169,12 @@ struct SettingsView: View {
             .onChange(of: mapLanguage) { newValue in
                 MapLanguage.select(newValue)
                 showRestartNotice = languagePending
+            }
+            .confirmationDialog("恢復提醒設定的預設值？", isPresented: $confirmReset, titleVisibility: .visible) {
+                Button("恢復預設值", role: .destructive) { model.resetSettings() }
+                Button("取消", role: .cancel) {}
+            } message: {
+                Text("提醒類型、提醒距離、超速警示、區間設定（含個別區間容許值）、聲音與 Live Activity 開關都會改回預設；車種、語言、自動巡航和我的照相點不變。")
             }
             .alert("要現在重新開啟 App 嗎？", isPresented: $showRestartNotice) {
                 Button("立即重新開啟") { restartForLanguage() }

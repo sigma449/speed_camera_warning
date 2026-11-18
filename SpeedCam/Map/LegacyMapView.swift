@@ -146,7 +146,8 @@ struct LegacyMapView: UIViewRepresentable {
             for camera in parent.cameras { wanted[camera.id] = camera }
 
             var removed: [MKAnnotation] = []
-            for (id, annotation) in cameraAnnotations where wanted[id] == nil {
+            // 同一個 id 但內容變了（自行修改方向、類型）也要換新標記，箭頭和顏色才會更新
+            for (id, annotation) in cameraAnnotations where wanted[id] != annotation.camera {
                 removed.append(annotation)
                 cameraAnnotations[id] = nil
             }

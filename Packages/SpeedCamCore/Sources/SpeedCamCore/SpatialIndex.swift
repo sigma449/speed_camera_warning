@@ -48,6 +48,9 @@ public struct SpatialIndex: Sendable {
     /// 找出矩形範圍內的照相點（地圖畫面用）。
     public func cameras(minLat: Double, maxLat: Double, minLon: Double, maxLon: Double,
                         limit: Int = .max) -> [Camera] {
+        // 地圖範圍可能還沒算好（NaN）或上下界顛倒：Int(NaN) 和 lo...hi 都會直接閃退
+        guard [minLat, maxLat, minLon, maxLon].allSatisfy(\.isFinite),
+              minLat <= maxLat, minLon <= maxLon else { return [] }
         let lo = Self.key(lat: minLat, lon: minLon, cellSize: cellSize)
         let hi = Self.key(lat: maxLat, lon: maxLon, cellSize: cellSize)
         // 畫面縮得太小時避免掃描過多格子：直接回傳空陣列，由 UI 提示「請放大地圖」。

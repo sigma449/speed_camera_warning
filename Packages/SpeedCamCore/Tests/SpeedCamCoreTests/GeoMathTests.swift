@@ -77,4 +77,15 @@ final class SpatialIndexTests: XCTestCase {
         let limited = index.cameras(minLat: 24.9, maxLat: 25.2, minLon: 121.4, maxLon: 121.7, limit: 10)
         XCTAssertEqual(limited.count, 10)
     }
+
+    func testBoxQueryRejectsUnsettledOrInvertedMapRegionsInsteadOfCrashing() {
+        let index = SpatialIndex(cameras: [Camera(id: "a", type: .fixed, lat: origin.lat, lon: origin.lon)])
+        // 地圖剛建立時範圍可能是 NaN；兩軸都顛倒時舊版會走到 lo...hi 而閃退
+        XCTAssertEqual(index.cameras(minLat: .nan, maxLat: 25.2, minLon: 121.4, maxLon: 121.7), [])
+        XCTAssertEqual(index.cameras(minLat: 24.9, maxLat: 25.2, minLon: -.infinity, maxLon: 121.7), [])
+        XCTAssertEqual(index.cameras(minLat: 25.2, maxLat: 24.9, minLon: 121.7, maxLon: 121.4), [])
+        XCTAssertTrue(index.cameras(near: GeoPoint(lat: .nan, lon: 121.5), radius: 800).isEmpty)
+        XCTAssertEqual(index.cameras(minLat: origin.lat, maxLat: origin.lat, minLon: origin.lon, maxLon: origin.lon)
+            .map(\.id), ["a"])
+    }
 }

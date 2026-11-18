@@ -168,6 +168,9 @@ shot "31-banners-navigation-zero-390"
 launch_app -autoStartCruise NO -gallery -galleryBanners -galleryBannerPair rerouting -galleryWidth 390
 sleep 8
 shot "32-banners-rerouting-camera-390"
+launch_app -autoStartCruise NO -gallery -galleryBanners -galleryBannerPair overspeed -galleryWidth 375
+sleep 8
+shot "49-banners-navigation-overspeed-375"
 xcrun simctl ui "${UDID}" content_size accessibility-large || echo "::warning::無法切換放大文字"
 launch_app -autoStartCruise NO -gallery -galleryBanners -galleryBannerPair camera -galleryWidth 375
 sleep 8
@@ -175,6 +178,9 @@ shot "33-banners-navigation-camera-large-text-375"
 launch_app -autoStartCruise NO -gallery -galleryBanners -galleryBannerPair section -galleryWidth 375
 sleep 8
 shot "34-banners-navigation-section-large-text-375"
+launch_app -autoStartCruise NO -gallery -galleryBanners -galleryBannerPair overspeed -galleryWidth 375
+sleep 8
+shot "50-banners-navigation-overspeed-large-text-375"
 xcrun simctl ui "${UDID}" content_size large || echo "::warning::無法還原文字大小"
 fi
 

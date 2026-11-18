@@ -465,6 +465,25 @@ def test_kaohsiung_header_change_or_truncation_is_rejected_and_turns_are_not_gue
     assert all(c.speedLimit is None for c in cameras) and any("轉向行向" in issue for issue in report.issues)
 
 
+def test_kaohsiung_axis_directions_and_left_turn_items_follow_the_source_semantics():
+    rows = sources.parse_payload((extra.SNAPSHOTS / "176549.raw").read_bytes())
+    cameras = {c.id: c for c in extra.adapt_176549(rows, SourceReport())}
+    # 原檔單向寫「北向南」；「東西向」「南北向」是雙向軸向，舊版只提醒往西／往北
+    assert (cameras["176549-185"].heading, cameras["176549-185"].axis) == (None, 90)
+    assert (cameras["176549-229"].heading, cameras["176549-229"].axis) == (None, 0)
+    assert all(c.enforces_speed for c in (cameras["176549-185"], cameras["176549-229"]))
+    one_way = [r for r in rows if r.get("Column3") == "北向南"]
+    assert one_way and all(cameras[f"176549-{next(v for k, v in r.items() if '固定桿照相設備' in k)}"].heading == 180
+                           for r in one_way)
+    left_turn = [c for c in cameras.values() if c.enforcementItems == "違左"]
+    assert len(left_turn) == 3
+    assert all(c.type == "tech" and not c.enforces_speed for c in left_turn)
+    rows = sources.parse_payload((extra.SNAPSHOTS / "176558.raw").read_bytes())
+    axes = {c.id: (c.heading, c.axis) for c in extra.adapt_176558(rows, SourceReport())}
+    assert axes["176558-7"] == axes["176558-10"] == (None, 90)
+    assert axes["176558-8"] == axes["176558-9"] == (None, 0)
+
+
 def test_taipei_parking_is_retained_and_known_tunnel_sections_are_not_made_into_new_points():
     rows = sources.parse_payload((extra.SNAPSHOTS / "135957.raw").read_bytes())
     report = SourceReport()

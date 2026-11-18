@@ -22,6 +22,8 @@ final class SearchCompleter: NSObject, ObservableObject, MKLocalSearchCompleterD
     @Published private(set) var failed = false
 
     private let completer = MKLocalSearchCompleter()
+    /// 目前要查的文字；清空或改字之後，晚到的舊候選不能再填回畫面。
+    private var currentFragment = ""
 
     override init() {
         super.init()
@@ -35,6 +37,7 @@ final class SearchCompleter: NSObject, ObservableObject, MKLocalSearchCompleterD
             completer.region = MKCoordinateRegion(center: center, latitudinalMeters: 50_000, longitudinalMeters: 50_000)
         }
         let text = query.trimmingCharacters(in: .whitespaces)
+        currentFragment = text
         if text.isEmpty {
             completer.cancel()
             suggestions = []
@@ -46,6 +49,7 @@ final class SearchCompleter: NSObject, ObservableObject, MKLocalSearchCompleterD
 
     nonisolated func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
         Task { @MainActor in
+            guard !self.currentFragment.isEmpty, completer.queryFragment == self.currentFragment else { return }
             var seen = Set<String>()
             self.suggestions = completer.results.enumerated().map { index, c in
                 var id = "\(c.title)|\(c.subtitle)"
@@ -60,6 +64,7 @@ final class SearchCompleter: NSObject, ObservableObject, MKLocalSearchCompleterD
 
     nonisolated func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
         Task { @MainActor in
+            guard !self.currentFragment.isEmpty else { return }
             self.failed = true
         }
     }

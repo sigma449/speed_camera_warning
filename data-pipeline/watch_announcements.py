@@ -22,7 +22,7 @@ import urllib.request
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 from speedcam_data.geocoding import normalize_address, parse_address, without_place
-from speedcam_data.sources import decode_text, ssl_context
+from speedcam_data.sources import ascii_url, decode_text, ssl_context
 
 USER_AGENT = "announcement-watch/1.0"
 VOID_TAGS = frozenset(("area", "base", "br", "col", "embed", "hr", "img", "input",
@@ -322,7 +322,8 @@ class HttpClient:
         self.requests.append(record)
         self.last_request = time.monotonic()
         data = urlencode(fields).encode() if fields is not None else None
-        request = urllib.request.Request(url, data=data, headers={"User-Agent": USER_AGENT, "Accept": "text/html"})
+        request = urllib.request.Request(ascii_url(url), data=data,
+                                         headers={"User-Agent": USER_AGENT, "Accept": "text/html"})
         try:
             with self.opener.open(request, timeout=self.options["timeout"]) as response:
                 raw = response.read(2_000_001)

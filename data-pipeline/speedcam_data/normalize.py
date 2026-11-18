@@ -85,6 +85,10 @@ def parse_coordinates(lat_raw: Optional[str], lon_raw: Optional[str]) -> Optiona
 COMPASS = {"北": 0, "東北": 45, "東": 90, "東南": 135, "南": 180, "西南": 225, "西": 270, "西北": 315}
 _C = "(東北|東南|西北|西南|東|西|南|北)"
 _BOTH_WORDS = ("雙向", "往返", "雙方向", "兩向", "全向")
+# 「南北向」「東西向」「北南向」「西東向」說的是道路軸向，不是單一行向：
+# 高雄固定桿表的單向寫法是「北向南」「西向東」，同一張表另有這種軸向寫法，
+# 舊版把「東西向」拆成「西向」而只提醒往西的車，往東的車會漏報。
+_AXIS_PAIR = re.compile("南北|北南|東西|西東")
 
 
 def parse_direction(text: Optional[str]) -> Optional[float]:
@@ -108,6 +112,8 @@ def parse_direction(text: Optional[str]) -> Optional[float]:
         return None
     if pairs:
         return float(COMPASS[pairs[0][1]])
+    if _AXIS_PAIR.search(s):                         # 南北向、東西向：雙向，軸向交給 parse_axis
+        return None
 
     m = re.search("(?:往|向|朝)" + _C, s)          # 往北、向南
     if m:
@@ -148,6 +154,11 @@ def parse_limit(text: Optional[str]) -> Optional[int]:
     return min(nums) if nums else None
 
 
+# 取締項目裡的轉彎違規縮寫（高雄固定桿表寫「違左」）。只看取締項目欄，
+# 地址常寫「某路左轉某路口」，不能因此把測速照相改成科技執法。
+_TURN_ITEMS = re.compile("違[左右]|違規[左右]轉|禁止[左右]轉|違規迴轉")
+
+
 def detect_type(kind: Optional[str], address: Optional[str], direction: Optional[str] = None) -> str:
     # 方向欄位有時也會註明「(區間測速)」「(超速闖紅燈)」，一併納入判斷。
     text = f"{kind or ''} {address or ''} {direction or ''}"
@@ -157,7 +168,8 @@ def detect_type(kind: Optional[str], address: Optional[str], direction: Optional
         return "redLightSpeed"
     if "闖紅燈" in text:
         return "redLight"
-    if any(w in text for w in ("科技執法", "不停讓", "違規轉彎", "違規停車", "未依標誌")):
+    if any(w in text for w in ("科技執法", "不停讓", "違規轉彎", "違規停車", "未依標誌")) \
+            or _TURN_ITEMS.search(kind or ""):
         return "tech"
     if "流動" in text:
         return "mobile"

@@ -169,13 +169,6 @@ public final class RouteProgressTracker {
         return RouteProgressResult(events: events, progress: progress)
     }
 
-    /// 重新規劃後若仍要沿用同一個 tracker 物件，可呼叫此方法清除播報狀態。
-    public func resetAnnouncements() {
-        announced.removeAll()
-        offRouteSince = nil
-        lastOffRouteEvent = nil
-    }
-
     // MARK: - 內部
 
     /// 回傳目前是不是已經判定偏離路線。

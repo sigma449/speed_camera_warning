@@ -76,7 +76,9 @@ struct BannerGalleryView: View {
 
     @ViewBuilder
     private func pairedExamples(_ pair: String) -> some View {
-        label(pair == "rerouting" ? "重新規劃＋照相" : "導航＋\(pair == "camera" ? "照相" : "區間")")
+        label(pair == "rerouting" ? "重新規劃＋照相"
+              : pair == "overspeed" ? "導航＋照相超速（最長類型＋高架）"
+              : "導航＋\(pair == "camera" ? "照相" : "區間")")
         NavigationBanner(progress: RouteProgress(nextStepIndex: 1,
             nextInstruction: "靠左行駛上建國南北快速道路，朝景美、木柵前進",
             distanceToNextManeuver: 1_250, distanceRemaining: 17_300,
@@ -85,6 +87,8 @@ struct BannerGalleryView: View {
         if pair == "section" || pair == "zero" {
             SectionBanner(status: status(remaining: pair == "zero" ? 0 : 615,
                 meters: 12_300, average: 72, suggested: 55), currentSpeed: 62)
+        } else if pair == "overspeed" {
+            CameraBanner(target: CameraTarget(camera: longTypeCamera, distance: 1_250, phase: .pre, isOverspeed: true))
         } else {
             CameraBanner(target: CameraTarget(camera: longTypeCamera, distance: 1_250, phase: .pre, isOverspeed: false))
         }

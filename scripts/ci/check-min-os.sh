@@ -40,7 +40,8 @@ if echo "${LOADS}" | grep "^強連結" | grep -E "${FORBIDDEN}"; then
   echo "::error::強連結到 iOS 15 沒有的函式庫（上面列出的），App 在 iOS 15 一開就會閃退"
   exit 1
 fi
-if ! echo "${LOADS}" | grep -q "^弱連結.*ActivityKit"; then
+# pipefail 下不用「| grep -q」（SIGPIPE 會誤判）；here-string 讓 grep 讀完整份內容
+if ! grep "^弱連結.*ActivityKit" <<< "${LOADS}" > /dev/null; then
   echo "::error::找不到弱連結的 ActivityKit，project.yml 的 OTHER_LDFLAGS 可能沒有生效"
   exit 1
 fi

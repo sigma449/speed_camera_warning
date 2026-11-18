@@ -5,6 +5,7 @@ import csv
 import io
 import json
 import ssl
+import urllib.parse
 import urllib.request
 import zipfile
 from typing import Any, Callable, Iterable, Optional
@@ -40,8 +41,28 @@ def ssl_context() -> ssl.SSLContext:
     return ctx
 
 
+def ascii_url(url: str) -> str:
+    """把網址裡的中文、空白轉成百分比編碼；已經編碼過的 %XX 不會重複編碼。
+
+    政府平臺給的下載網址可能直接帶中文檔名（例如 13940 的「…國道公路固定式測速照相地點.zip」），
+    urllib 送出請求時只接受 ASCII，沒編碼就一定失敗，只能退回舊快照。
+    """
+    parts = urllib.parse.urlsplit(url)
+    host = parts.netloc
+    if any(ord(c) > 127 for c in host):
+        userinfo, at, hostport = host.rpartition("@")
+        name, colon, port = hostport.partition(":")
+        host = userinfo + at + name.encode("idna").decode("ascii") + colon + port
+    return urllib.parse.urlunsplit((
+        parts.scheme, host,
+        urllib.parse.quote(parts.path, safe="/%:@!$&'()*+,;="),
+        urllib.parse.quote(parts.query, safe="=&%:@!$'()*+,;/?"),
+        urllib.parse.quote(parts.fragment, safe="%:@!$&'()*+,;=/?"),
+    ))
+
+
 def http_get(url: str, timeout: float = 60) -> bytes:
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "*/*"})
+    req = urllib.request.Request(ascii_url(url), headers={"User-Agent": USER_AGENT, "Accept": "*/*"})
     with urllib.request.urlopen(req, timeout=timeout, context=ssl_context()) as resp:  # noqa: S310（只連政府網站）
         return resp.read()
 

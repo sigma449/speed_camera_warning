@@ -20,7 +20,6 @@ from . import geocoding_sources
 SNAPSHOTS = Path(__file__).resolve().parents[1] / "snapshots"
 GOV_LICENSE = "政府資料開放授權條款－第1版（https://data.gov.tw/license）"
 NTPC_MOBILE_URL = "https://www.traffic.police.ntpc.gov.tw/cp-3313-97704-27.html"
-HCCP_URL = "https://tra6.hccp.gov.tw/trafficweb/pages/camera"
 DOULIU_URL = "https://ylhpb.yunlin.gov.tw/Douliu/News_Content.aspx?n=31362&s=577863"
 TP_NOISE_URL = "https://www-ws.gov.taipei/Download.ashx?u=LzAwMS9VcGxvYWQvNDQ4L3JlbGZpbGUvMzM5ODYvODMzMzc0MC83YzBlYWViNS1mMzdhLTRjMmMtYjRmOC1lNGJjMGNlZGYzZTgucGRm&n=6Ie65YyX5biC55Kw5aKD5L%2bd6K235bGA44CM5Zu65a6a5byP6auY5Zmq6Z%2bz6LuK6Lyb5YG15ris5pSd5b2x57O757Wx44CN6Kit572u5Zyw6bueKDExNTA5KS5wZGY%3d&icon=..pdf"
 CITY_BOXES = {
@@ -540,17 +539,6 @@ def parse_ntpc_mobile(raw: bytes) -> list[dict]:
                 raise ValueError("新北移動公告沒有資料列")
             return rows
     raise ValueError("新北移動公告找不到地區別／地點表格")
-
-
-def parse_hccp_tech(raw: bytes) -> list[dict]:
-    parser = TableParser()
-    parser.feed(sources.decode_text(raw))
-    for table in parser.tables:
-        for i, row in enumerate(table):
-            if len(row) == 5 and row[1] == "違規取締項目":
-                return [dict(zip(("地點", "違規取締項目", "經度", "緯度", "備註"), r))
-                        for r in table[i + 1:] if len(r) == 5]
-    raise ValueError("新竹警方官網找不到科技執法表；不使用授權未核的移動表")
 
 
 class ParagraphParser(HTMLParser):

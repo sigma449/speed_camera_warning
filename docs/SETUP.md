@@ -154,13 +154,13 @@ SideStore 在手機上自己續簽時，需要假裝成「iPhone 有接著電腦
 
 設定 →「我的照相點」→「管理照相點」可分別查看自行新增、已修改、已隱藏，並刪除／還原／復原。正式資料更新後 id 消失的隱藏／修改設定仍保留，但不生效；清單會註明。巡航中編輯不重設其他照相點的預告／冷卻，也不重設正在進行的區間時間或超速節流。
 
-個人資料保存在 Application Support 的 `userCameraEdits.v1.json`。讀取失敗時會警告並記錄 log，原檔改名為 `userCameraEdits.v1.corrupt-<UUID>.json` 保留，本次先用官方資料；後續新增另寫新檔。如果連改名保留都失敗，就停止寫入，避免覆蓋原檔。
+個人資料保存在 Application Support 的 `userCameraEdits.v1.json`。檔案內容壞掉（無法解碼或驗證）時會警告並記錄 log，原檔改名為 `userCameraEdits.v1.corrupt-<UUID>.json` 保留，本次先用官方資料；後續新增另寫新檔。如果連改名保留都失敗，就停止寫入，避免覆蓋原檔。檔案在但暫時讀不到（例如重開機後還沒解鎖 iPhone、App 被背景定位喚醒）不算壞檔：不改名，本次停止編輯，下次開啟 App 再讀。
 
 ### 匯出給維護者
 
 在「管理照相點」按「匯出」，於系統分享面板依畫面指示儲存或傳送**兩個檔案**：
 
-- `cameras_extra_user.csv`：只有自行新增點，欄位順序與 `data-pipeline\manual\cameras_extra.csv` 完全相同，來源含新增日期；單向角度、南北／東西雙向及未知方向可直接解析。**未填速限寫空欄**，既有管線解析為未知，不是 0；來源另標「速限未設」，核對 JSON 的 `speedLimit` 亦保持未填，`speedLimitUnsetIDs` 列對應 id、notes 說明只提醒不嗶。
+- `cameras_extra_user.csv`：UTF-8（含 BOM，Windows 的 Excel 直接開不會亂碼），只有自行新增點，欄位順序與 `data-pipeline\manual\cameras_extra.csv` 完全相同，來源含新增日期；單向角度、南北／東西雙向及未知方向可直接解析。**未填速限寫空欄**，既有管線解析為未知，不是 0；來源另標「速限未設」，核對 JSON 的 `speedLimit` 亦保持未填，`speedLimitUnsetIDs` 列對應 id、notes 說明只提醒不嗶。
 - `camera_edits.json`：自行新增的精確原值，以及隱藏／修改的原始 id、短地址、座標、原值與新值；資料更新後消失的 id 會附當初保存的原值並標記。只有照相點，不含行車軌跡、車速、定位時間或帳號資訊。
 
 **CSV 的限制**：既有管線只支援南北／東西雙向軸向。斜向或其他精確軸向在 CSV 會寫成「雙向（軸向 N°；詳 camera_edits.json）」，解析後是不指定軸向的雙向／未知方向備案，不會捏造成單向。App 與 JSON 仍保留原始軸向，維護者須先核對，不可當成已精確表達。App 匯出來源標記及「取締項目」請保留，管線藉此避免 POI 名稱裡的「區間／闖紅燈」或過港地址特例覆蓋使用者明選的類型／方向。

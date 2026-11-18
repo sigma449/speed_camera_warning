@@ -185,7 +185,8 @@ struct UserCameraEditsView: View {
             do {
                 let csv = directory.appendingPathComponent("cameras_extra_user.csv")
                 let json = directory.appendingPathComponent("camera_edits.json")
-                try Data(exported.csv.utf8).write(to: csv, options: .atomic)
+                // 加 UTF-8 BOM：Windows Excel 直接開才不會亂碼；管線讀檔本來就會去掉 BOM
+                try (Data([0xEF, 0xBB, 0xBF]) + Data(exported.csv.utf8)).write(to: csv, options: .atomic)
                 try exported.json.write(to: json, options: .atomic)
                 share = UserCameraShare(urls: [csv, json])
             } catch {

@@ -88,7 +88,11 @@ final class AppModel: ObservableObject {
         set { settings.vehicleMode = newValue }
     }
 
-    var currentSpeedKmh: Int { Int((lastFix?.speedKmh ?? 0).rounded()) }
+    /// 隧道裡 iOS 可能給沒有車速的基地台定位（車速 -1）：畫面沿用最後一筆可靠定位的車速，不顯示 0。
+    var currentSpeedKmh: Int {
+        let fix = lastFix?.isReliable == true ? lastFix : lastReliableFix
+        return Int((fix?.speedKmh ?? 0).rounded())
+    }
 
     /// 目前畫面要顯示的速限：區間中用區間速限，否則用前方照相點的速限。
     var displayedSpeedLimit: Int? {
@@ -139,6 +143,10 @@ final class AppModel: ObservableObject {
     private var userCameraEditsFile: UserCameraEditsFile?
     private var userCameraEditsWriteError: String?
     private var lastHeadingFix: VehicleFix?
+    /// 最後一筆可靠定位（畫面車速、重新規劃後立即對齊路線用）。
+    private var lastReliableFix: VehicleFix?
+    /// 快速記點補路名：依序反查，新的一筆不能取消前一筆。
+    private var quickCameraLookupQueue: [Camera] = []
 
     private static let settingsKey = "alertSettings.v2"
     private static let legacySettingsKey = "alertSettings.v1"
@@ -391,6 +399,7 @@ final class AppModel: ObservableObject {
         }
         startTicking()
         announcer.speak("開始巡航，測速提醒已開啟")
+        if !showGallery { retryUnresolvedUserCameraAddresses() }
     }
 
     func stopCruise() {
@@ -413,6 +422,9 @@ final class AppModel: ObservableObject {
         cameraTarget = nil
         sectionStatus = nil
         sectionApproach = nil
+        // 停止巡航後不再更新定位：清掉才不會一直顯示停止前的車速
+        lastFix = nil
+        lastReliableFix = nil
     }
 
     func toggleCruise() {
@@ -542,31 +554,46 @@ final class AppModel: ObservableObject {
         quickCameraCapture.dismissConfirmation()
     }
 
+    /// 補路名排進佇列依序反查（CLGeocoder 一次只能查一筆）。連續記兩個點時，
+    /// 舊做法會取消前一筆，前一支就永遠只有座標文字。
     private func resolveQuickCameraAddress(_ camera: Camera) {
-        quickCameraLookupTask?.cancel()
-        quickCameraGeocoder.cancelGeocode()
+        guard !quickCameraLookupQueue.contains(where: { $0.id == camera.id }) else { return }
+        quickCameraLookupQueue.append(camera)
+        guard quickCameraLookupTask == nil else { return }
         quickCameraLookupTask = Task { [weak self] in
-            guard let self, !Task.isCancelled else { return }
-            do {
-                let placemarks = try await self.quickCameraGeocoder.reverseGeocodeLocation(
-                    CLLocation(latitude: camera.lat, longitude: camera.lon))
-                guard !Task.isCancelled else { return }
-                guard let placemark = placemarks.first,
-                      let road = placemark.thoroughfare, !road.isEmpty else {
-                    Logger(subsystem: "tw.speedcammap.app", category: "userCameras")
-                        .notice("快速記點反查沒有路名，保留座標文字")
-                    return
-                }
-                var edits = self.userCameraEdits
-                if try edits.resolveAddedAddress(id: camera.id, point: camera.point,
-                    address: MKPlacemark(placemark: placemark).title ?? road) {
-                    try self.commitUserCameraEdits(edits)
-                }
-            } catch {
-                guard !Task.isCancelled else { return }
-                Logger(subsystem: "tw.speedcammap.app", category: "userCameras")
-                    .warning("快速記點補路名失敗，保留原值：\(error.localizedDescription, privacy: .public)")
+            while let self, !Task.isCancelled, !self.quickCameraLookupQueue.isEmpty {
+                let next = self.quickCameraLookupQueue.removeFirst()
+                await self.lookUpUserCameraAddress(next)
             }
+            self?.quickCameraLookupTask = nil
+        }
+    }
+
+    private func lookUpUserCameraAddress(_ camera: Camera) async {
+        do {
+            let placemarks = try await quickCameraGeocoder.reverseGeocodeLocation(
+                CLLocation(latitude: camera.lat, longitude: camera.lon))
+            guard let placemark = placemarks.first,
+                  let road = placemark.thoroughfare, !road.isEmpty else {
+                Logger(subsystem: "tw.speedcammap.app", category: "userCameras")
+                    .notice("快速記點反查沒有路名，保留座標文字")
+                return
+            }
+            var edits = userCameraEdits
+            if try edits.resolveAddedAddress(id: camera.id, point: camera.point,
+                address: MKPlacemark(placemark: placemark).title ?? road) {
+                try commitUserCameraEdits(edits)
+            }
+        } catch {
+            Logger(subsystem: "tw.speedcammap.app", category: "userCameras")
+                .warning("快速記點補路名失敗，保留原值：\(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    /// 沒網路或 App 在反查完成前結束時，自行新增的點會留著座標文字；開始巡航時再補一次。
+    private func retryUnresolvedUserCameraAddresses() {
+        for camera in userCameraEdits.added where camera.address == UserCameraEdits.coordinateAddress(camera.point) {
+            resolveQuickCameraAddress(camera)
         }
     }
 
@@ -802,7 +829,7 @@ final class AppModel: ObservableObject {
             lastRerouteAnnouncement = Date()
             announcer.speak(AnnouncementFormatter.rerouting)
         }
-        let source = lastFix.map { MapItems.item(at: $0.point) }
+        let source = (lastFix?.isReliable == true ? lastFix : lastReliableFix).map { MapItems.item(at: $0.point) }
         rerouteTask = Task { [weak self] in
             guard let self else { return }
             defer {
@@ -820,7 +847,7 @@ final class AppModel: ObservableObject {
                 let warnings = [plan.warning?.text, self.navigation.routeHintWarning].compactMap { $0 }
                 self.statusMessage = warnings.isEmpty ? nil : warnings.joined(separator: "\n")
                 // 不等下一筆定位：藍線和下一步馬上換成新路線
-                if let fix = self.lastFix {
+                if let fix = self.lastReliableFix {
                     self.routeProgress = self.navigation.process(fix)?.progress
                 }
                 self.activity.update(self.activityState(), alert: nil)
@@ -836,6 +863,7 @@ final class AppModel: ObservableObject {
 
     func handle(_ fix: VehicleFix) {
         guard isCruising else { return }
+        if fix.isReliable { lastReliableFix = fix }
         lastFix = fix
         if fix.isReliable, fix.speedMps.isFinite, fix.speedKmh >= 8,
            let course = fix.course, course.isFinite, course >= 0 {
@@ -846,7 +874,8 @@ final class AppModel: ObservableObject {
         let sec = fix.isReliable ? sectionTracker.process(fix) : nil
         let cam = fix.isReliable ? alertEngine.process(fix) : nil
         let modeMatches = navigationVehicleMode == settings.vehicleMode
-        let nav = modeMatches ? navigation.process(fix) : nil
+        // 導航也一樣：誤差幾百公尺的定位會投影到後面的路段，提早念轉彎或誤判偏離；保留上一次的進度。
+        let nav = modeMatches && fix.isReliable ? navigation.process(fix) : nil
 
         if let cam { cameraTarget = cam.target }
         if let sec {
@@ -854,7 +883,7 @@ final class AppModel: ObservableObject {
             sectionApproach = sec.approach
         }
         if modeMatches {
-            routeProgress = nav?.progress
+            if fix.isReliable { routeProgress = nav?.progress }
         } else {
             routeProgress?.isOffRoute = true
             if navigation.isActive { reroute() }
@@ -971,7 +1000,14 @@ final class AppModel: ObservableObject {
         let candidates = index.cameras(minLat: c.latitude - latHalf, maxLat: c.latitude + latHalf,
                                        minLon: c.longitude - lonHalf, maxLon: c.longitude + lonHalf,
                                        limit: database.cameras.count)
-        return Array(candidates.filter { settings.isEnabled($0) }.prefix(visibleCameraLimit))
+        let enabled = candidates.filter { settings.isEnabled($0) }
+        guard enabled.count > visibleCameraLimit else { return enabled }
+        // 太多時留離畫面中心最近的（索引的順序是格子由南往北，直接截斷會讓北半邊整片消失）
+        let center = GeoPoint(lat: c.latitude, lon: c.longitude)
+        return enabled.map { ($0, GeoMath.distance(center, $0.point)) }
+            .sorted { $0.1 < $1.1 }
+            .prefix(visibleCameraLimit)
+            .map { $0.0 }
     }
 
     // MARK: 區間路形貼齊道路

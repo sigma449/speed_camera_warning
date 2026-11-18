@@ -37,6 +37,10 @@ def test_real_screenshot_entry_honors_selected_profile(tmp_path, entry, profile)
                 assert (tmp_path / "screenshots" / f"{prefix}-settings-{section}-{text}-375.png").exists()
         for scenario in ("fixed", "fixed-current", "redLight", "redLight-current", "both", "modified", "unset-edit"):
             assert (tmp_path / "screenshots" / f"{prefix}-{scenario}-bottom-large-text-375.png").exists()
+        if entry == "screenshots.sh":
+            # 照相超速橫幅要有「超速！」字樣，一般與放大文字都要拍到
+            for name in ("49-banners-navigation-overspeed-375", "50-banners-navigation-overspeed-large-text-375"):
+                assert (tmp_path / "screenshots" / f"{name}.png").exists()
         beep_prefix = "ios15-18-beep-interval" if entry == "ios15-run.sh" else "48-beep-interval"
         for scenario in ("min", "default", "max"):
             for text in ("normal", "large-text"):

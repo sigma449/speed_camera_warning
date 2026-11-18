@@ -211,6 +211,23 @@ final class UserCameraEditsTests: XCTestCase {
         }
     }
 
+    func testUnreadableFileIsNotRenamedOrReplacedByEmptyEdits() throws {
+        try inTemporaryDirectory { directory in
+            let url = directory.appendingPathComponent("userCameraEdits.v1.json")
+            var edits = UserCameraEdits()
+            try edits.add(added())
+            try UserCameraEditsFile(url: url).save(edits)
+            let saved = try Data(contentsOf: url)
+            // 重開機後尚未解鎖時，資料保護會讓檔案暫時讀不到：不是壞檔，不能改名或當成空清單。
+            let locked = UserCameraEditsFile(url: url) { _ in throw CocoaError(.fileReadNoPermission) }
+            XCTAssertThrowsError(try locked.load())
+            XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: directory.path),
+                           ["userCameraEdits.v1.json"])
+            XCTAssertEqual(try Data(contentsOf: url), saved)
+            XCTAssertEqual(try UserCameraEditsFile(url: url).load().edits, edits)
+        }
+    }
+
     func testCurrentHeadingRequiresCruiseReliableMovingFixAndNearbyCurrentPosition() {
         let moving = VehicleFix(point: origin, speedMps: 8 / 3.6, course: 240.61066, timestamp: t0)
         let near = GeoMath.destination(from: origin, bearing: 0, distance: 149)

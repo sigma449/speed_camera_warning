@@ -9,7 +9,7 @@ import SpeedCamCore
 /// 1. 先直接規劃「起點 → 終點」。路線長度接近區間長度、而且沒有偏離原本的里程牌路形（200 m 內）就採用。
 /// 2. 不行的話（例如最快路線繞到別條路），沿著里程牌路形每 1.2 公里取一個點，一段一段規劃再接起來；
 ///    某一段不合理就用那段原本的里程牌路形。
-/// 3. 都不行就維持原本的路形，7 天後再試。
+/// 3. 都不行就維持原本的路形，7 天後再試。沒網路、伺服器錯誤這類暫時失敗不寫進快取，10 分鐘後再排。
 ///
 /// Apple 地圖的路線規劃有頻率限制，所以一次只查一個，間隔 1.5 秒，並優先處理離地圖中心近的區間。
 @MainActor
@@ -25,12 +25,18 @@ final class SectionPathSnapper {
 
     private var cache: [String: Entry] = [:]
     private var pending: [String: SpeedSection] = [:]
+    /// 暫時失敗（沒網路、伺服器錯誤、持續限流）的區間，到這個時間前不重排；只放記憶體，不寫檔。
+    private var transientRetryAt: [String: Date] = [:]
     private var center: GeoPoint?
     private var worker: Task<Void, Never>?
     private let log = Logger(subsystem: "tw.speedcammap.app", category: "snap")
 
     private static let retryInterval: TimeInterval = 7 * 24 * 3600
+    private static let transientRetryInterval: TimeInterval = 10 * 60
     private static let requestGap: UInt64 = 1_500_000_000
+
+    /// 不是「這段路規劃不出來」，而是連線或伺服器的暫時問題。
+    private struct TransientRouteFailure: Error {}
 
     init() {
         if let data = try? Data(contentsOf: Self.fileURL),
@@ -58,6 +64,7 @@ final class SectionPathSnapper {
     }
 
     private func needsSnapping(_ s: SpeedSection) -> Bool {
+        if let retry = transientRetryAt[s.id], Date() < retry { return false }
         guard let entry = cache[s.id], entry.signature == RoadSnapping.cacheSignature(for: s) else { return true }
         if entry.path != nil { return false }
         if let failed = entry.failedAt, Date().timeIntervalSince(failed) < Self.retryInterval { return false }
@@ -68,10 +75,17 @@ final class SectionPathSnapper {
         guard worker == nil, !pending.isEmpty else { return }
         worker = Task { [weak self] in
             while let self, let next = self.popNearest() {
-                let path = await self.snap(next)
-                self.store(next, path: path)
-                if let path {
-                    self.onSnapped?(next.id, path)
+                do {
+                    let path = try await self.snap(next)
+                    self.transientRetryAt[next.id] = nil
+                    self.store(next, path: path)
+                    if let path {
+                        self.onSnapped?(next.id, path)
+                    }
+                } catch {
+                    // 寫成失敗會 7 天不重試；開 App 時剛好沒網路，所有區間都會卡一週。
+                    self.transientRetryAt[next.id] = Date().addingTimeInterval(Self.transientRetryInterval)
+                    self.log.notice("\(next.groupID, privacy: .public): 路線規劃暫時失敗，不寫入失敗快取，10 分鐘後再試")
                 }
             }
             self?.worker = nil
@@ -105,7 +119,7 @@ final class SectionPathSnapper {
 
     // MARK: 貼齊
 
-    private func snap(_ section: SpeedSection) async -> [GeoPoint]? {
+    private func snap(_ section: SpeedSection) async throws -> [GeoPoint]? {
         let reference = section.displayPath
         let expected = section.lengthEstimated ? GeoMath.length(of: reference) : section.lengthMeters
         guard reference.count >= 2, expected.isFinite, expected > 0 else { return nil }
@@ -113,7 +127,7 @@ final class SectionPathSnapper {
         // 1) 起點 → 終點一次規劃；不合理再試反方向（起點可能被吸到快速道路對向車道，要繞一大圈迴轉）
         for reversed in [false, true] {
             let (a, b) = reversed ? (section.end, section.start) : (section.start, section.end)
-            guard let route = await route(from: a, to: b), route.points.count >= 2 else { continue }
+            guard let route = try await route(from: a, to: b), route.points.count >= 2 else { continue }
             // 偏差可能是無限大（路形是空的），轉成 Int 會閃退，先限制範圍
             let deviation = min(RoadSnapping.maxDeviation(of: reference, from: route.points), 999_999)
             if RoadSnapping.isPlausible(routeLength: route.distance, expected: expected,
@@ -136,7 +150,7 @@ final class SectionPathSnapper {
             var piece = segment
             let segmentLength = GeoMath.length(of: segment)
             for reversed in [false, true] {
-                guard let route = await route(from: reversed ? b : a, to: reversed ? a : b),
+                guard let route = try await route(from: reversed ? b : a, to: reversed ? a : b),
                       route.points.count >= 2 else { continue }
                 if RoadSnapping.isPlausible(routeLength: route.distance, expected: segmentLength,
                                             minRatio: 0.8, maxRatio: 1.6, slack: 200),
@@ -153,7 +167,8 @@ final class SectionPathSnapper {
         return RoadSnapping.simplify(output, tolerance: 3)
     }
 
-    private func route(from a: GeoPoint, to b: GeoPoint) async -> (points: [GeoPoint], distance: Double)? {
+    /// nil 表示 Apple 確定規劃不出這段路；連線、伺服器或持續限流等暫時問題丟出 TransientRouteFailure。
+    private func route(from a: GeoPoint, to b: GeoPoint) async throws -> (points: [GeoPoint], distance: Double)? {
         for attempt in 0..<2 {
             try? await Task.sleep(nanoseconds: Self.requestGap)
             let request = MKDirections.Request()
@@ -170,10 +185,22 @@ final class SectionPathSnapper {
                     try? await Task.sleep(nanoseconds: 60_000_000_000)
                     continue
                 }
-                return nil
+                if Self.isDefinitiveNoRoute(error) { return nil }
+                throw TransientRouteFailure()
             }
         }
-        return nil
+        throw TransientRouteFailure()
+    }
+
+    /// 只有 Apple 明確回答「找不到路線／地點」才算這段路規劃不出來；底層是網路錯誤的一律當暫時失敗。
+    private static func isDefinitiveNoRoute(_ error: Error) -> Bool {
+        let ns = error as NSError
+        if ns.domain == NSURLErrorDomain { return false }
+        if let underlying = ns.userInfo[NSUnderlyingErrorKey] as? NSError, underlying.domain == NSURLErrorDomain {
+            return false
+        }
+        guard let mk = error as? MKError else { return false }
+        return mk.code == .directionsNotFound || mk.code == .placemarkNotFound
     }
 
     // MARK: 存檔
