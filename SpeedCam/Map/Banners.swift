@@ -42,7 +42,7 @@ enum BannerCombineStyle: String {
     case badge
 
     /// 這個建置的預設。方案 A／B 的 IPA 只差這一行。
-    static let buildDefault: BannerCombineStyle = .swap
+    static let buildDefault: BannerCombineStyle = .badge
 
     /// `-bannerCombine stacked|swap|badge` 可覆寫（CI／內部比對用，不儲存）。
     static let current: BannerCombineStyle = {
