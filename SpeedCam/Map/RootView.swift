@@ -28,14 +28,9 @@ struct RootView: View {
                     .ignoresSafeArea()
 
                 VStack(spacing: 8) {
-                    if let progress = model.routeProgress {
-                        NavigationBanner(progress: progress, destination: model.destinationName)
-                    }
-                    if let section = model.sectionStatus {
-                        SectionBanner(status: section, currentSpeed: model.currentSpeedKmh)
-                    } else if let target = model.bannerTarget {
-                        CameraBanner(target: target)
-                    }
+                    TopAlertBanners(progress: model.routeProgress, destination: model.destinationName,
+                                    section: model.sectionStatus, target: model.bannerTarget,
+                                    currentSpeed: model.currentSpeedKmh)
                     if let message = model.statusMessage {
                         MessageBanner(text: message) { model.statusMessage = nil }
                     }

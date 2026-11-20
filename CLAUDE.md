@@ -65,6 +65,8 @@ CarPlay 畫地圖須逐向導航、一App一類。iOS26 Live Activity免 entitle
 - **其他畫面也要精簡**：不顯「巡航中」，只車速及「km/h・汽車」；Live Activity 超速小字只「超速！」。鎖定巡航右側不重複車速；動態島展開左上只速限／圖示、右上車速、下方大／小字，巡航隱藏右上車速。`Camera.shortAddress`：18 字內原文，過長移括號、多段取首段；詳情留完整地址。
 - **主畫面橫幅不透明**：用 `BannerStyle`，地圖路名不得透出；深色底白字對比 ≥4.5:1，小字不用 `.secondary`。
 - **同屏橫幅比例（第二階段 B；2026-11-20 使用者實測後縮小）**：照相／導航／區間共用 64 pt 圖示欄、38 pt 主數字（同行「超速！」26、「區間倒數／秒」20，整句「重新規劃中／可依速限行駛」28）、46 pt 主行槽；**不設最小高、依內容決定高度**（原 176 pt 底部空白擋地圖），頂端對齊；長字可撐高不可鎖死，區間仍三行。375／390 pt 與放大文字須 CI 看圖。
+- **導航＋照相合併字卡（2026-11-20 試驗中，使用者實測 A／B 後擇一）**：導航中有照相、沒有區間時，`BannerCombineStyle.buildDefault` 決定合併方式；`copilot/test2-1108` 為方案 A `swap`，方案 B `badge` 的 IPA 從 `copilot/banner-merge-b` 只改這一行打包。
+  A：一張卡，主從由 Core `NavigationCameraLead` 決定（超速＞重新規劃中＞轉彎點100 m內＞照相近距＞平常導航），另一個縮成底部 40 pt 圖示＋26 pt 距離細條，不放地址／目的地。B：導航卡右上掛照相小牌（速限或類型圖示、距離、超速！、高架／平面），超速整張變紅、不放目的地。區間、無導航照相、語音、Live Activity／CarPlay 均不變。
 - **導航文字縮短**：CarPlay／鎖屏／手機用 `ManeuverText.short`「動作＋路名」（如「靠右 上五股楊梅高架」「下交流道 95A出口」），語音保留 Apple 完整句。區間／相機模式轉彎點 300 m 內以 `SpeedCamActivityState.navHint` 顯示下一步，超速優先。
 - **「上高速公路」校正**：Core `RoadInstructionResolver` 只在動作點後路形唯一對上 `road_lines.json` 具名非國道主線時，畫面／完整語音一起改「上＋路名」（如「左轉上水源快速道路，朝(永和)、景美前進」／「左轉 上水源快速道路」）；國道、平行／橫跨、入口短、未知／多名歧義均保留 Apple，不猜。
 - **人工導航補充提示**：`RouteHintMatcher` 限導航折線依序過提示／確認點且進入行向相符；反向／別支／平行／繞回歧義／未導航不報。5筆6標記：建國下高架、師大地下道、水源南出＋秀朗橋分岔、環河地下道、回程上水源；水源兩點37 m合句「下匝道 不上秀朗橋」，語音靠右往環河路。
@@ -113,7 +115,7 @@ CarPlay 畫地圖須逐向導航、一App一類。iOS26 Live Activity免 entitle
 
 - `-demo`／`-demoIfEmpty`：展示／空才展示；`-autoStartCruise NO`：不自巡航；`-legacyUI`：強制舊流程。
 - `-gallery` 看Activity，以下gallery選項均配它：`-galleryMiddle`／`-galleryBottom` 中／底部；`-galleryBanners` 手機長字；`-galleryBanners -galleryHints` 人工提示／170×78 navHint。
-- `-galleryBanners -galleryBannerPair camera|section|zero|rerouting|overspeed -galleryWidth 375|390`：導航＋相機／區間／歸零／重規劃或照相超速（「超速！」）同屏。
+- `-galleryBanners -galleryBannerPair camera|section|zero|rerouting|overspeed -galleryWidth 375|390`：導航＋相機／區間／歸零／重規劃或照相超速（「超速！」）同屏；camera／overspeed 頁另列近距、轉彎點60 m內、科技執法等主從狀態，標題標出合併方式。`-bannerCombine stacked|swap|badge` 覆寫合併方式（內部比對用，不儲存）。
 - `-galleryTypes mobile|tech|noise`：三類CarPlay三尺寸／鎖屏／動態島，加 `-galleryBanners -galleryWidth 375` 看手機詳情；`-galleryLock` 鎖屏／動態島（外框示意）；`-galleryStale` 過期三尺寸，可加Lock；`-galleryPlaces` 375 pt長名稱／地址及反查中／失敗，可加Bottom。
 - `-galleryUserCameras place|fixed|fixed-current|redLight|redLight-current|both|official|added|modified|settings|empty`：375pt選點／表單／詳情／管理，15也可用；純記憶體假資料，不碰個人編輯檔。`-galleryBottom`看表單備註／詳情底部／隱藏清單，settings加`-galleryMiddle`看修改清單；完整截圖含兩種字級。
 - `-galleryUserCameras quick-button|quick-confirmation|quick-navigation|quick-camera|quick-section|unset|unset-edit`：行車按鈕／確認卡（含導航、照相、區間同屏）／速限未設詳情與修改表單；375pt、一般／放大字、iOS15也拍。確認卡示例固定顯示、不啟動定位／反查或倒數，不代表手勢／實播驗收。

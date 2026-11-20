@@ -27,10 +27,200 @@ enum BannerLayout {
     static let primaryUnitFont = Font.system(size: 20, weight: .heavy, design: .rounded)
     /// 取代主數字的整句狀態（「重新規劃中」「可依速限行駛」）。
     static let primaryStatusFont = Font.system(size: 28, weight: .heavy, design: .rounded)
+    /// 合併字卡裡縮成一行的那一方（方案 A 細條、方案 B 小牌）。
+    static let stripIconSize: CGFloat = 40
+    static let stripFont = Font.system(size: 26, weight: .heavy, design: .rounded)
+}
+
+/// 導航中遇到照相點（沒有區間）時，兩張字卡怎麼放。2026-11-20 使用者要求方案 A／B 各打一個 IPA 實測，選定後再收斂。
+enum BannerCombineStyle: String {
+    /// 原本：導航卡、照相卡上下疊放。
+    case stacked
+    /// 方案 A：合成一張卡，誰重要誰大字（`NavigationCameraLead`），另一個縮成底部一行。
+    case swap
+    /// 方案 B：導航卡不動，右上角掛照相小牌；超速時整張卡變紅。
+    case badge
+
+    /// 這個建置的預設。方案 A／B 的 IPA 只差這一行。
+    static let buildDefault: BannerCombineStyle = .swap
+
+    /// `-bannerCombine stacked|swap|badge` 可覆寫（CI／內部比對用，不儲存）。
+    static let current: BannerCombineStyle = {
+        let args = ProcessInfo.processInfo.arguments
+        if let i = args.firstIndex(of: "-bannerCombine"), i + 1 < args.count,
+           let style = BannerCombineStyle(rawValue: args[i + 1]) {
+            return style
+        }
+        return buildDefault
+    }()
+}
+
+/// 主畫面上方的導航、區間、照相字卡。導航中遇到照相點且沒有區間時，依 `BannerCombineStyle` 合成一張。
+struct TopAlertBanners: View {
+    let progress: RouteProgress?
+    let destination: String?
+    let section: SectionStatus?
+    let target: CameraTarget?
+    let currentSpeed: Int
+    var style = BannerCombineStyle.current
+
+    var body: some View {
+        if let progress, section == nil, let target, style != .stacked {
+            if style == .badge {
+                NavigationBanner(progress: progress, destination: nil, cameraBadge: target)
+            } else {
+                NavigationCameraBanner(progress: progress, target: target)
+            }
+        } else {
+            if let progress {
+                NavigationBanner(progress: progress, destination: destination)
+            }
+            if let section {
+                SectionBanner(status: section, currentSpeed: currentSpeed)
+            } else if let target {
+                CameraBanner(target: target)
+            }
+        }
+    }
+}
+
+/// 方案 A：導航和照相合成一張卡。主角用原本的大字版面，另一個縮成底部一行；誰當主角見 `NavigationCameraLead`。
+struct NavigationCameraBanner: View {
+    let progress: RouteProgress
+    let target: CameraTarget
+
+    var body: some View {
+        VStack(spacing: 0) {
+            switch NavigationCameraLead.decide(progress: progress, target: target) {
+            case .navigation:
+                NavigationBanner(progress: progress, destination: nil, embedded: true)
+                CameraStrip(target: target)
+            case .camera:
+                CameraBanner(target: target, embedded: true)
+                NavigationStrip(progress: progress)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 20))
+    }
+}
+
+/// 方案 A 的照相細條：速限（或類型圖示）、距離、類型、高架／平面。地址不放，點地圖上的照相點看詳情。
+struct CameraStrip: View {
+    let target: CameraTarget
+
+    var body: some View {
+        HStack(spacing: 14) {
+            CameraIndicator(limit: target.camera.enforcesSpeed ? target.camera.speedLimit : nil,
+                            symbol: target.camera.symbolName, size: BannerLayout.stripIconSize)
+                .frame(width: BannerLayout.iconSize)
+            HStack(spacing: 10) {
+                Text(AnnouncementFormatter.displayDistance(target.distance))
+                    .font(BannerLayout.stripFont)
+                    .monospacedDigit()
+                    .foregroundStyle(target.isOverspeed ? Color.white : Color.yellow)
+                    .lineLimit(1)
+                    .fixedSize()
+                Text(target.camera.type.displayName)
+                    .font(.headline)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let level = target.camera.levelName {
+                    LevelTag(text: level)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(target.isOverspeed ? BannerStyle.overspeed : BannerStyle.dark)
+        .foregroundStyle(.white)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// 方案 A 的導航細條：轉彎圖示、距離、短指示；重新規劃中只寫狀態。
+struct NavigationStrip: View {
+    let progress: RouteProgress
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: progress.isOffRoute ? "arrow.triangle.2.circlepath"
+                  : NavigationController.symbol(for: progress.nextInstruction))
+                .font(.system(size: 26, weight: .bold))
+                .frame(width: BannerLayout.iconSize)
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                if progress.isOffRoute {
+                    Text("重新規劃中")
+                        .font(.headline)
+                } else {
+                    Text(AnnouncementFormatter.displayDistance(progress.distanceToNextManeuver))
+                        .font(BannerLayout.stripFont)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .fixedSize()
+                    Text(progress.maneuverText)
+                        .font(.headline)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.8)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(BannerStyle.good)
+        .foregroundStyle(.white)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// 方案 B：導航字卡右上角的照相小牌。速限（或類型圖示）、距離、超速時加「超速！」、高架／平面。
+struct CameraBadge: View {
+    let target: CameraTarget
+
+    var body: some View {
+        VStack(spacing: 3) {
+            CameraIndicator(limit: target.camera.enforcesSpeed ? target.camera.speedLimit : nil,
+                            symbol: target.camera.symbolName, size: BannerLayout.stripIconSize)
+            Text(AnnouncementFormatter.displayDistance(target.distance))
+                .font(.system(size: 20, weight: .heavy, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(target.isOverspeed ? Color.white : Color.yellow)
+            if target.isOverspeed {
+                Text("超速！")
+                    .font(.system(size: 17, weight: .heavy))
+            }
+            if let level = target.camera.levelName {
+                LevelTag(text: level, font: .system(size: 14, weight: .heavy))
+            }
+        }
+        .lineLimit(1)
+        .minimumScaleFactor(0.7)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .frame(minWidth: 72)
+        .background(BannerStyle.dark, in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(accessibilityText))
+    }
+
+    private var accessibilityText: String {
+        let parts: [String?] = [target.camera.type.displayName,
+                                AnnouncementFormatter.displayDistance(target.distance),
+                                target.isOverspeed ? "超速！" : nil,
+                                target.camera.levelName]
+        return parts.compactMap { $0 }.joined(separator: "，")
+    }
 }
 
 struct CameraBanner: View {
     let target: CameraTarget
+    /// 合併在導航字卡裡（方案 A）：不放地址、不另外圓角，外層統一裁切。
+    var embedded = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
@@ -65,17 +255,19 @@ struct CameraBanner: View {
                         .foregroundStyle(BannerStyle.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                Text(target.camera.shortAddress)
-                    .font(.subheadline)
-                    .foregroundStyle(BannerStyle.secondaryText)
-                    .lineLimit(1)
+                if !embedded {
+                    Text(target.camera.shortAddress)
+                        .font(.subheadline)
+                        .foregroundStyle(BannerStyle.secondaryText)
+                        .lineLimit(1)
+                }
             }
             Spacer(minLength: 0)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(target.isOverspeed ? BannerStyle.overspeed : BannerStyle.dark,
-                    in: RoundedRectangle(cornerRadius: 20))
+                    in: RoundedRectangle(cornerRadius: embedded ? 0 : 20))
         .foregroundStyle(.white)
         .accessibilityElement(children: .combine)
     }
@@ -163,6 +355,10 @@ struct SectionBanner: View {
 struct NavigationBanner: View {
     let progress: RouteProgress
     let destination: String?
+    /// 方案 B：右上角掛照相小牌，超速時整張卡變紅。
+    var cameraBadge: CameraTarget? = nil
+    /// 合併在照相字卡裡（方案 A）：不另外圓角，外層統一裁切。
+    var embedded = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
@@ -198,10 +394,14 @@ struct NavigationBanner: View {
                 }
             }
             Spacer(minLength: 0)
+            if let cameraBadge {
+                CameraBadge(target: cameraBadge)
+            }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(BannerStyle.good, in: RoundedRectangle(cornerRadius: 20))
+        .background(cameraBadge?.isOverspeed == true ? BannerStyle.overspeed : BannerStyle.good,
+                    in: RoundedRectangle(cornerRadius: embedded ? 0 : 20))
         .foregroundStyle(.white)
     }
 }
@@ -230,10 +430,11 @@ struct MessageBanner: View {
 /// 「高架」「平面」標籤。App 分不出你在哪一層，看到標籤可以自己判斷這支照相是不是你這條路。
 struct LevelTag: View {
     let text: String
+    var font: Font = .subheadline.weight(.heavy)
 
     var body: some View {
         Text(text)
-            .font(.subheadline.weight(.heavy))
+            .font(font)
             .padding(.horizontal, 8)
             .padding(.vertical, 2)
             .background(text == "高架" ? BannerStyle.elevated : BannerStyle.surface, in: Capsule())

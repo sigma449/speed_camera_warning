@@ -74,23 +74,63 @@ struct BannerGalleryView: View {
                       positionMethod: type == .tech ? "official-coordinate" : "intersection")
     }
 
+    private let techCamera = Camera(id: "gallery-tech", type: .tech, lat: 25, lon: 121.5,
+                                    address: "長春路與中山北路二段交岔路口（版面示例）",
+                                    enforcementItems: "闖紅燈、未依標線行駛、未停讓行人、違規停車")
+
+    /// 導航＋照相合併方式的名稱，標在每個示例上方，看圖時才知道拍的是哪一個建置。
+    private var combineName: String {
+        switch BannerCombineStyle.current {
+        case .stacked: return "疊放"
+        case .swap: return "方案 A"
+        case .badge: return "方案 B"
+        }
+    }
+
+    private func route(turnIn meters: Double, offRoute: Bool = false) -> RouteProgress {
+        RouteProgress(nextStepIndex: 1, nextInstruction: "靠左行駛上建國南北快速道路，朝景美、木柵前進",
+                      distanceToNextManeuver: meters, distanceRemaining: 17_300,
+                      distanceFromRoute: offRoute ? 80 : 0, isOffRoute: offRoute)
+    }
+
+    private func banners(_ progress: RouteProgress, section: SectionStatus? = nil,
+                         target: CameraTarget? = nil) -> some View {
+        TopAlertBanners(progress: progress, destination: "臺灣新竹地方法院新竹簡易庭",
+                        section: section, target: target, currentSpeed: 62)
+    }
+
+    /// 導航＋照相的各種主從狀態（`NavigationCameraLead`）；合併方式依 `BannerCombineStyle.current`。
     @ViewBuilder
     private func pairedExamples(_ pair: String) -> some View {
-        label(pair == "rerouting" ? "重新規劃＋照相"
-              : pair == "overspeed" ? "導航＋照相超速（最長類型＋高架）"
-              : "導航＋\(pair == "camera" ? "照相" : "區間")")
-        NavigationBanner(progress: RouteProgress(nextStepIndex: 1,
-            nextInstruction: "靠左行駛上建國南北快速道路，朝景美、木柵前進",
-            distanceToNextManeuver: 1_250, distanceRemaining: 17_300,
-            distanceFromRoute: pair == "rerouting" ? 80 : 0, isOffRoute: pair == "rerouting"),
-            destination: "臺灣新竹地方法院新竹簡易庭")
-        if pair == "section" || pair == "zero" {
-            SectionBanner(status: status(remaining: pair == "zero" ? 0 : 615,
-                meters: 12_300, average: 72, suggested: 55), currentSpeed: 62)
-        } else if pair == "overspeed" {
-            CameraBanner(target: CameraTarget(camera: longTypeCamera, distance: 1_250, phase: .pre, isOverspeed: true))
-        } else {
-            CameraBanner(target: CameraTarget(camera: longTypeCamera, distance: 1_250, phase: .pre, isOverspeed: false))
+        switch pair {
+        case "section", "zero":
+            label("導航＋\(pair == "zero" ? "區間歸零" : "區間")")
+            banners(route(turnIn: 1_250),
+                    section: status(remaining: pair == "zero" ? 0 : 615, meters: 12_300, average: 72, suggested: 55))
+        case "rerouting":
+            label("\(combineName)：重新規劃＋照相預告")
+            banners(route(turnIn: 1_250, offRoute: true),
+                    target: CameraTarget(camera: longTypeCamera, distance: 1_250, phase: .pre, isOverspeed: false))
+        case "overspeed":
+            label("\(combineName)：照相超速（最長類型＋高架）")
+            banners(route(turnIn: 1_250),
+                    target: CameraTarget(camera: longTypeCamera, distance: 1_250, phase: .pre, isOverspeed: true))
+            label("\(combineName)：超速，轉彎點 60 m 內也一樣")
+            banners(route(turnIn: 60),
+                    target: CameraTarget(camera: longTypeCamera, distance: 90, phase: .near, isOverspeed: true))
+            label("\(combineName)：科技執法（非測速）預告")
+            banners(route(turnIn: 1_250),
+                    target: CameraTarget(camera: techCamera, distance: 300, phase: .pre, isOverspeed: false))
+        default:
+            label("\(combineName)：照相預告（最長類型＋高架）")
+            banners(route(turnIn: 1_250),
+                    target: CameraTarget(camera: longTypeCamera, distance: 1_250, phase: .pre, isOverspeed: false))
+            label("\(combineName)：照相近距、轉彎點還遠")
+            banners(route(turnIn: 1_250),
+                    target: CameraTarget(camera: longTypeCamera, distance: 180, phase: .near, isOverspeed: false))
+            label("\(combineName)：照相近距、轉彎點 60 m 內")
+            banners(route(turnIn: 60),
+                    target: CameraTarget(camera: longTypeCamera, distance: 180, phase: .near, isOverspeed: false))
         }
     }
 
