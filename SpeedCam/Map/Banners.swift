@@ -17,11 +17,16 @@ enum BannerStyle {
     static let secondaryText = Color.white.opacity(0.88)
 }
 
+/// 字卡高度依內容決定，不設最小高度：使用者實測（2026-11-20）覺得字卡太大、底部空白擋住地圖。
 enum BannerLayout {
     static let iconSize: CGFloat = 64
-    static let primaryFont = Font.system(size: 46, weight: .heavy, design: .rounded)
-    static let primaryLineHeight: CGFloat = 56
-    static let minimumHeight: CGFloat = 176
+    static let primaryFont = Font.system(size: 38, weight: .heavy, design: .rounded)
+    static let primaryLineHeight: CGFloat = 46
+    /// 和主數字同一行、但比較次要的字（「超速！」「區間倒數」「秒」）。
+    static let primaryCompanionFont = Font.system(size: 26, weight: .heavy, design: .rounded)
+    static let primaryUnitFont = Font.system(size: 20, weight: .heavy, design: .rounded)
+    /// 取代主數字的整句狀態（「重新規劃中」「可依速限行駛」）。
+    static let primaryStatusFont = Font.system(size: 28, weight: .heavy, design: .rounded)
 }
 
 struct CameraBanner: View {
@@ -40,7 +45,7 @@ struct CameraBanner: View {
                     if target.isOverspeed {
                         // 超速不能只靠紅底：色弱、強光或瞄一眼時也要看得懂
                         Text("超速！")
-                            .font(.system(size: 30, weight: .heavy, design: .rounded))
+                            .font(BannerLayout.primaryCompanionFont)
                     }
                 }
                 .lineLimit(1)
@@ -68,7 +73,7 @@ struct CameraBanner: View {
             Spacer(minLength: 0)
         }
         .padding(14)
-        .frame(maxWidth: .infinity, minHeight: BannerLayout.minimumHeight, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(target.isOverspeed ? BannerStyle.overspeed : BannerStyle.dark,
                     in: RoundedRectangle(cornerRadius: 20))
         .foregroundStyle(.white)
@@ -89,12 +94,12 @@ struct SectionBanner: View {
                         // 秒數最大，看一眼就懂
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
                             Text("區間倒數")
-                                .font(.system(size: 24, weight: .heavy, design: .rounded))
+                                .font(BannerLayout.primaryUnitFont)
                             Text(String(status.remainingWholeSeconds))
                                 .font(BannerLayout.primaryFont)
                                 .monospacedDigit()
                             Text("秒")
-                                .font(.system(size: 24, weight: .heavy, design: .rounded))
+                                .font(BannerLayout.primaryUnitFont)
                         }
                         .foregroundStyle(.orange)
                         .lineLimit(1)
@@ -102,7 +107,7 @@ struct SectionBanner: View {
                         .frame(minHeight: BannerLayout.primaryLineHeight, alignment: .leading)
                     } else {
                         Text("可依速限行駛")
-                            .font(.system(size: 34, weight: .heavy, design: .rounded))
+                            .font(BannerLayout.primaryStatusFont)
                             .foregroundStyle(.green)
                             .lineLimit(2)
                             .fixedSize(horizontal: false, vertical: true)
@@ -129,7 +134,7 @@ struct SectionBanner: View {
             }
         }
         .padding(14)
-        .frame(maxWidth: .infinity, minHeight: BannerLayout.minimumHeight, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(BannerStyle.dark, in: RoundedRectangle(cornerRadius: 20))
         .foregroundStyle(.white)
     }
@@ -169,7 +174,7 @@ struct NavigationBanner: View {
                 if progress.isOffRoute {
                     // 舊路線的下一步已經不對了，不要繼續顯示
                     Text("重新規劃中")
-                        .font(.system(size: 34, weight: .heavy, design: .rounded))
+                        .font(BannerLayout.primaryStatusFont)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                         .frame(minHeight: BannerLayout.primaryLineHeight, alignment: .leading)
@@ -195,7 +200,7 @@ struct NavigationBanner: View {
             Spacer(minLength: 0)
         }
         .padding(14)
-        .frame(maxWidth: .infinity, minHeight: BannerLayout.minimumHeight, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(BannerStyle.good, in: RoundedRectangle(cornerRadius: 20))
         .foregroundStyle(.white)
     }
