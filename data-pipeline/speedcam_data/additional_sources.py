@@ -902,6 +902,30 @@ def load_optional(source: str, url: str, parse, validate, *, offline=False, log=
     return saved
 
 
+def unique_source_ids(cameras: list[Camera], source: str, report: SourceReport) -> list[Camera]:
+    """同一來源的設備編號重複時（例如臺中 83881 兩個不同地點都寫 129），App ID 加原列特徵碼區分。
+
+    App 的通過冷卻、自行修改／隱藏都以 ID 為準，重複 ID 會讓兩支設備互相蓋掉，發布閘門也會擋下。
+    sourceID 保留官方原號方便回查；內容完全相同的重複列只留一筆。
+    """
+    counts = Counter(camera.id for camera in cameras)
+    result, seen = [], set()
+    for camera in cameras:
+        if counts[camera.id] > 1:
+            signature = "|".join(str(value) for value in (camera.address, camera.enforcementItems,
+                                                          camera.heading, camera.axis, camera.lat, camera.lon))
+            new_id = f"{camera.id}-{hashlib.sha1(signature.encode()).hexdigest()[:12]}"
+            if new_id in seen:
+                report.issue(source, camera.sourceID or camera.id, "同一設備編號、內容完全相同的列重複出現；只留一筆")
+                continue
+            report.issue(source, camera.sourceID or camera.id,
+                         f"設備編號重複（{camera.address}）；App ID 改為 {new_id}，sourceID 保留原號")
+            camera.id = new_id
+        seen.add(camera.id)
+        result.append(camera)
+    return result
+
+
 def load_official(report: SourceReport, *, offline=False, log=print) -> tuple[list[Camera], list[str]]:
     cameras, attribution = [], []
     for source in OFFICIAL_SOURCES:
@@ -912,7 +936,7 @@ def load_official(report: SourceReport, *, offline=False, log=print) -> tuple[li
         report.count(source.id, "downloaded", len(rows))
         if not rows:
             continue
-        adapted = source.adapter(rows, report)
+        adapted = unique_source_ids(source.adapter(rows, report), source.id, report)
         report.count(source.id, "usable", len(adapted))
         for camera in adapted:
             camera.sourceURL = f"https://data.gov.tw/dataset/{source.dataset_id}"

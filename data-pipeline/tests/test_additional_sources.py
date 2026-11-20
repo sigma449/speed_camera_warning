@@ -38,6 +38,32 @@ def test_each_official_adapter_accepts_verified_file_without_losing_functions(so
         assert any("隔離" in issue for issue in report.issues)
 
 
+def test_repeated_equipment_number_gets_distinct_ids_and_identical_rows_collapse():
+    # 2026-11-20 臺中 83881 上游兩個不同地點都寫設備編號 129，發布閘門因重複 ID 擋下整個建置。
+    rows = sources.parse_payload((extra.SNAPSHOTS / "83881.raw").read_bytes())
+    original = next(r for r in rows if extra._clean(r)["設備編號"] == "129")
+    moved = dict(original)
+    for key in moved:
+        if key.endswith("設置地點"):
+            moved[key] = "霧峰區吉峰東路往民生路方向"
+        elif key.endswith("座標緯度"):
+            moved[key] = "24.06255"
+        elif key.endswith("座標經度"):
+            moved[key] = "120.72516"
+    report = SourceReport()
+    adapted = extra.adapt_83881([original, moved, dict(original)], report)
+    assert [c.id for c in adapted] == ["83881-129"] * 3
+    cameras = extra.unique_source_ids(adapted, "83881", report)
+    assert len(cameras) == 2 and len({c.id for c in cameras}) == 2
+    assert all(c.id.startswith("83881-129-") and c.sourceID == "129" for c in cameras)
+    assert {c.address for c in cameras} == {"霧峰區環河路一段近638號", "霧峰區吉峰東路往民生路方向"}
+    assert sum("設備編號重複" in issue for issue in report.issues) == 2
+    assert sum("只留一筆" in issue for issue in report.issues) == 1
+    # 沒有重複的來源 ID 不變。
+    single = extra.adapt_83881([original], SourceReport())
+    assert [c.id for c in extra.unique_source_ids(single, "83881", SourceReport())] == ["83881-129"]
+
+
 def test_direction_specific_limits_do_not_collapse_to_minimum():
     rows = sources.parse_payload((extra.SNAPSHOTS / "130111.raw").read_bytes())
     cameras = extra.adapt_130111([r for r in rows if "\n" in r["速限-速度限制"]], SourceReport())
