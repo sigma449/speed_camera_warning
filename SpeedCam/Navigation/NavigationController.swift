@@ -11,6 +11,9 @@ final class NavigationController {
     private(set) var destination: MKMapItem?
     private var tracker: RouteProgressTracker?
     private var instructionResolver: RoadInstructionResolver = .empty
+    private var gradeSeparatedRoads = RoadMatcher(lines: [])
+    /// 這條路線確定走在高架／快速道路／國道上的區段。
+    private var gradeSeparated = GradeSeparatedRoute.none
     private(set) var routeHintWarning: String?
 
     var isActive: Bool { route != nil }
@@ -53,13 +56,14 @@ final class NavigationController {
         try Task.checkCancellation()
         var rules = RouteRules.noData
         instructionResolver = await RoadLineStore.loadInstructionResolver()
+        gradeSeparatedRoads = await RoadLineStore.loadGradeSeparatedRoads()
         if mode != .car { rules = await RoadLineStore.loadRules() }
         try Task.checkCancellation()
         return try await RoutePlanner.plan(from: source ?? MKMapItem.forCurrentLocation(), to: destination,
                                            mode: mode, rules: rules)
     }
 
-    func start(route: MKRoute, destination: MKMapItem) {
+    func start(route: MKRoute, destination: MKMapItem, cameras: SpatialIndex) {
         self.route = route
         self.destination = destination
         let polyline = MapItems.coordinates(of: route.polyline)
@@ -76,12 +80,28 @@ final class NavigationController {
         let matches = RouteHintMatcher.matches(hints, polyline: polyline)
         tracker = RouteProgressTracker(polyline: polyline, steps: RouteHintMatcher.steps(
             original, matches: matches, totalDistance: GeoMath.length(of: polyline)))
+        // 用 Apple 原始步驟判斷上下高架；人工提示插入的步驟不影響沿路線距離。
+        gradeSeparated = GradeSeparatedRoute(polyline: polyline, steps: original, roads: gradeSeparatedRoads,
+                                             cameras: cameras)
+        if !gradeSeparated.segments.isEmpty {
+            let summary = gradeSeparated.segments.map {
+                "\(Int($0.start))–\(Int($0.end)) m 略過 \($0.cameraIDs.count) 支"
+            }.joined(separator: "；")
+            Logger(subsystem: "tw.speedcammap.app", category: "route").info("高架區段：\(summary, privacy: .public)")
+        }
+    }
+
+    /// 目前走在高架上時要略過的平面照相點；偏離路線或沒有進度時不略過。
+    func suppressedCameraIDs(for progress: RouteProgress?) -> Set<String> {
+        guard let progress, !progress.isOffRoute, let tracker else { return [] }
+        return gradeSeparated.suppressedCameraIDs(along: tracker.totalDistance - progress.distanceRemaining)
     }
 
     func stop() {
         route = nil
         destination = nil
         tracker = nil
+        gradeSeparated = .none
         routeHintWarning = nil
     }
 

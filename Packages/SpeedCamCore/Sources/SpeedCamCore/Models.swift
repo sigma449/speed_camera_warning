@@ -165,9 +165,10 @@ public struct Camera: Codable, Hashable, Identifiable, Sendable {
         return (items.filter { !Self.isParkingItem($0) } + items.filter(Self.isParkingItem)).joined(separator: "、")
     }
 
+    /// 語音念的類型。科技執法只念「科技執法」（2026-11-22 使用者：連取締項目一起念太長），項目留在畫面與詳情。
     public var alertDescription: String {
-        guard type == .tech, let items = prioritizedEnforcementItems, !items.isEmpty else { return displayTypeName }
-        return "\(displayTypeName)：\(items)"
+        guard type == .tech else { return displayTypeName }
+        return (levelName ?? "") + "科技執法"
     }
 
     public var reminderDetail: String? {

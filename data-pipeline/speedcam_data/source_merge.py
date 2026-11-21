@@ -107,8 +107,21 @@ def _same_address(a: Camera, b: Camera) -> bool:
                 and len(_address(a)) >= 5 and _address(a) == _address(b))
 
 
+def _different_level(a: Camera, b: Camera) -> bool:
+    if a.level in ("elevated", "surface") and b.level in ("elevated", "surface"):
+        return a.level != b.level
+    # 一邊明寫高架，另一邊是寫了實際地點卻沒提高架的官方設備（例如高架下的平面路口），不是同一支。
+    # 2026-11-22：臺北 135957「建國高架道路(市民大道上方)」曾被併進 24 m 外的「市民大道與建國南路口」。
+    # OSM 只有佔位地址，仍可依距離併入官方高架設備。
+    for upper, other in ((a, b), (b, a)):
+        if (upper.level == "elevated" and other.level is None and other.source != "osm"
+                and other.address and "高架" not in other.address):
+            return True
+    return False
+
+
 def _same_kind(a: Camera, b: Camera) -> bool:
-    if a.level in ("elevated", "surface") and b.level in ("elevated", "surface") and a.level != b.level:
+    if _different_level(a, b):
         return False
     if "noise" in (a.type, b.type):
         return a.type == b.type

@@ -56,6 +56,9 @@ public struct CameraAlertResult: Equatable, Sendable {
 public final class CameraAlertEngine {
     public var settings: AlertSettings
     public private(set) var index: SpatialIndex
+    /// 暫時不提醒的照相點（導航走在高架上時，正下方平面路口的非測速照相，見 `GradeSeparatedRoute`）。
+    /// 追蹤中的會直接放掉、不記通過冷卻；離開高架後仍在前方就照常提醒。
+    public var suppressedCameraIDs: Set<String> = []
     /// 區間清單：區間測速的照相機會套用附近區間（起點或終點 500 m 內）的個別容許值。
     public var sections: [SpeedSection] = [] {
         didSet { coveredBySection.removeAll() }
@@ -212,7 +215,7 @@ public final class CameraAlertEngine {
         let moved = last.speedMps * elapsed
         var candidates: [(key: String, distance: Double)] = []
         for (key, var t) in tracked {
-            guard settings.isEnabled(t.camera), !t.camera.isParkingOnlyTechnology,
+            guard isAlertable(t.camera),
                   !isCoveredBySection(t.camera) else {
                 tracked[key] = nil
                 continue
@@ -298,7 +301,7 @@ public final class CameraAlertEngine {
     /// 隧道比搜尋半徑長時，隧道裡的照相點在定位中斷前還沒開始追蹤，這裡一次找出來。
     private func addCandidatesWithoutFix(last: VehicleFix, heading: Double) {
         for (cam, d) in index.cameras(near: last.point, radius: noFixTunnelRange) {
-            guard settings.isEnabled(cam), !cam.isParkingOnlyTechnology,
+            guard isAlertable(cam),
                   tracked[cam.id] == nil, cooldown[cam.id] == nil,
                   !isCoveredBySection(cam) else { continue }
             guard isAheadWithoutFix(cam, distance: d, from: last.point, heading: heading) else { continue }
@@ -331,7 +334,7 @@ public final class CameraAlertEngine {
 
     private func updateTracked(fix: VehicleFix, heading: Double, events: inout [CameraAlertEvent]) {
         for (key, var t) in tracked {
-            guard settings.isEnabled(t.camera), !t.camera.isParkingOnlyTechnology,
+            guard isAlertable(t.camera),
                   !isCoveredBySection(t.camera) else {
                 tracked[key] = nil
                 continue
@@ -376,10 +379,15 @@ public final class CameraAlertEngine {
         }
     }
 
+    /// 類型有開啟、不是純停車科技執法、也沒有被暫時略過。
+    private func isAlertable(_ camera: Camera) -> Bool {
+        settings.isEnabled(camera) && !camera.isParkingOnlyTechnology && !suppressedCameraIDs.contains(camera.id)
+    }
+
     /// 判斷照相點是否跟目前行進有關：必須在前方，且（有方向資料時）取締方向要相符。
     func isRelevant(_ camera: Camera, distance: Double, from point: GeoPoint,
                     heading: Double, isTracked: Bool) -> Bool {
-        guard settings.isEnabled(camera), !camera.isParkingOnlyTechnology else { return false }
+        guard isAlertable(camera) else { return false }
         // 極近時放寬前方位置，但熱點仍須核對取締方向／道路軸向。
         let closeTracked = isTracked && distance < 30
         if closeTracked && camera.type != .mobile { return true }
