@@ -278,6 +278,21 @@ def test_explicit_different_road_levels_are_not_merged_by_distance():
     assert len(merge_sources([elevated], [surface], SourceReport())) == 2
 
 
+def test_elevated_device_is_not_merged_into_surface_intersection_below():
+    # 臺北 135957：第 9 列平面路口與第 95 列高架上的設備相距 24 m，兩者都是真的設備。
+    surface = cam("135957-9", source="135957", kind="tech", heading=None, limit=None,
+                  address="市民大道與建國南路口", items="闖紅燈、不依規定轉彎")
+    elevated = cam("135957-95", source="135957", kind="tech", heading=None, limit=None, lat=25.0002,
+                   address="建國高架道路(市民大道上方)", items="逾10噸大貨車違規行駛")
+    elevated.level = "elevated"
+    result = merge_sources([], [surface, elevated], SourceReport())
+    assert {c.id for c in result} == {"135957-9", "135957-95"}
+    assert next(c for c in result if c.id == "135957-9").enforcementItems == "闖紅燈、不依規定轉彎"
+    # OSM 佔位地址不算平面證據：仍併入官方高架設備，不重複提醒。
+    osm = cam("osm-node-1", source="osm", heading=None, limit=None, lat=25.0001, address="OSM 測速照相（node-1）")
+    assert len(merge_sources([elevated], [osm], SourceReport())) == 1
+
+
 def test_osm_unknown_direction_distance_overlap_does_not_overwrite_official():
     report = SourceReport()
     original = cam("official", heading=90, limit=50)

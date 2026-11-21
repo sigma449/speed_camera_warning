@@ -150,6 +150,7 @@ final class ActivityController: LiveActivityControlling {
             let distanceChanged = abs(distance - lastDistance) >= step
             let speedChanged = abs(state.currentSpeedKmh - last.currentSpeedKmh) >= 5
             let averageChanged = state.sectionAverageKmh != last.sectionAverageKmh
+                || state.sectionRemainingMeters != last.sectionRemainingMeters
             let hintChanged = state.navHint != last.navHint
             guard significant || ((distanceChanged || speedChanged || averageChanged || hintChanged) && interval >= 2) || interval >= 30 else {
                 return

@@ -101,24 +101,10 @@ struct SmallActivityView: View {
             if showsLeading {
                 leading
             }
-            VStack(alignment: .leading, spacing: 0) {
-                primary
-                    .font(.system(size: 40, weight: .heavy, design: .rounded))
-                    .monospacedDigit()
-                    .minimumScaleFactor(0.55)
-                    .lineLimit(1)
-                // 放得下就顯示完整文字；最窄的尺寸（170 pt）改用短文字，字不用縮太小，也不會被截斷。
-                ViewThatFits(in: .horizontal) {
-                    secondaryLabel(secondary)
-                    secondaryLabel(secondaryCompact)
-                        .minimumScaleFactor(0.7)
-                    if state.mode == .camera && state.cameraDetail?.hasPrefix("取締：") == true
-                        && state.navHint == nil && !state.isOverspeed {
-                        secondaryLabel(state.cameraTypeName ?? "測速照相")
-                            .minimumScaleFactor(0.7)
-                    }
-                }
-                .foregroundStyle(secondaryColor)
+            // 較高的尺寸（240×100）多放一行區間剩餘距離；放不下就併進第二行或省略。
+            ViewThatFits(in: .vertical) {
+                textColumn(thirdLine: remainingLine)
+                textColumn(thirdLine: nil)
             }
             // 不用 Spacer：HStack 的間距也會算在 Spacer 前面，文字會少 10 pt 的寬度。
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -128,6 +114,57 @@ struct SmallActivityView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .background(state.isOverspeed && tintsOverspeed ? Color.red.opacity(0.35) : Color.clear)
         .foregroundStyle(.white)
+    }
+
+    private func textColumn(thirdLine: String?) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            primary
+                .font(.system(size: 40, weight: .heavy, design: .rounded))
+                .monospacedDigit()
+                .minimumScaleFactor(0.55)
+                .lineLimit(1)
+            // 放得下就顯示完整文字；最窄的尺寸（170 pt）改用短文字，字不用縮太小，也不會被截斷。
+            ViewThatFits(in: .horizontal) {
+                // 兩行版：區間剩餘距離放得下就併進第二行
+                if thirdLine == nil, let full = sectionWithRemaining.first {
+                    secondaryLabel(full)
+                }
+                if thirdLine == nil, sectionWithRemaining.count > 1 {
+                    secondaryLabel(sectionWithRemaining[1])
+                }
+                secondaryLabel(secondary)
+                secondaryLabel(secondaryCompact)
+                    .minimumScaleFactor(0.7)
+                if state.mode == .camera && state.cameraDetail?.hasPrefix("取締：") == true
+                    && state.navHint == nil && !state.isOverspeed {
+                    secondaryLabel(state.cameraTypeName ?? "測速照相")
+                        .minimumScaleFactor(0.7)
+                }
+            }
+            .foregroundStyle(secondaryColor)
+            if let thirdLine {
+                secondaryLabel(thirdLine)
+                    .foregroundStyle(secondaryColor)
+            }
+        }
+    }
+
+    /// 區間到終點的剩餘距離（2026-11-22 使用者：CarPlay 區間資訊太少，補上手機橫幅有的「剩 X km」）。
+    private var remainingLine: String? {
+        guard state.mode == .section, let meters = state.sectionRemainingMeters else { return nil }
+        return "剩 \(ActivityFormat.distance(meters))"
+    }
+
+    /// 兩行版的第二行：建議時速／均速＋剩餘距離，由長到短。
+    private var sectionWithRemaining: [String] {
+        guard state.navHint == nil, let meters = state.sectionRemainingMeters else { return [] }
+        let left = "剩\(ActivityFormat.distance(meters))"
+        let avg = state.sectionAverageKmh
+        if state.sectionZero {
+            return avg.map { ["可依速限・均速 \($0)・\(left)", "可依速限・均\($0)・\(left)"] } ?? ["可依速限・\(left)"]
+        }
+        guard let kmh = state.sectionSuggestedKmh else { return avg.map { ["均速 \($0)・\(left)"] } ?? [] }
+        return avg.map { ["建議≤\(kmh)・均速 \($0)・\(left)", "建議≤\(kmh)・均\($0)・\(left)"] } ?? ["建議≤\(kmh)・\(left)"]
     }
 
     @ViewBuilder private var leading: some View {

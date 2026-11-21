@@ -122,6 +122,8 @@ struct BannerGalleryView: View {
             banners(route(turnIn: 1_250),
                     target: CameraTarget(camera: techCamera, distance: 300, phase: .pre, isOverspeed: false))
         default:
+            label("\(combineName)：對照，沒有照相時的導航卡高度")
+            banners(route(turnIn: 1_250))
             label("\(combineName)：照相預告（最長類型＋高架）")
             banners(route(turnIn: 1_250),
                     target: CameraTarget(camera: longTypeCamera, distance: 1_250, phase: .pre, isOverspeed: false))

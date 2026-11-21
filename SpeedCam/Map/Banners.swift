@@ -67,7 +67,7 @@ struct TopAlertBanners: View {
     var body: some View {
         if let progress, section == nil, let target, style != .stacked {
             if style == .badge {
-                NavigationBanner(progress: progress, destination: nil, cameraBadge: target)
+                NavigationBanner(progress: progress, destination: destination, cameraBadge: target)
             } else {
                 NavigationCameraBanner(progress: progress, target: target)
             }
@@ -178,32 +178,36 @@ struct NavigationStrip: View {
     }
 }
 
-/// 方案 B：導航字卡右上角的照相小牌。速限（或類型圖示）、距離、超速時加「超速！」、高架／平面。
+/// 方案 B：放在導航大字那一行右側的照相小牌。速限（或類型圖示）＋距離，第二行「超速！」或高架／平面。
+/// 2026-11-22 使用者：小牌不能把導航卡撐高，所以整塊高度不超過大字那一行（`primaryLineHeight`）。
 struct CameraBadge: View {
     let target: CameraTarget
 
     var body: some View {
-        VStack(spacing: 3) {
+        HStack(spacing: 6) {
             CameraIndicator(limit: target.camera.enforcesSpeed ? target.camera.speedLimit : nil,
                             symbol: target.camera.symbolName, size: BannerLayout.stripIconSize)
-            Text(AnnouncementFormatter.displayDistance(target.distance))
-                .font(.system(size: 20, weight: .heavy, design: .rounded))
-                .monospacedDigit()
-                .foregroundStyle(target.isOverspeed ? Color.white : Color.yellow)
-            if target.isOverspeed {
-                Text("超速！")
-                    .font(.system(size: 17, weight: .heavy))
+            VStack(alignment: .leading, spacing: 0) {
+                Text(AnnouncementFormatter.displayDistance(target.distance))
+                    .font(.system(size: 20, weight: .heavy, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(target.isOverspeed ? Color.white : Color.yellow)
+                // 只放得下一行：超速優先，高架／平面仍在無障礙說明裡。
+                if target.isOverspeed {
+                    Text("超速！")
+                        .font(.system(size: 15, weight: .heavy))
+                } else if let level = target.camera.levelName {
+                    LevelTag(text: level, font: .system(size: 12, weight: .heavy))
+                }
             }
-            if let level = target.camera.levelName {
-                LevelTag(text: level, font: .system(size: 14, weight: .heavy))
-            }
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .fixedSize()
         }
-        .lineLimit(1)
-        .minimumScaleFactor(0.7)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 6)
-        .frame(minWidth: 72)
-        .background(BannerStyle.dark, in: RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .frame(height: BannerLayout.primaryLineHeight)
+        .background(BannerStyle.dark, in: RoundedRectangle(cornerRadius: 10))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(accessibilityText))
     }
@@ -367,20 +371,28 @@ struct NavigationBanner: View {
                 .font(.system(size: 40, weight: .bold))
                 .frame(width: BannerLayout.iconSize, height: BannerLayout.iconSize)
             VStack(alignment: .leading, spacing: 2) {
-                if progress.isOffRoute {
-                    // 舊路線的下一步已經不對了，不要繼續顯示
-                    Text("重新規劃中")
-                        .font(BannerLayout.primaryStatusFont)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                        .frame(minHeight: BannerLayout.primaryLineHeight, alignment: .leading)
-                } else {
-                    Text(AnnouncementFormatter.displayDistance(progress.distanceToNextManeuver))
-                        .font(BannerLayout.primaryFont)
-                        .monospacedDigit()
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                        .frame(minHeight: BannerLayout.primaryLineHeight, alignment: .leading)
+                // 方案 B 的小牌放在大字同一行右側，不另佔一行，導航卡高度和沒有照相時一樣。
+                HStack(spacing: 8) {
+                    if progress.isOffRoute {
+                        // 舊路線的下一步已經不對了，不要繼續顯示
+                        Text("重新規劃中")
+                            .font(BannerLayout.primaryStatusFont)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    } else {
+                        Text(AnnouncementFormatter.displayDistance(progress.distanceToNextManeuver))
+                            .font(BannerLayout.primaryFont)
+                            .monospacedDigit()
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.7)
+                    }
+                    if let cameraBadge {
+                        Spacer(minLength: 0)
+                        CameraBadge(target: cameraBadge)
+                    }
+                }
+                .frame(minHeight: BannerLayout.primaryLineHeight, alignment: .leading)
+                if !progress.isOffRoute {
                     Text(progress.maneuverText)
                         .font(.headline)
                         .lineLimit(2)
@@ -394,9 +406,6 @@ struct NavigationBanner: View {
                 }
             }
             Spacer(minLength: 0)
-            if let cameraBadge {
-                CameraBadge(target: cameraBadge)
-            }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .topLeading)

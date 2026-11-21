@@ -40,10 +40,10 @@ final class AnnouncementFormatterTests: XCTestCase {
         XCTAssertEqual(AnnouncementFormatter.cameraAlert(camera: noise, announcedDistance: 300),
                        "前方300公尺，聲音照相")
         XCTAssertEqual(AnnouncementFormatter.cameraAlert(camera: tech, announcedDistance: 300),
-                       "前方300公尺，路口科技執法：闖紅燈、未依標線行駛")
+                       "前方300公尺，科技執法")
         tech.enforcementItems = "超速、闖紅燈"
         XCTAssertEqual(AnnouncementFormatter.cameraAlert(camera: tech, announcedDistance: 300),
-                       "前方300公尺，路口科技執法：超速、闖紅燈，速限50")
+                       "前方300公尺，科技執法，速限50")
     }
 
     func testMixedTechnologyListsKeepDrivingItemsFirstAndRawDetailsIntact() {
@@ -55,7 +55,7 @@ final class AnnouncementFormatterTests: XCTestCase {
         XCTAssertEqual(tech.enforcementDetail, "取締：" + items)
         XCTAssertEqual(tech.reminderDetail, "取締：" + sorted)
         XCTAssertEqual(AnnouncementFormatter.cameraAlert(camera: tech, announcedDistance: 300),
-                       "前方300公尺，路口科技執法：" + sorted)
+                       "前方300公尺，科技執法")
     }
 
     func testParkingClassificationKeepsUnknownItemsAndStopSignEnforcement() {

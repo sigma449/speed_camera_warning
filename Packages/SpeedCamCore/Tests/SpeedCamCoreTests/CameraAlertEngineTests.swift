@@ -90,7 +90,7 @@ final class CameraAlertEngineTests: XCTestCase {
                 }
                 XCTAssertEqual(result.target?.phase, .near)
                 XCTAssertEqual(result.target?.isOverspeed, false)
-                let name = type == .redLight ? "闖紅燈照相" : "路口科技執法：闖紅燈及路口淨空"
+                let name = type == .redLight ? "闖紅燈照相" : "科技執法"
                 XCTAssertEqual(CameraAnnouncementPolicy.speech(for: result, speedKmh: scenario.speed,
                     settings: engine.settings), [SpokenAnnouncement(text: "前方\(scenario.spoken)，\(name)", urgent: true)])
                 XCTAssertTrue(engine.process(fix).events.isEmpty)

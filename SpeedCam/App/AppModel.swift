@@ -780,7 +780,7 @@ final class AppModel: ObservableObject {
 
     private func startNavigation(route newRoute: MKRoute, destination item: MKMapItem, subtitle: String?,
                                  mode: VehicleMode) {
-        navigation.start(route: newRoute, destination: item)
+        navigation.start(route: newRoute, destination: item, cameras: index)
         navigationVehicleMode = mode
         route = newRoute
         destinationName = item.name
@@ -841,7 +841,7 @@ final class AppModel: ObservableObject {
                 // 等待期間使用者可能已經結束導航
                 guard !Task.isCancelled, self.navigation.destination === destination,
                       self.reroutePlanning.complete(request, currentMode: self.settings.vehicleMode) else { return }
-                self.navigation.start(route: plan.route, destination: destination)
+                self.navigation.start(route: plan.route, destination: destination, cameras: self.index)
                 self.navigationVehicleMode = request.mode
                 self.route = plan.route
                 let warnings = [plan.warning?.text, self.navigation.routeHintWarning].compactMap { $0 }
@@ -872,6 +872,8 @@ final class AppModel: ObservableObject {
 
         // 隧道裡的基地台定位不能判斷照相點和區間，當作沒有定位，由 tick 依時間推算
         let sec = fix.isReliable ? sectionTracker.process(fix) : nil
+        // 導航走在高架上：正下方平面路口的非測速照相不提醒（用上一筆定位的進度，最多晚一秒）
+        alertEngine.suppressedCameraIDs = navigation.suppressedCameraIDs(for: routeProgress)
         let cam = fix.isReliable ? alertEngine.process(fix) : nil
         let modeMatches = navigationVehicleMode == settings.vehicleMode
         // 導航也一樣：誤差幾百公尺的定位會投影到後面的路段，提早念轉彎或誤判偏離；保留上一次的進度。
@@ -956,6 +958,9 @@ final class AppModel: ObservableObject {
             s.sectionEarliestExit = sec.earliestExit
             s.sectionAverageKmh = Int(sec.averageKmh.rounded())
             s.sectionSuggestedKmh = sec.suggestedWholeKmh
+            if sec.remainingMeters.isFinite {
+                s.sectionRemainingMeters = max(0, (sec.remainingMeters / 100).rounded() * 100)
+            }
             s.sectionLimit = sec.section.speedLimit
             s.sectionZero = sec.remainingSeconds <= 0
             s.isOverspeed = isOverspeed
