@@ -1,6 +1,6 @@
 {
- "version": "2026-11-15",
- "generatedAt": "2026-11-15T22:51:34Z",
+ "version": "2026-11-22",
+ "generatedAt": "2026-11-22T23:38:06Z",
  "sources": [
   "內政部警政署「測速執法設置點」，政府資料開放授權條款－第1版（https://data.gov.tw/license）",
   "交通部公路局「省道里程坐標(里程牌標誌)」，政府資料開放授權條款－第1版（https://data.gov.tw/license）",
@@ -1627,17 +1627,6 @@
    "district": "關西鎮"
   },
   {
-   "id": "1471d1f304b5",
-   "type": "fixed",
-   "lat": 25.107386,
-   "lon": 121.244095,
-   "address": "國際路二段與中央路路口",
-   "heading": 0.0,
-   "speedLimit": 70,
-   "city": "桃園市",
-   "district": "桃園市大園區"
-  },
-  {
    "id": "1592508286ae",
    "type": "fixed",
    "lat": 24.889975,
@@ -1744,17 +1733,6 @@
    "speedLimit": 50,
    "city": "臺中市",
    "district": "東區"
-  },
-  {
-   "id": "16f8043b83b8",
-   "type": "fixed",
-   "lat": 23.294575,
-   "lon": 120.12972,
-   "address": "臺61線281.9公里",
-   "heading": 180.0,
-   "speedLimit": 90,
-   "city": "臺南市",
-   "district": "北門區"
   },
   {
    "id": "172a487253df",
@@ -4317,7 +4295,7 @@
    "type": "fixed",
    "lat": 24.967031,
    "lon": 121.24411,
-   "address": "中壢區中華路與自強一路口",
+   "address": "中華路與自強一路口",
    "speedLimit": 50,
    "city": "桃園市",
    "district": "中壢區"
@@ -6364,7 +6342,7 @@
    "lat": 24.984001,
    "lon": 121.214294,
    "address": "中豐北路與大圳路一段口",
-   "speedLimit": 50,
+   "speedLimit": 60,
    "city": "桃園市",
    "district": "桃園市中壢區"
   },
@@ -9538,7 +9516,7 @@
    "lat": 24.984825,
    "lon": 121.2134,
    "address": "中豐北路與大圳路一段口",
-   "speedLimit": 50,
+   "speedLimit": 60,
    "city": "桃園市",
    "district": "桃園市中壢區"
   },
@@ -11476,6 +11454,16 @@
    "district": "七堵區"
   },
   {
+   "id": "8eec71d534db",
+   "type": "fixed",
+   "lat": 24.95334,
+   "lon": 121.26659,
+   "address": "崁頂路1401巷仁德公園旁",
+   "speedLimit": 50,
+   "city": "桃園市",
+   "district": "中壢區"
+  },
+  {
    "id": "8f263bbb33d5",
    "type": "fixed",
    "lat": 23.942873,
@@ -12418,6 +12406,16 @@
    "speedLimit": 60,
    "city": "苗栗縣",
    "district": "後龍鎮"
+  },
+  {
+   "id": "9aeda86f5fcb",
+   "type": "fixed",
+   "lat": 25.106504,
+   "lon": 121.23547,
+   "address": "台15線27.9K",
+   "speedLimit": 50,
+   "city": "桃園市",
+   "district": "大園區"
   },
   {
    "id": "9b47c0d8d39c",
@@ -14397,7 +14395,7 @@
    "lon": 121.03028,
    "address": "公道路616號前",
    "heading": 270.0,
-   "speedLimit": 50,
+   "speedLimit": 60,
    "city": "新竹縣",
    "district": "竹東鎮"
   },
@@ -15017,6 +15015,17 @@
    "district": "竹田鄉"
   },
   {
+   "id": "bba716e6f686",
+   "type": "fixed",
+   "lat": 23.2928,
+   "lon": 120.13767,
+   "address": "臺61線281.9公里",
+   "heading": 180.0,
+   "speedLimit": 90,
+   "city": "臺南市",
+   "district": "北門區"
+  },
+  {
    "id": "bc005fc5fb17",
    "type": "fixed",
    "lat": 23.692923,
@@ -15617,6 +15626,16 @@
    "speedLimit": 50,
    "city": "澎湖縣",
    "district": "馬公市"
+  },
+  {
+   "id": "c5c07ce335f1",
+   "type": "fixed",
+   "lat": 24.98188,
+   "lon": 121.064316,
+   "address": "中山西路二段560號旁",
+   "speedLimit": 50,
+   "city": "桃園市",
+   "district": "新屋區"
   },
   {
    "id": "c5e1926f4ed3",
@@ -18325,7 +18344,7 @@
    "type": "fixed",
    "lat": 24.964989,
    "lon": 121.23832,
-   "address": "中壢區中華路二段與中園路(忠義路)",
+   "address": "中華路二段與中園路(忠義路)",
    "speedLimit": 50,
    "city": "桃園市",
    "district": "中壢區"
