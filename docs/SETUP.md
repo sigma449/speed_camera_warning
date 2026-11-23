@@ -274,6 +274,17 @@ iloader 只需要這個元件，就算 iTunes 本身還在跳錯誤，也可以�
 
 都不行的話的**備案**：新版 iloader（2.4.1 起）可以正常登入，可以直接用 iloader 把 `SpeedCam.ipa` 裝到 iPhone、跳過 SideStore。缺點是每 7 天要接電腦、用 iloader 重裝一次才能續簽。
 
+**Q：iloader 登入時出現「GrandSlam error during initial login request」「Auth error -22410: This action could not be completed. Try again.」？**
+
+2026-11-21 起很多人同時遇到，Windows、Mac 都有，看起來不是帳號或密碼錯（[iloader #1209](https://github.com/nab138/iloader/issues/1209)、[#1220](https://github.com/nab138/iloader/issues/1220)、[#1230](https://github.com/nab138/iloader/issues/1230)）。官方修正還沒出，社群回報有效的做法（2026-11-22）：
+
+1. 先確認 iloader 是最新版（2.4.2 起）：`winget upgrade --id nabdev.iloader -e`。
+2. iloader 的 **Settings** → **Reset Anisette State** → 確認。
+3. 把 iloader 完全關掉（工作列右下角有圖示的話也要結束），重新打開再登入。
+4. 還是失敗：把 Anisette 伺服器換成 `https://mac-ani.jkcoxson.com/`（選項位置依畫面指示；#1209 一位回報者有效），再做一次 2～3。
+
+第 2～3 步在 #1220 有兩人回報有效；#1230 也有人試了別串的做法仍然無效。另有人登入走到簡訊驗證碼時回 403，原因不明（[#1213](https://github.com/nab138/iloader/issues/1213)）。
+
 **Q：SideStore 安裝時出現「Bundle identifier unavailable: An invalid value '測速地圖' was provided for the parameter 'appIdName'」？**
 
 這是 2026-11-04 以前的舊版 IPA 才有的問題：SideStore 會拿 App 的名稱向 Apple 註冊 App ID，而 Apple 只接受英數字。新版 IPA 的內部名稱已改成英文 **SpeedCam**（主畫面仍顯示「測速地圖」），請重新到 Actions 下載最新的 SpeedCam-ipa 再安裝一次。失敗的那次安裝不會用掉 App ID 額度。

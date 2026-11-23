@@ -55,7 +55,8 @@ enum BannerCombineStyle: String {
     }()
 }
 
-/// 主畫面上方的導航、區間、照相字卡。導航中遇到照相點且沒有區間時，依 `BannerCombineStyle` 合成一張。
+/// 主畫面上方的導航、區間、照相字卡。導航中進入區間時，導航和區間合成一張；
+/// 導航中遇到照相點且沒有區間時，依 `BannerCombineStyle` 合成一張。
 struct TopAlertBanners: View {
     let progress: RouteProgress?
     let destination: String?
@@ -65,7 +66,10 @@ struct TopAlertBanners: View {
     var style = BannerCombineStyle.current
 
     var body: some View {
-        if let progress, section == nil, let target, style != .stacked {
+        if let progress, let section, style != .stacked {
+            NavigationSectionBanner(progress: progress, destination: destination,
+                                    section: section, currentSpeed: currentSpeed)
+        } else if let progress, section == nil, let target, style != .stacked {
             if style == .badge {
                 NavigationBanner(progress: progress, destination: destination, cameraBadge: target)
             } else {
@@ -81,6 +85,23 @@ struct TopAlertBanners: View {
                 CameraBanner(target: target)
             }
         }
+    }
+}
+
+/// 導航和區間合成一張卡（2026-11-23，使用者看概念圖選定）：資訊和字級都不變，只拿掉兩張卡中間的空隙並收掉空白。
+/// 和照相的方案 A／B 無關，兩案都一樣。
+struct NavigationSectionBanner: View {
+    let progress: RouteProgress
+    let destination: String?
+    let section: SectionStatus
+    let currentSpeed: Int
+
+    var body: some View {
+        VStack(spacing: 0) {
+            NavigationBanner(progress: progress, destination: destination, embedded: true, bottomPadding: 10)
+            SectionBanner(status: section, currentSpeed: currentSpeed, embedded: true)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 20))
     }
 }
 
@@ -280,10 +301,12 @@ struct CameraBanner: View {
 struct SectionBanner: View {
     let status: SectionStatus
     let currentSpeed: Int
+    /// 併在導航卡下半：均速移到倒數下面，補掉速限牌右邊的空白；不另外圓角，外層統一裁切。
+    var embedded = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .top, spacing: 14) {
+            HStack(alignment: embedded ? .center : .top, spacing: 14) {
                 SpeedLimitSign(limit: status.section.speedLimit, size: BannerLayout.iconSize)
                 VStack(alignment: .leading, spacing: 0) {
                     if status.remainingSeconds > 0 {
@@ -309,30 +332,48 @@ struct SectionBanner: View {
                             .fixedSize(horizontal: false, vertical: true)
                             .frame(minHeight: BannerLayout.primaryLineHeight, alignment: .leading)
                     }
+                    if embedded {
+                        // 速限牌旁邊比較窄，「長度為估算」另起一行
+                        averageText
+                        estimatedNote
+                    }
                 }
                 Spacer(minLength: 0)
             }
             if status.remainingSeconds > 0 {
                 suggestion
             }
-            // 區間名稱很長（真實資料 27～32 字）又用不到；「以 N 計算」進入區間時語音會念。都不放在這裡。
-            HStack(spacing: 8) {
-                Text("均速 \(Int(status.averageKmh.rounded()))・剩 \(AnnouncementFormatter.displayDistance(status.remainingMeters))")
-                    .font(.system(size: 22, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                if status.section.lengthEstimated {
-                    Text("長度為估算")
-                        .font(.footnote)
-                        .foregroundStyle(.yellow)
+            if !embedded {
+                HStack(spacing: 8) {
+                    averageText
+                    estimatedNote
                 }
             }
         }
-        .padding(14)
+        .padding(.horizontal, 14)
+        .padding(.top, embedded ? 10 : 14)
+        .padding(.bottom, embedded ? 12 : 14)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(BannerStyle.dark, in: RoundedRectangle(cornerRadius: 20))
+        .background(BannerStyle.dark, in: RoundedRectangle(cornerRadius: embedded ? 0 : 20))
         .foregroundStyle(.white)
+    }
+
+    /// 區間名稱很長（真實資料 27～32 字）又用不到；「以 N 計算」進入區間時語音會念。都不放在這裡。
+    private var averageText: some View {
+        Text("均速 \(Int(status.averageKmh.rounded()))・剩 \(AnnouncementFormatter.displayDistance(status.remainingMeters))")
+            .font(.system(size: 22, weight: .bold, design: .rounded))
+            .monospacedDigit()
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+    }
+
+    @ViewBuilder
+    private var estimatedNote: some View {
+        if status.section.lengthEstimated {
+            Text("長度為估算")
+                .font(.footnote)
+                .foregroundStyle(.yellow)
+        }
     }
 
     /// 建議時速：依剩餘距離與剩餘時間計算，照這個時速以下開完，平均就不會超過「速限＋容許值」。
@@ -361,8 +402,10 @@ struct NavigationBanner: View {
     let destination: String?
     /// 方案 B：右上角掛照相小牌，超速時整張卡變紅。
     var cameraBadge: CameraTarget? = nil
-    /// 合併在照相字卡裡（方案 A）：不另外圓角，外層統一裁切。
+    /// 合併在照相字卡（方案 A）或區間字卡裡：不另外圓角，外層統一裁切。
     var embedded = false
+    /// 下面接著區間時縮小，接縫才不會留一大塊空白。
+    var bottomPadding: CGFloat = 14
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
@@ -407,7 +450,8 @@ struct NavigationBanner: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(14)
+        .padding([.top, .horizontal], 14)
+        .padding(.bottom, bottomPadding)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .background(cameraBadge?.isOverspeed == true ? BannerStyle.overspeed : BannerStyle.good,
                     in: RoundedRectangle(cornerRadius: embedded ? 0 : 20))

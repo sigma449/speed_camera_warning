@@ -103,10 +103,20 @@ struct BannerGalleryView: View {
     @ViewBuilder
     private func pairedExamples(_ pair: String) -> some View {
         switch pair {
-        case "section", "zero":
-            label("導航＋\(pair == "zero" ? "區間歸零" : "區間")")
+        case "section":
+            label("導航＋區間")
             banners(route(turnIn: 1_250),
-                    section: status(remaining: pair == "zero" ? 0 : 615, meters: 12_300, average: 72, suggested: 55))
+                    section: status(remaining: 615, meters: 12_300, average: 72, suggested: 55))
+            label("導航＋區間：沒有太快、數字最長")
+            banners(route(turnIn: 1_250),
+                    section: status(remaining: 1_112, meters: 12_300, average: 108, suggested: 100))
+            label("導航＋區間：重新規劃中")
+            banners(route(turnIn: 1_250, offRoute: true),
+                    section: status(remaining: 615, meters: 12_300, average: 72, suggested: 55))
+        case "zero":
+            label("導航＋區間歸零")
+            banners(route(turnIn: 1_250),
+                    section: status(remaining: 0, meters: 12_300, average: 72, suggested: 55))
         case "rerouting":
             label("\(combineName)：重新規劃＋照相預告")
             banners(route(turnIn: 1_250, offRoute: true),
