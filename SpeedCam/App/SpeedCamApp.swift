@@ -12,6 +12,8 @@ struct SpeedCamApp: App {
                     UserCameraGalleryView()
                 } else if model.showGallery, ProcessInfo.processInfo.arguments.contains("-galleryBeepInterval") {
                     BeepSettingsGalleryView()
+                } else if model.showGallery, ProcessInfo.processInfo.arguments.contains("-gallerySavedPlaces") {
+                    SavedPlacesGalleryView()
                 } else if model.showGallery, #available(iOS 17, *) {
                     GalleryRoot()
                 } else {

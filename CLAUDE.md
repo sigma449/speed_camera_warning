@@ -66,7 +66,7 @@ CarPlay 畫地圖須逐向導航、一App一類。iOS26 Live Activity免 entitle
 - **其他畫面也要精簡**：不顯「巡航中」，只車速及「km/h・汽車」；Live Activity 超速小字只「超速！」。鎖定巡航右側不重複車速；動態島展開左上只速限／圖示、右上車速、下方大／小字，巡航隱藏右上車速。`Camera.shortAddress`：18 字內原文，過長移括號、多段取首段；詳情留完整地址。
 - **主畫面橫幅不透明**：用 `BannerStyle`，地圖路名不得透出；深色底白字對比 ≥4.5:1，小字不用 `.secondary`。
 - **同屏橫幅比例（第二階段 B；2026-11-20 使用者實測後縮小）**：照相／導航／區間共用 64 pt 圖示欄、38 pt 主數字（同行「超速！」26、「區間倒數／秒」20，整句「重新規劃中／可依速限行駛」28）、46 pt 主行槽；**不設最小高、依內容決定高度**（原 176 pt 底部空白擋地圖），頂端對齊；長字可撐高不可鎖死，區間仍三行。375／390 pt 與放大文字須 CI 看圖。
-- **導航＋照相合併字卡（2026-11-20 試驗中，使用者實測 A／B 後擇一）**：導航中有照相、沒有區間時，`BannerCombineStyle.buildDefault` 決定合併方式；`copilot/test2-1108` 為方案 A `swap`，方案 B `badge` 的 IPA 從 `copilot/banner-merge-b` 只改這一行打包。
+- **導航＋照相合併字卡（2026-11-27 使用者：A／B 改成設定）**：導航中有照相、沒有區間時，依設定「導航中遇到照相點」（`AppPreferences.bannerCombineStyleKey`，`@AppStorage`，預設 A `swap`）合併，即時生效、恢復預設值不動；`-bannerCombine` 只暫時覆寫、不儲存，`stacked` 不出現在設定。不再分 `copilot/banner-merge-b` 打包。
   A：一張卡，主從由 Core `NavigationCameraLead` 決定（超速＞重新規劃中＞轉彎點100 m內＞照相近距＞平常導航），另一個縮成底部 40 pt 圖示＋26 pt 距離細條，不放地址／目的地。B：照相小牌（40 pt 速限或類型圖示＋距離，第二行「超速！」優先、否則高架／平面）放在導航大字同一行右側、高 ≤46 pt，**卡片高度與純導航相同、保留目的地行（2026-11-22 使用者：不可撐高）**；超速整張變紅。無導航的區間與照相、語音、Live Activity／CarPlay 均不變；導航＋區間見下方合併字卡。
 - **導航文字縮短**：CarPlay／鎖屏／手機用 `ManeuverText.short`「動作＋路名」（如「靠右 上五股楊梅高架」「下交流道 95A出口」），語音保留 Apple 完整句。區間／相機模式轉彎點 300 m 內以 `SpeedCamActivityState.navHint` 顯示下一步，超速優先。
 - **「上高速公路」校正**：Core `RoadInstructionResolver` 只在動作點後路形唯一對上 `road_lines.json` 具名非國道主線時，畫面／完整語音一起改「上＋路名」（如「左轉上水源快速道路，朝(永和)、景美前進」／「左轉 上水源快速道路」）；國道、平行／橫跨、入口短、未知／多名歧義均保留 Apple，不猜。
@@ -80,6 +80,8 @@ CarPlay 畫地圖須逐向導航、一App一類。iOS26 Live Activity免 entitle
 - **開啟 App 就自動開始巡航**：`AppPreferences.autoStartCruise` 預設開啟、設定可關。
 - **定位恢復（H2）**：定位工作退出清對應世代並記原因；巡航且有權限時每秒／回前景檢查，至少隔 5 秒重啟；舊工作不能清新工作，舊版暫時性 `locationUnknown` 保留工作。
 - **搜尋目的地**：`MKLocalSearchCompleter` 邊打邊出候選、快速搜尋（加油站／停車場等）、最近目的地最多 15 筆。搜尋／選候選共用可取消工作，以世代／查詢／畫面存活驗回填；關閉／選定立即失效化，晚到不得改目的地。
+- **常用地點（2026-11-27 使用者要求）**：Core `SavedPlaces`：住家、公司各一（再設即取代），常用最多 20、同名 50 m 內更新不重複，改名 trim／空白回原名／30 字；App `SavedPlaceStore` 存 UserDefaults `savedPlaces.v1`，解碼失敗原值備份 `.unreadable` 一次，未編輯時回前景重讀，只存本機、不上傳／匯出。
+  搜尋頁沒輸入時最上「常用」：住家／公司大按鈕＋常用列，已設點了預覽（名稱「住家」「公司」），未設進頁內指定模式（選結果／候選／最近即存、不導航）；最近目的地與已存同名 100 m 內不重列，右滑「加入常用」、長按可設住家／公司。選點卡標題列星號（實心＝50 m 內已存）開選單設住家／公司／常用或移除；設定→常用地點可指定（`SearchView(assigning:)` 存後關閉）、改名、刪除、排序。
 - **地圖選點（第二階段 B）**：17+ `MapFeature`、16 MKMapView的 `selectableMapFeatures`，全版長按任意點、15僅長按。先卡片名稱／地址／原座標，主動作「開始導航」外觀不變、另有中性次要「新增照相點」；按開始導航才進3秒地點／10秒路線預覽，不直導航。導航／預覽禁選點，相機仍詳情、預覽藏相機；開卡停跟隨／自動回中心、藏底部／回中心，只一主動作。反查失敗提示＋log、仍用原座標；取消／改選使舊結果失效。POI／長按／相機分流／清晰度須iOS操作看圖。
 - **區間在地圖上順著路形畫**：里程牌產 `path`（[[緯度, 經度], ...]），Douglas–Peucker 簡化 6 m；`SpeedSection.displayPath` 畫、無 path 用直線，同段雙向只畫一次。`SectionPathSnapper` 以 Apple 貼路：先起終點一次規劃，長度 0.85～1.2 倍／偏路形 ≤200 m 才採，否則每 1.2 km 分段。
   Application Support的 `snappedSectionPaths.v2.json` 按方向別 `section.id`＋有序精確端點簽章驗，端點變重算、不讀v1／跨 `groupID`。每向一次、間隔1.5秒、近中心優先；同步核心不重設倒數。Apple 明確找不到路才記失敗7天；沒網路／伺服器／持續限流不寫快取，10分鐘後重排。背景估長按ID就地套用、保留active／原起時／預告／超速節流／重入及完成冷卻，不覆新路形，長度未變也不重設。
@@ -117,11 +119,12 @@ CarPlay 畫地圖須逐向導航、一App一類。iOS26 Live Activity免 entitle
 
 - `-demo`／`-demoIfEmpty`：展示／空才展示；`-autoStartCruise NO`：不自巡航；`-legacyUI`：強制舊流程。
 - `-gallery` 看Activity，以下gallery選項均配它：`-galleryMiddle`／`-galleryBottom` 中／底部；`-galleryBanners` 手機長字；`-galleryBanners -galleryHints` 人工提示／170×78 navHint。
-- `-galleryBanners -galleryBannerPair camera|section|zero|rerouting|overspeed -galleryWidth 375|390`：導航＋相機／區間／歸零／重規劃或照相超速（「超速！」）同屏；camera／overspeed 頁另列近距、轉彎點60 m內、科技執法等主從狀態，標題標出合併方式。`-bannerCombine stacked|swap|badge` 覆寫合併方式（內部比對用，不儲存）。
+- `-galleryBanners -galleryBannerPair camera|section|zero|rerouting|overspeed -galleryWidth 375|390`：導航＋相機／區間／歸零／重規劃或照相超速（「超速！」）同屏；camera／overspeed 頁另列近距、轉彎點60 m內、科技執法等主從狀態，標題標出合併方式。`-bannerCombine stacked|swap|badge` 覆寫合併方式（內部比對用，不儲存）；CI 的 `29b／33b／49b／50b` 是方案 B。
 - `-galleryTypes mobile|tech|noise`：三類CarPlay三尺寸／鎖屏／動態島，加 `-galleryBanners -galleryWidth 375` 看手機詳情；`-galleryLock` 鎖屏／動態島（外框示意）；`-galleryStale` 過期三尺寸，可加Lock；`-galleryPlaces` 375 pt長名稱／地址及反查中／失敗，可加Bottom。
 - `-galleryUserCameras place|fixed|fixed-current|redLight|redLight-current|both|official|added|modified|settings|empty`：375pt選點／表單／詳情／管理，15也可用；純記憶體假資料，不碰個人編輯檔。`-galleryBottom`看表單備註／詳情底部／隱藏清單，settings加`-galleryMiddle`看修改清單；完整截圖含兩種字級。
 - `-galleryUserCameras quick-button|quick-confirmation|quick-navigation|quick-camera|quick-section|unset|unset-edit`：行車按鈕／確認卡（含導航、照相、區間同屏）／速限未設詳情與修改表單；375pt、一般／放大字、iOS15也拍。確認卡示例固定顯示、不啟動定位／反查或倒數，不代表手勢／實播驗收。
 - `-galleryBeepInterval min|default|max`：正式嗶聲滑桿的0.5／5／10秒純記憶體設定示例，375pt一般／放大字，iOS15也拍，不讀寫個人偏好。
+- `-gallerySavedPlaces search|assign|card|card-menu|settings|rename|banner-style`：常用地點搜尋／指定／選點卡星號與選單／管理／改名及A／B設定，記憶體示例、不讀寫個人地點或偏好；375pt一般／放大字，iOS15也拍。
 - `-search 文字`／`-typeSearch 文字`：搜尋／約45秒輸刪；`-settings` 設定；`-vehicleMode car|motorcycleRedYellow|motorcycleWhite` 車種覆寫不儲存。
 - `-mapCenter 緯度,經度 -mapSpan 度數` 範圍；`-previewTo 緯度,經度,名稱` 預覽；`-selectPlace 緯度,經度,名稱` 正式選點反查、不預覽，與previewTo並用則預覽優先。
 - `-routeLineStyle current|whiteCasing|darkCasing -mapEmphasis current|muted` 內部樣式不存。

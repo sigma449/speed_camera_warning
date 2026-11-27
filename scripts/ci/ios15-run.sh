@@ -199,6 +199,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/user-camera-screenshots.sh"
 capture_user_camera_edits "ios15-17-user-camera"
 source "$(dirname "${BASH_SOURCE[0]}")/beep-settings-screenshots.sh"
 capture_beep_settings "ios15-18-beep-interval"
+source "$(dirname "${BASH_SOURCE[0]}")/saved-places-screenshots.sh"
+capture_saved_places "ios15-19-saved-places"
 fi
 
 xcrun simctl spawn "${UDID}" log show --last 20m --style compact \

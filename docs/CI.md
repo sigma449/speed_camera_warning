@@ -87,12 +87,12 @@ CI 的截圖 `auto`：App／Shared／Widget／`scripts/ci`／`project.yml` 改�
 | 情境 | iOS 26 | iOS 15 |
 |---|---|---|
 | `smoke` | 5 張：啟動、設定、375 pt 照相／區間、過期卡片 | 2 張：啟動、設定 |
-| `gallery` | 橫幅、窄版／大字、Live Activity、過期、選點、我的照相點與嗶聲滑桿 | 我的照相點47張＋嗶聲滑桿6張；不載入Live Activity |
+| `gallery` | 橫幅（含導航＋照相 A／B）、窄版／大字、Live Activity、過期、選點、我的照相點、嗶聲滑桿、常用地點與字卡設定 | 我的照相點 47 張、嗶聲滑桿 6 張、常用地點與字卡設定 14 張；不載入 Live Activity |
 | `map` | 展示、地圖、選點、預覽、新舊地圖 | 對應舊地圖功能 |
 | `search` | 語言候選、搜尋壓測 | 候選、搜尋壓測 |
-| `full` | 106 張；gallery＋map＋search | 67 張；不含內部對照 |
+| `full` | 126 張；gallery＋map＋search | 81 張；不含內部對照 |
 | `styles` | 明確選取才拍 24 張內部樣式比較 | 2 張內部比較 |
-| `all` | 130 張 | 69 張 |
+| `all` | 150 張 | 83 張 |
 | `none` | 只建置，不宣稱畫面驗收 | 同左 |
 
 沒有縮短展示倒數或外部服務等待。UI-ready 缺失仍警告拍圖；**App 存活查不到、程序被換掉或截圖失敗則失敗**。
@@ -157,6 +157,35 @@ iOS 15 也走正式表單／詳情／管理元件，不退為一般啟動畫面�
 需重拍上述兩版共 12 張，下載真圖確認滑桿位置、即時「每0.5／5／10秒」與逐聲壓低音樂說明、放大字無截斷，並實測 VoiceOver 數值與單位。
 截圖不證明音訊節拍；0.18 秒 WAV、10 秒內各間隔的時間點／聲數與取消／改值由 Core 測試，
 背景／CarPlay、≥1.5 秒逐聲恢復音量／更短間隔持續壓低、語音讓路、音訊中斷／恢復及降速等停止延遲仍須實機聽驗。未執行該 commit 的遠端建置／看圖，不得宣稱通過。
+
+### 常用地點與導航字卡設定截圖
+
+兩版共用 `scripts\ci\saved-places-screenshots.sh`，`gallery`／`full`／`all` 各拍 14 張，不增加 smoke。
+`-gallery -gallerySavedPlaces` 使用記憶體的地點、最近目的地及字卡設定，不讀寫個人清單。
+檔名中的 `P` 在 iOS 26 是 `51-saved-places`，iOS 15 是 `ios15-19-saved-places`；`T` 是 `normal` 或 `large-text`（accessibility-large）。均為 375 pt。
+
+| 檔名 | 下載真圖後核對 |
+|---|---|
+| `P-search-T-375.png` | 住家與公司並排，分得出已設定／未設定；三筆常用列在「附近」前，最近不重複列出住家 |
+| `P-assign-T-375.png` | 標題「設定公司」，沒有常用捷徑與鍵盤遮擋 |
+| `P-card-T-375.png` | 住家附近的星號實心且為黃色，關閉鈕、主次按鈕與地址清楚 |
+| `P-card-menu-T-375.png` | 自動打開的選單可設住家／公司、加入常用、移除既有住家 |
+| `P-settings-T-375.png` | 住家與公司狀態、三筆常用及長名稱可讀，可進入編輯 |
+| `P-rename-T-375.png` | 長名稱可編輯，「儲存」「取消」清楚可見 |
+| `P-banner-style-T-375.png` | A／B 選項、說明與適用範圍可讀，沒有內部疊放選項 |
+
+iOS 26 導航＋照相對照：`29`／`49`（一般字級）、`33`／`50`（放大字）不加參數，乾淨設定為方案 A；
+**`b` 檔是方案 B**，以 `-bannerCombine badge` 暫時覆寫：
+
+| 375 pt | 一般字級 | 放大字 |
+|---|---|---|
+| 照相 | `29b-banners-navigation-camera-badge-375.png` | `33b-banners-navigation-camera-badge-large-text-375.png` |
+| 超速 | `49b-banners-navigation-overspeed-badge-375.png` | `50b-banners-navigation-overspeed-badge-large-text-375.png` |
+
+核對 A 的底部細條與 B 的右上小牌位置，B 不應撐高導航卡；超速要有「超速！」，不只看顏色。大字可捲動，不能讓長字擋住操作。
+這些截圖不是操作測試：指定地點後不導航、重開後保留、改名／刪除／排序、切換樣式立即生效，仍須在 iOS 核對。
+
+### 下載截圖與驗收資料
 
 base64 預設關閉，需時加 `-f print-screenshots=true`。一般用 artifact，將 `RUN_ID` 換成該次執行編號：
 

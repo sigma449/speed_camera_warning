@@ -78,7 +78,7 @@ struct BannerGalleryView: View {
                                     address: "長春路與中山北路二段交岔路口（版面示例）",
                                     enforcementItems: "闖紅燈、未依標線行駛、未停讓行人、違規停車")
 
-    /// 導航＋照相合併方式的名稱，標在每個示例上方，看圖時才知道拍的是哪一個建置。
+    /// 標出實際使用的樣式，方便對照同一個建置的 A／B 截圖。
     private var combineName: String {
         switch BannerCombineStyle.current {
         case .stacked: return "疊放"

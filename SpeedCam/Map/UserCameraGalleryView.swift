@@ -115,7 +115,8 @@ struct UserCameraGalleryView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     Text("375 pt 版面示例・非真實照相點").font(.headline)
                     if scenario == "place" {
-                        MapPlaceCard(place: UserCameraGalleryData.place, onStart: {}, onAddCamera: {
+                        MapPlaceCard(place: UserCameraGalleryData.place, savedMatches: [],
+                                     onSave: { _ in }, onRemoveSaved: { _ in }, onStart: {}, onAddCamera: {
                             editor = UserCameraEditorRequest(camera: model.newUserCamera(at: UserCameraGalleryData.place),
                                 isNew: true, canChangeType: true, currentHeading: nil)
                         }, onClose: {})

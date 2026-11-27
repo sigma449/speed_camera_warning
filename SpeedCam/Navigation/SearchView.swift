@@ -6,7 +6,7 @@ import SwiftUI
 private let searchLog = Logger(subsystem: "tw.speedcammap.app", category: "search")
 
 /// 搜尋目的地並開始導航。
-/// - 沒有輸入時：快速搜尋按鈕（加油站、停車場…）和最近的目的地。
+/// - 沒有輸入時：常用、快速搜尋按鈕（加油站、停車場…）和最近的目的地。
 /// - 輸入中：邊打字邊顯示候選地點（MKLocalSearchCompleter）。
 /// - 按下搜尋或點了一類地點：顯示搜尋結果，附距離。
 struct SearchView: View {
@@ -23,19 +23,43 @@ struct SearchView: View {
     @State private var searchTask: Task<Void, Never>?
     @State private var searchRequests = SearchRequestState()
     @FocusState private var searchFocused: Bool
+    private let assigning: SavedPlace.Kind?
+    private let autoFocus: Bool
+    private let onAssigned: (SavedPlace.Kind) -> Void
+    @State private var pendingAssign: SavedPlace.Kind?
+    @State private var feedback: String?
+
+    init(assigning: SavedPlace.Kind? = nil, autoFocus: Bool = true,
+         onAssigned: @escaping (SavedPlace.Kind) -> Void = { _ in }) {
+        self.assigning = assigning
+        self.autoFocus = autoFocus
+        self.onAssigned = onAssigned
+    }
+
+    private var assignment: SavedPlace.Kind? { assigning ?? pendingAssign }
 
     var body: some View {
         AdaptiveNavigationStack {
             List {
+                if let pendingAssign {
+                    HStack {
+                        Text("選一個地點設為\(pendingAssign.label)")
+                        Spacer()
+                        Button("取消") { setPendingAssignment(nil) }
+                    }
+                }
                 if isSearching {
                     HStack(spacing: 10) { ProgressView(); Text("搜尋中…") }
                 }
                 if let errorText {
                     Text(errorText).foregroundStyle(.red)
+                } else if let feedback {
+                    Text(feedback).font(.callout)
                 }
                 if !results.isEmpty {
                     resultsSection
                 } else if query.trimmingCharacters(in: .whitespaces).isEmpty {
+                    if assignment == nil { savedSection }
                     quickSection
                     recentSection
                 } else {
@@ -46,6 +70,7 @@ struct SearchView: View {
             .searchFocusedIfAvailable($searchFocused)
             .onSubmit(of: .search) { runSearch(query) }
             .onChange(of: query) { newValue in
+                if !newValue.isEmpty { feedback = nil }
                 if searchRequests.updateQuery(newValue) { cancelSearch() }
                 if newValue != resultsQuery {
                     results = []
@@ -59,7 +84,7 @@ struct SearchView: View {
                 if !didApplyInitialQuery, let initial = model.initialSearchQuery {
                     didApplyInitialQuery = true
                     query = initial
-                } else {
+                } else if autoFocus {
                     // 打開就可以直接打字
                     searchFocused = true
                 }
@@ -72,24 +97,93 @@ struct SearchView: View {
                     await runTypingStressTest(text)
                 }
             }
-            .navigationTitle("目的地")
+            .navigationTitle(assigning?.assignmentTitle ?? "目的地")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("關閉") { closeSearch() }
                 }
                 ToolbarItem(placement: .principal) {
-                    Label(model.vehicleMode.routeTitle,
-                          systemImage: model.vehicleMode == .car ? "car.fill" : Symbols.motorcycle)
-                        .labelStyle(.titleAndIcon)
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+                    if let assigning {
+                        Text(assigning.assignmentTitle).font(.headline)
+                    } else {
+                        Label(model.vehicleMode.routeTitle,
+                              systemImage: model.vehicleMode == .car ? "car.fill" : Symbols.motorcycle)
+                            .labelStyle(.titleAndIcon)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
         }
     }
 
     // MARK: 沒有輸入時
+
+    private var savedSection: some View {
+        Section("常用") {
+            HStack(spacing: 10) {
+                shortcut(.home, place: model.savedPlaces.home, symbol: "house.fill")
+                shortcut(.work, place: model.savedPlaces.work, symbol: "briefcase.fill")
+            }
+            ForEach(model.savedPlaces.favorites) { place in
+                Button { preview(place) } label: {
+                    row(symbol: "star.fill", title: Text(place.displayTitle), subtitle: place.subtitle,
+                        distance: MapItems.distanceText(from: model.searchCenter, to: place.point.coordinate))
+                }
+                .swipeActions { removeButton(place) }
+                .contextMenu { removeButton(place) }
+            }
+        }
+    }
+
+    private func shortcut(_ kind: SavedPlace.Kind, place: SavedPlace?, symbol: String) -> some View {
+        Button {
+            if let place { preview(place) } else { setPendingAssignment(kind) }
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                Label(kind.label, systemImage: symbol).font(.headline)
+                Text(place?.placeName ?? "點這裡設定")
+                    .foregroundStyle(.secondary).font(.footnote).lineLimit(1)
+            }
+            .padding(.horizontal, 8)
+            .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+            .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            if let place {
+                Button("改成別的地點") { setPendingAssignment(kind) }
+                removeButton(place)
+            }
+        }
+    }
+
+    private func removeButton(_ place: SavedPlace) -> some View {
+        Button("移除", role: .destructive) {
+            model.removeSavedPlace(id: place.id)
+            errorText = model.savedPlacesWarning
+            feedback = errorText == nil ? "已移除" : nil
+        }
+    }
+
+    private func preview(_ place: SavedPlace) {
+        guard searchRequests.isPresented else { return }
+        endSearchPresentation()
+        model.beginPreview(to: place)
+        dismiss()
+    }
+
+    private func setPendingAssignment(_ kind: SavedPlace.Kind?) {
+        cancelSearch()
+        pendingAssign = kind
+        query = ""
+        results = []
+        resultsQuery = nil
+        errorText = nil
+        feedback = nil
+        completer.update(query: "", near: nil)
+    }
 
     private var quickSection: some View {
         Section {
@@ -119,20 +213,33 @@ struct SearchView: View {
 
     @ViewBuilder
     private var recentSection: some View {
-        if !model.recentDestinations.isEmpty {
+        let visible = model.recentDestinations.filter {
+            !model.savedPlaces.hidesRecent(name: $0.name, point: GeoPoint(lat: $0.lat, lon: $0.lon))
+        }
+        if !visible.isEmpty {
             Section {
-                ForEach(model.recentDestinations) { recent in
+                ForEach(visible) { recent in
                     Button {
-                        guard searchRequests.isPresented else { return }
-                        endSearchPresentation()
-                        model.beginPreview(to: recent)
-                        dismiss()
+                        navigate(to: MapItems.item(name: recent.name, coordinate: recent.coordinate), subtitle: recent.subtitle)
                     } label: {
                         row(symbol: "clock.arrow.circlepath", title: Text(recent.name), subtitle: recent.subtitle,
                             distance: MapItems.distanceText(from: model.searchCenter, to: recent.coordinate))
                     }
                     .swipeActions {
                         Button("刪除", role: .destructive) { model.removeRecent(recent) }
+                    }
+                    .swipeActions(edge: .leading) {
+                        if assignment == nil {
+                            Button("加入常用") { saveRecent(recent, as: .favorite) }.tint(.yellow)
+                        }
+                    }
+                    .contextMenu {
+                        if assignment == nil {
+                            Button("設為住家") { saveRecent(recent, as: .home) }
+                            Button("設為公司") { saveRecent(recent, as: .work) }
+                            Button("加入常用地點") { saveRecent(recent, as: .favorite) }
+                            Button("刪除", role: .destructive) { model.removeRecent(recent) }
+                        }
                     }
                 }
             } header: {
@@ -237,11 +344,33 @@ struct SearchView: View {
     // MARK: 動作
 
     /// 選好地點：關掉搜尋，回到地圖先預覽地點和路線，再開始導航。
-    private func navigate(to item: MKMapItem) {
+    private func navigate(to item: MKMapItem, subtitle: String? = nil) {
         guard searchRequests.isPresented else { return }
+        if let kind = assignment {
+            do {
+                try model.savePlace(kind, item: item, subtitle: subtitle)
+                if assigning != nil {
+                    onAssigned(kind)
+                    closeSearch()
+                } else {
+                    setPendingAssignment(nil)
+                    searchFocused = false
+                    feedback = kind.savedMessage
+                }
+            } catch { errorText = error.localizedDescription }
+            return
+        }
         endSearchPresentation()
-        model.beginPreview(to: item)
+        model.beginPreview(to: item, subtitle: subtitle)
         dismiss()
+    }
+
+    private func saveRecent(_ recent: RecentDestination, as kind: SavedPlace.Kind) {
+        do {
+            try model.savePlace(kind, placeName: recent.name, subtitle: recent.subtitle, coordinate: recent.coordinate)
+            errorText = nil
+            feedback = kind.savedMessage
+        } catch { errorText = error.localizedDescription }
     }
 
     private func cancelSearch() {

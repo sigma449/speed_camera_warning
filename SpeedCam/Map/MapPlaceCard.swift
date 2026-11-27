@@ -3,9 +3,24 @@ import SwiftUI
 
 struct MapPlaceCard: View {
     let place: MapPlaceSelection.Place
+    let savedMatches: [SavedPlace]
+    var home: SavedPlace?
+    var work: SavedPlace?
+    var feedback: String?
+    var openMenuOnAppear = false
+    let onSave: (SavedPlace.Kind) -> Void
+    let onRemoveSaved: (SavedPlace) -> Void
     let onStart: () -> Void
     let onAddCamera: () -> Void
     let onClose: () -> Void
+    @State private var showSaveMenu = false
+
+    private var replacementNotice: String {
+        [home, work].compactMap { place -> String? in
+            guard let place, !savedMatches.contains(where: { $0.id == place.id }) else { return nil }
+            return "選「設為\(place.displayTitle)」會取代目前的\(place.displayTitle)：\(place.placeName)"
+        }.joined(separator: "\n")
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -20,6 +35,33 @@ struct MapPlaceCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                Button { showSaveMenu = true } label: {
+                    Image(systemName: savedMatches.isEmpty ? "star" : "star.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(savedMatches.isEmpty ? Color.white : .yellow)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(savedMatches.isEmpty ? "加入常用地點" : "已在常用地點")
+                .confirmationDialog("把這裡存成…", isPresented: $showSaveMenu, titleVisibility: .visible) {
+                    Button("設為住家") { onSave(.home) }
+                    Button("設為公司") { onSave(.work) }
+                    if !savedMatches.contains(where: { $0.kind == .favorite }) {
+                        Button("加入常用地點") { onSave(.favorite) }
+                    }
+                    ForEach(savedMatches) { match in
+                        Button("從常用移除「\(match.displayTitle)」", role: .destructive) { onRemoveSaved(match) }
+                    }
+                    Button("取消", role: .cancel) {}
+                } message: {
+                    if !replacementNotice.isEmpty { Text(replacementNotice) }
+                }
+                .task {
+                    guard openMenuOnAppear else { return }
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    if !Task.isCancelled { showSaveMenu = true }
+                }
                 Button(action: onClose) {
                     Image(systemName: "xmark")
                         .font(.system(size: 18, weight: .semibold))
@@ -29,6 +71,7 @@ struct MapPlaceCard: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("關閉選點卡")
             }
+            if let feedback { Text(feedback).font(.footnote) }
             if place.isResolvingAddress {
                 HStack(spacing: 8) {
                     ProgressView().tint(.white)
@@ -94,6 +137,7 @@ struct MapPlaceGalleryView: View {
     }
 
     private func card(_ place: MapPlaceSelection.Place) -> some View {
-        MapPlaceCard(place: place, onStart: {}, onAddCamera: {}, onClose: {})
+        MapPlaceCard(place: place, savedMatches: [], onSave: { _ in }, onRemoveSaved: { _ in },
+                     onStart: {}, onAddCamera: {}, onClose: {})
     }
 }

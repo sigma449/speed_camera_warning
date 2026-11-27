@@ -9,6 +9,8 @@ private let uiLog = Logger(subsystem: "tw.speedcammap.app", category: "ui")
 /// 主畫面：全螢幕地圖，上方顯示提醒／導航資訊，下方是速度與操作按鈕。
 struct RootView: View {
     @EnvironmentObject private var model: AppModel
+    @AppStorage(AppPreferences.bannerCombineStyleKey) private var combineStyle: BannerCombineStyle = BannerCombineStyle.defaultStyle
+    @State private var placeFeedback: String?
     @StateObject private var follow = MapFollowController()
     @State private var visibleRegion: MKCoordinateRegion?
     @State private var selectedCameraID: String?
@@ -30,7 +32,7 @@ struct RootView: View {
                 VStack(spacing: 8) {
                     TopAlertBanners(progress: model.routeProgress, destination: model.destinationName,
                                     section: model.sectionStatus, target: model.bannerTarget,
-                                    currentSpeed: model.currentSpeedKmh)
+                                    currentSpeed: model.currentSpeedKmh, style: BannerCombineStyle.resolved(stored: combineStyle))
                     if let message = model.statusMessage {
                         MessageBanner(text: message) { model.statusMessage = nil }
                     }
@@ -60,13 +62,7 @@ struct RootView: View {
                         }
                         if let place = model.selectedMapPlace {
                             MapCardScrollView(maximumHeight: viewport.size.height * 0.65) {
-                                MapPlaceCard(place: place, onStart: { model.previewSelectedMapPlace() },
-                                             onAddCamera: {
-                                                 cameraEditor = UserCameraEditorRequest(camera: model.newUserCamera(at: place),
-                                                     isNew: true, canChangeType: true,
-                                                     currentHeading: model.suggestedCameraHeading(at: place.point))
-                                             },
-                                             onClose: { model.dismissMapPlace() })
+                                mapPlaceCard(place)
                             }
                         } else if let camera = selectedCamera {
                             MapCardScrollView(maximumHeight: viewport.size.height * 0.65) {
@@ -163,6 +159,7 @@ struct RootView: View {
             if id != nil { model.dismissMapPlace() }
         }
         .onChange(of: model.selectedMapPlace?.id) { id in
+            placeFeedback = nil
             if id != nil {
                 selectedCameraID = nil
                 follow.beginPlaceSelection()
@@ -176,6 +173,29 @@ struct RootView: View {
         .task(id: model.preview?.key) {
             await runPreviewTimer()
         }
+    }
+
+    private func mapPlaceCard(_ place: MapPlaceSelection.Place) -> some View {
+        MapPlaceCard(place: place, savedMatches: model.savedPlaces.matches(point: place.point, placeName: place.name),
+                     home: model.savedPlaces.home, work: model.savedPlaces.work, feedback: placeFeedback,
+                     onSave: { kind in
+                         do {
+                             try model.savePlace(kind, mapPlace: place)
+                             placeFeedback = kind.savedMessage
+                         } catch {
+                             placeFeedback = nil
+                             model.statusMessage = error.localizedDescription
+                         }
+                     }, onRemoveSaved: { match in
+                         model.removeSavedPlace(id: match.id)
+                         if let warning = model.savedPlacesWarning {
+                             placeFeedback = nil
+                             model.statusMessage = warning
+                         } else { placeFeedback = "已移除" }
+                     }, onStart: { model.previewSelectedMapPlace() }, onAddCamera: {
+                         cameraEditor = UserCameraEditorRequest(camera: model.newUserCamera(at: place),
+                             isNew: true, canChangeType: true, currentHeading: model.suggestedCameraHeading(at: place.point))
+                     }, onClose: { model.dismissMapPlace() })
     }
 
     // MARK: 導航預覽

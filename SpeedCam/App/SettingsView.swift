@@ -62,6 +62,18 @@ struct SettingsView: View {
                         Text("開啟後，打開 App 就會開始偵測測速照相，不用再按 ▶︎。")
                     }
                     Section {
+                        NavigationLink {
+                            SavedPlacesView()
+                        } label: {
+                            LabeledValue("管理常用地點", value: savedPlacesSummary)
+                        }
+                    } header: {
+                        Text("常用地點")
+                    } footer: {
+                        Text("只存在這支手機，不會上傳。搜尋目的地時會列在最上面，點一下就預覽路線。")
+                    }
+                    BannerStyleSettings()
+                    Section {
                         Toggle("移動式熱點", isOn: $model.settings.mobileHotspotsEnabled)
                         Toggle("科技執法（非測速）", isOn: $model.settings.nonSpeedTechEnabled)
                         Toggle("聲音照相", isOn: $model.settings.noiseCamerasEnabled)
@@ -174,7 +186,7 @@ struct SettingsView: View {
                 Button("恢復預設值", role: .destructive) { model.resetSettings() }
                 Button("取消", role: .cancel) {}
             } message: {
-                Text("提醒類型、提醒距離、超速警示、區間設定（含個別區間容許值）、聲音與 Live Activity 開關都會改回預設；車種、語言、自動巡航和我的照相點不變。")
+                Text("提醒類型、提醒距離、超速警示、區間設定（含個別區間容許值）、聲音與 Live Activity 開關都會改回預設；車種、語言、自動巡航、我的照相點、導航畫面樣式、常用地點不變。")
             }
             .alert("要現在重新開啟 App 嗎？", isPresented: $showRestartNotice) {
                 Button("立即重新開啟") { restartForLanguage() }
@@ -190,6 +202,14 @@ struct SettingsView: View {
         }
     }
 
+    private var savedPlacesSummary: String {
+        let places = model.savedPlaces
+        if places.isEmpty { return "未設定" }
+        return [places.home?.displayTitle, places.work?.displayTitle,
+                places.favorites.isEmpty ? nil : "\(places.favorites.count) 個常用"]
+            .compactMap { $0 }.joined(separator: "・")
+    }
+
     private func restartForLanguage() {
         model.prepareForRelaunch()
         AppRelauncher.closeToHomeScreen()
@@ -199,6 +219,47 @@ struct SettingsView: View {
         Stepper(value: value, in: range, step: 50) {
             LabeledValue(title, value: "\(Int(value.wrappedValue)) m")
         }
+    }
+}
+
+struct BannerStyleSettings: View {
+    var selection: Binding<BannerCombineStyle>? = nil
+
+    var body: some View {
+        if let selection {
+            Self.section(selection)
+        } else {
+            StoredSelection()
+        }
+    }
+
+    // 僅正式畫面建立 AppStorage；截圖使用記憶體 Binding。
+    private struct StoredSelection: View {
+        @AppStorage(AppPreferences.bannerCombineStyleKey) private var style = BannerCombineStyle.defaultStyle
+        var body: some View { BannerStyleSettings.section($style) }
+    }
+
+    private static func section(_ selection: Binding<BannerCombineStyle>) -> some View {
+        Section {
+            Picker("字卡樣式", selection: selection) {
+                option("大字互換（A）", "照相點近了或超速時換成大字，導航縮成底下一行").tag(BannerCombineStyle.swap)
+                option("右上小牌（B）", "導航維持原樣，照相放在右上角，超速時整張變紅").tag(BannerCombineStyle.badge)
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        } header: {
+            Text("導航中遇到照相點")
+        } footer: {
+            Text("只改 App 內的字卡；語音、鎖定畫面和 CarPlay 不變。導航中進入區間測速時，一律顯示導航＋區間合併卡。")
+        }
+    }
+
+    private static func option(_ title: String, _ detail: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+            Text(detail).font(.footnote).foregroundStyle(.secondary)
+        }
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 

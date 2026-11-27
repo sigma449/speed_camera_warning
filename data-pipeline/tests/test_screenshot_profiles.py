@@ -42,6 +42,15 @@ def test_real_screenshot_entry_honors_selected_profile(tmp_path, entry, profile)
             for name in ("49-banners-navigation-overspeed-375", "50-banners-navigation-overspeed-large-text-375"):
                 assert (tmp_path / "screenshots" / f"{name}.png").exists()
         beep_prefix = "ios15-18-beep-interval" if entry == "ios15-run.sh" else "48-beep-interval"
+        places_prefix = "ios15-19-saved-places" if entry == "ios15-run.sh" else "51-saved-places"
+        for scenario in ("search", "assign", "card", "card-menu", "settings", "rename", "banner-style"):
+            for text in ("normal", "large-text"):
+                assert (tmp_path / "screenshots" / f"{places_prefix}-{scenario}-{text}-375.png").exists()
+        if entry == "screenshots.sh":
+            for name in ("29b-banners-navigation-camera-badge-375", "49b-banners-navigation-overspeed-badge-375",
+                         "33b-banners-navigation-camera-badge-large-text-375",
+                         "50b-banners-navigation-overspeed-badge-large-text-375"):
+                assert (tmp_path / "screenshots" / f"{name}.png").exists()
         for scenario in ("min", "default", "max"):
             for text in ("normal", "large-text"):
                 assert (tmp_path / "screenshots" / f"{beep_prefix}-{scenario}-{text}-375.png").exists()
@@ -94,4 +103,23 @@ capture_beep_settings probe
 ''', cwd=tmp_path, env=environment)
     assert result.returncode != 0, result.stdout + result.stderr
     assert "無法設定嗶聲滑桿截圖的文字大小" in result.stdout
+    assert "-large-text-375" not in result.stdout
+
+
+@pytest.mark.parametrize("failed_size", ["large", "accessibility-large"])
+def test_saved_places_capture_does_not_claim_large_text_if_setting_the_size_fails(tmp_path, failed_size):
+    _, environment = shell_workspace(tmp_path)
+    environment["FAILED_SIZE"] = failed_size
+    result = bash("-c", '''
+set -euo pipefail
+source scripts/ci/saved-places-screenshots.sh
+UDID=test-device
+launch_app() { :; }
+sleep() { :; }
+shot() { printf '%s\\n' "$1"; }
+xcrun() { [[ "${!#}" != "${FAILED_SIZE}" ]]; }
+capture_saved_places probe
+''', cwd=tmp_path, env=environment)
+    assert result.returncode != 0, result.stdout + result.stderr
+    assert "無法設定常用地點截圖的文字大小" in result.stdout
     assert "-large-text-375" not in result.stdout

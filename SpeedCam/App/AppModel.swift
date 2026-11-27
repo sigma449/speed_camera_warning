@@ -41,7 +41,11 @@ final class AppModel: ObservableObject {
     /// 開始導航前的預覽（先看地點，再看路線，最後開始導航）。
     @Published private(set) var preview: NavigationPreview?
     @Published private(set) var authorizationDenied = false
-    @Published private(set) var recentDestinations: [RecentDestination] = RecentDestinationStore.load()
+    @Published private(set) var recentDestinations: [RecentDestination] = []
+    @Published private(set) var savedPlaces = SavedPlaces()
+    @Published private(set) var savedPlacesWarning: String?
+    private var savedPlacesPersist = true
+    private var savedPlacesEdited = false
     @Published var statusMessage: String?
     @Published private var mapPlaceSelection = MapPlaceSelection()
     @Published private(set) var userCameraEdits = UserCameraEdits()
@@ -181,6 +185,22 @@ final class AppModel: ObservableObject {
         alertEngine = CameraAlertEngine(index: SpatialIndex(cameras: []), settings: loaded)
         sectionTracker = SectionSpeedTracker(sections: [], settings: loaded)
 
+        savedPlacesPersist = !showGallery && !arguments.contains("-gallerySavedPlaces")
+        if savedPlacesPersist {
+            let stored = SavedPlaceStore.load()
+            savedPlaces = stored.0
+            savedPlacesWarning = stored.warning
+            recentDestinations = RecentDestinationStore.load()
+        } else if arguments.contains("-gallerySavedPlaces") {
+            do {
+                let samples = try SavedPlacesGalleryData.samples()
+                savedPlaces = samples.0
+                recentDestinations = samples.1
+                lastFix = VehicleFix(point: SavedPlacesGalleryData.searchCenter, speedMps: 0, course: nil, timestamp: Date())
+            } catch {
+                savedPlacesWarning = "常用地點示例無效：\(error.localizedDescription)"
+            }
+        }
         if !showGallery && !demoMode {
             do {
                 let support = try FileManager.default.url(for: .applicationSupportDirectory,
@@ -310,6 +330,11 @@ final class AppModel: ObservableObject {
 
     func sceneBecameActive() {
         guard !showGallery else { return }
+        if savedPlacesPersist && !savedPlacesEdited {
+            let stored = SavedPlaceStore.load()
+            savedPlaces = stored.0
+            savedPlacesWarning = stored.warning
+        }
         if isCruising && !demoMode { location.restartIfNeeded() }
         restartLiveActivityIfNeeded()
     }
@@ -732,6 +757,55 @@ final class AppModel: ObservableObject {
         beginPreview(to: MapItems.item(name: recent.name, coordinate: recent.coordinate), subtitle: recent.subtitle)
     }
 
+    func beginPreview(to place: SavedPlace) {
+        beginPreview(to: MapItems.item(name: place.displayTitle, coordinate: place.point.coordinate),
+                     subtitle: place.subtitle.isEmpty ? place.placeName : place.subtitle)
+    }
+
+    private func editSavedPlaces<T>(_ edit: (inout SavedPlaces) throws -> T) throws -> T {
+        var updated = savedPlaces
+        let result = try edit(&updated)
+        if savedPlacesPersist { try SavedPlaceStore.save(updated) }
+        savedPlacesEdited = true
+        savedPlaces = updated
+        savedPlacesWarning = nil
+        return result
+    }
+
+    @discardableResult
+    func savePlace(_ kind: SavedPlace.Kind, placeName: String, subtitle: String,
+                   coordinate: CLLocationCoordinate2D) throws -> SavedPlace {
+        try editSavedPlaces {
+            try $0.save(kind, placeName: placeName, subtitle: subtitle,
+                        point: GeoPoint(lat: coordinate.latitude, lon: coordinate.longitude), now: Date())
+        }
+    }
+
+    @discardableResult
+    func savePlace(_ kind: SavedPlace.Kind, item: MKMapItem, subtitle: String? = nil) throws -> SavedPlace {
+        try savePlace(kind, placeName: item.name ?? "", subtitle: subtitle ?? MapItems.subtitle(of: item),
+                      coordinate: MapItems.coordinate(of: item))
+    }
+
+    @discardableResult
+    func savePlace(_ kind: SavedPlace.Kind, mapPlace: MapPlaceSelection.Place) throws -> SavedPlace {
+        try savePlace(kind, placeName: mapPlace.name, subtitle: mapPlace.address ?? "", coordinate: mapPlace.point.coordinate)
+    }
+
+    func renameSavedPlace(id: UUID, title: String) throws {
+        try editSavedPlaces { try $0.rename(id: id, to: title) }
+    }
+
+    func removeSavedPlace(id: UUID) {
+        do { try editSavedPlaces { $0.remove(id: id) } }
+        catch { savedPlacesWarning = "常用地點移除失敗：\(error.localizedDescription)" }
+    }
+
+    func moveFavorites(fromOffsets: IndexSet, toOffset: Int) {
+        do { try editSavedPlaces { $0.moveFavorites(fromOffsets: fromOffsets, toOffset: toOffset) } }
+        catch { savedPlacesWarning = "常用地點排序失敗：\(error.localizedDescription)" }
+    }
+
     /// 從地點預覽切換到路線預覽（路線還在規劃的話，算好就切換）。
     func showRoutePreview() {
         guard var p = preview else { return }
@@ -760,12 +834,12 @@ final class AppModel: ObservableObject {
 
     func removeRecent(_ recent: RecentDestination) {
         recentDestinations.removeAll { $0.id == recent.id }
-        RecentDestinationStore.save(recentDestinations)
+        if savedPlacesPersist { RecentDestinationStore.save(recentDestinations) }
     }
 
     func clearRecents() {
         recentDestinations = []
-        RecentDestinationStore.save([])
+        if savedPlacesPersist { RecentDestinationStore.save([]) }
     }
 
     private func rememberDestination(_ item: MKMapItem, subtitle: String?) {
@@ -775,7 +849,7 @@ final class AppModel: ObservableObject {
                                       lon: MapItems.coordinate(of: item).longitude,
                                       date: Date())
         recentDestinations = RecentDestinationStore.adding(entry, to: recentDestinations)
-        RecentDestinationStore.save(recentDestinations)
+        if savedPlacesPersist { RecentDestinationStore.save(recentDestinations) }
     }
 
     private func startNavigation(route newRoute: MKRoute, destination item: MKMapItem, subtitle: String?,

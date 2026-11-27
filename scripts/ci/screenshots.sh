@@ -159,6 +159,9 @@ shot "28-stale-activity-small"
 launch_app -autoStartCruise NO -gallery -galleryBanners -galleryBannerPair camera -galleryWidth 375
 sleep 8
 shot "29-banners-navigation-camera-375"
+launch_app -autoStartCruise NO -gallery -galleryBanners -galleryBannerPair camera -galleryWidth 375 -bannerCombine badge
+sleep 8
+shot "29b-banners-navigation-camera-badge-375"
 launch_app -autoStartCruise NO -gallery -galleryBanners -galleryBannerPair section -galleryWidth 375
 sleep 8
 shot "30-banners-navigation-section-375"
@@ -171,16 +174,25 @@ shot "32-banners-rerouting-camera-390"
 launch_app -autoStartCruise NO -gallery -galleryBanners -galleryBannerPair overspeed -galleryWidth 375
 sleep 8
 shot "49-banners-navigation-overspeed-375"
+launch_app -autoStartCruise NO -gallery -galleryBanners -galleryBannerPair overspeed -galleryWidth 375 -bannerCombine badge
+sleep 8
+shot "49b-banners-navigation-overspeed-badge-375"
 xcrun simctl ui "${UDID}" content_size accessibility-large || echo "::warning::無法切換放大文字"
 launch_app -autoStartCruise NO -gallery -galleryBanners -galleryBannerPair camera -galleryWidth 375
 sleep 8
 shot "33-banners-navigation-camera-large-text-375"
+launch_app -autoStartCruise NO -gallery -galleryBanners -galleryBannerPair camera -galleryWidth 375 -bannerCombine badge
+sleep 8
+shot "33b-banners-navigation-camera-badge-large-text-375"
 launch_app -autoStartCruise NO -gallery -galleryBanners -galleryBannerPair section -galleryWidth 375
 sleep 8
 shot "34-banners-navigation-section-large-text-375"
 launch_app -autoStartCruise NO -gallery -galleryBanners -galleryBannerPair overspeed -galleryWidth 375
 sleep 8
 shot "50-banners-navigation-overspeed-large-text-375"
+launch_app -autoStartCruise NO -gallery -galleryBanners -galleryBannerPair overspeed -galleryWidth 375 -bannerCombine badge
+sleep 8
+shot "50b-banners-navigation-overspeed-badge-large-text-375"
 xcrun simctl ui "${UDID}" content_size large || echo "::warning::無法還原文字大小"
 fi
 
@@ -400,6 +412,8 @@ source "$(dirname "${BASH_SOURCE[0]}")/user-camera-screenshots.sh"
 capture_user_camera_edits "47-user-camera"
 source "$(dirname "${BASH_SOURCE[0]}")/beep-settings-screenshots.sh"
 capture_beep_settings "48-beep-interval"
+source "$(dirname "${BASH_SOURCE[0]}")/saved-places-screenshots.sh"
+capture_saved_places "51-saved-places"
 fi
 
 # App 的紀錄（確認啟動參數、sheet、地圖範圍、區間貼齊、路線選擇有沒有生效）

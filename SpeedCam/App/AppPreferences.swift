@@ -5,6 +5,7 @@ import UIKit
 enum AppPreferences {
     /// 開啟 App 時自動開始巡航（測速偵測）。SettingsView 用同一個 key 的 @AppStorage。
     static let autoStartCruiseKey = "autoStartCruise"
+    static let bannerCombineStyleKey = "bannerCombineStyle"
 
     static var autoStartCruise: Bool {
         // bool(forKey:) 也接受啟動參數「-autoStartCruise NO」（CI 截圖用）

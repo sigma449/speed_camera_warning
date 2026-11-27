@@ -32,7 +32,7 @@ enum BannerLayout {
     static let stripFont = Font.system(size: 26, weight: .heavy, design: .rounded)
 }
 
-/// 導航中遇到照相點（沒有區間）時，兩張字卡怎麼放。2026-11-20 使用者要求方案 A／B 各打一個 IPA 實測，選定後再收斂。
+/// 導航中遇到照相點時使用手機設定的合併樣式；疊放只供內部比對。
 enum BannerCombineStyle: String {
     /// 原本：導航卡、照相卡上下疊放。
     case stacked
@@ -41,18 +41,24 @@ enum BannerCombineStyle: String {
     /// 方案 B：導航卡不動，右上角掛照相小牌；超速時整張卡變紅。
     case badge
 
-    /// 這個建置的預設。方案 A／B 的 IPA 只差這一行。
-    static let buildDefault: BannerCombineStyle = .swap
+    static let defaultStyle: BannerCombineStyle = .swap
 
     /// `-bannerCombine stacked|swap|badge` 可覆寫（CI／內部比對用，不儲存）。
-    static let current: BannerCombineStyle = {
+    static var launchOverride: BannerCombineStyle? {
         let args = ProcessInfo.processInfo.arguments
         if let i = args.firstIndex(of: "-bannerCombine"), i + 1 < args.count,
            let style = BannerCombineStyle(rawValue: args[i + 1]) {
             return style
         }
-        return buildDefault
-    }()
+        return nil
+    }
+
+    static func resolved(stored: BannerCombineStyle) -> BannerCombineStyle { launchOverride ?? stored }
+
+    static var current: BannerCombineStyle {
+        launchOverride ?? UserDefaults.standard.string(forKey: AppPreferences.bannerCombineStyleKey)
+            .flatMap(BannerCombineStyle.init(rawValue:)) ?? defaultStyle
+    }
 }
 
 /// 主畫面上方的導航、區間、照相字卡。導航中進入區間時，導航和區間合成一張；
